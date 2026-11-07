@@ -4,6 +4,7 @@ A mobile-first, installable maths and reasoning practice web app (PWA) for stude
 Plain HTML/CSS/JS – no frameworks, no build step, relative paths only – so it runs on GitHub Pages as-is.
 
 ## Features
+- **Guided tour (first visit):** the first time a browser opens the app, a short tour dims the page and highlights each part of Home in turn (students, language, parent lock, subjects, practice options, Start, Print, Progress, Settings) with one line on what it is for. Next / Back / Skip, arrow keys and Escape work; it is shown once (earlier users who already have data are not shown it), and the **?** button in the header replays it at any time (`js/tour.js`).
 - **Two subjects** (toggle on Home):
   - **Maths** – typed answers. Levels follow **China (人教版) and Singapore (MOE)** expectations for each year, which are noticeably harder than Australian/UK ones. 22 topics, including 简便计算 (clever calculation), 数论 (number theory), 找规律 (sequences), equations, simultaneous equations, quadratics, π = 3.14 circle/cylinder/cone work, and trigonometry.
   - **应用题 word problems**: classic types (和差, 和倍, 差倍, 鸡兔同笼, 植树, 年龄, 相遇/追及, 火车过桥, 工程, 盈亏, 浓度, 利润折扣, Singapore before/after fractions and transfer problems, equation and simultaneous-equation problems, quadratic area problems). About 1 in 3 questions in a Mixed maths set is a word problem; the worked solution shows the equation.
@@ -71,6 +72,7 @@ On a phone, open the address and use **Add to Home Screen** / **Install app**. T
 | `js/gen-selective.js` | Selective test (35 questions / 40 minutes, 5 options) |
 | `js/ai.js` | Claude / DeepSeek question generation (maths and general ability) and validation |
 | `js/app.js` | Screens, state, parent mode, progress |
+| `js/tour.js` | First-visit guided tour: highlight one part at a time with a short explanation |
 | `version.js` | App version (also names the offline cache) and the Production host names |
 | `js/test-badge.js` | TEST badge on every host that is not Production |
 | `sw.js` | Service worker; cache named after `version.js` |

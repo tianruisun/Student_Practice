@@ -42,7 +42,12 @@
     },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges' };
+  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour' };
+  /* Guided tour (v1.8.0): "new" from a browser's first visit until the tour is finished or skipped, then "done".
+     Read before the student profiles are created: a browser that already has profiles is not a first visit, so people
+     who used an earlier version are not shown it (they can open it with the ? button). */
+  const tourState = store.get(K.tour, null) || (store.get(K.profiles, null) ? 'done' : 'new');
+  if (store.get(K.tour, null) === null) store.set(K.tour, tourState);   // stored, so a later reset of progress does not undo it
 
   /* ---------- student profiles: up to 3 per browser, each with its own progress and settings ---------- */
   const MAX_PROFILES = 3;
@@ -117,6 +122,7 @@
     const nb = badgeCount(), ab = $('#avatarBadge');
     ab.hidden = !nb; ab.textContent = '🏅' + nb;
     document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading');
+    $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading';   // the tour shows Home; never leave a set for it
     ({ home: renderHome, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent })[S.screen]();
   }
 
@@ -1115,12 +1121,12 @@
     });
   }
 
-  /* Every key this app stores, old "mp." names included, except the language choice and the "moved" flag
-     (without the flag a later load would move leftover old keys back in). */
+  /* Every key this app stores, old "mp." names included, except the language choice, the "moved" flag (without it a later
+     load would move leftover old keys back in) and the tour flag (the same person has already seen the tour). */
   function eraseAll() {
     try {
       for (const k of Object.keys(localStorage)) {
-        if ((k.startsWith('sp.') && k !== 'sp.lang' && k !== 'sp.moved') || OLD_KEY.test(k)) localStorage.removeItem(k);
+        if ((k.startsWith('sp.') && k !== 'sp.lang' && k !== 'sp.moved' && k !== K.tour) || OLD_KEY.test(k)) localStorage.removeItem(k);
       }
     } catch (e) { /* storage blocked: nothing stored */ }
   }
@@ -1301,7 +1307,29 @@
     });
   }
 
+  /* ---------- guided tour (v1.8.0): what each part of Home is for ---------- */
+  const TOUR = [
+    { target: null, title: 'tour.welcomeT', text: 'tour.welcome' },
+    { target: '#profileBtn', title: 'tour.profileT', text: 'tour.profile' },
+    { target: '#langBtn', title: 'tour.langT', text: 'tour.lang' },
+    { target: '#parentBtn', title: 'tour.parentT', text: 'tour.parent' },
+    { target: '#subjectChips', title: 'tour.subjectT', text: 'tour.subject' },
+    { target: '#practiceOptions', title: 'tour.optionsT', text: 'tour.options' },
+    { target: '#startBtn', title: 'tour.startT', text: 'tour.start' },
+    { target: '#printHome', title: 'tour.printT', text: 'tour.print' },
+    { target: '.tab[data-go="progress"]', title: 'tour.progressT', text: 'tour.progress' },
+    { target: '#navParent', title: 'tour.settingsT', text: 'tour.settings' },
+    { target: '#tourBtn', title: 'tour.againT', text: 'tour.again' }
+  ];
+  function startTour() {
+    if (S.screen === 'quiz' || S.screen === 'loading' || window.Tour.running) return;
+    document.querySelectorAll('dialog[open]').forEach(d => d.close());   // a student dialog left open would sit on top
+    if (S.screen !== 'home') go('home');
+    window.Tour.run(TOUR, { t, onEnd: () => { store.set(K.tour, 'done'); window.scrollTo(0, 0); } });
+  }
+
   /* ---------- wire up ---------- */
+  $('#tourBtn').addEventListener('click', startTour);
   document.querySelectorAll('.tab[data-go]').forEach(b => b.addEventListener('click', async () => {
     if (S.screen === 'quiz' && !confirm(t(S.quiz && S.quiz.exam ? 'sel.quitConfirm' : 'quiz.quitConfirm'))) return;
     if (S.screen === 'quiz') { stopTimer(); S.quiz = null; }
@@ -1436,4 +1464,5 @@
   registerSW();
   applySuggestedYear();
   go('home');
+  if (tourState === 'new') requestAnimationFrame(startTour);   // first visit in this browser
 })();

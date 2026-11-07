@@ -5,10 +5,13 @@ const { launch } = require('./smoke.js');
 const SETTINGS = 'sp.settings.p1';
 const PIN = '2468';
 
-/* initScript: code run in the page before the app (e.g. to make storage fail). */
-async function freshPage(browser, site, seed, initScript) {
-  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+/* initScript: code run in the page before the app (e.g. to make storage fail).
+   options.tour: leave the first-visit guided tour (v1.8.0) on. Otherwise it is marked as seen before the app runs, so
+   it does not cover the screen in flows that test something else. */
+async function freshPage(browser, site, seed, initScript, options = {}) {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, ...options.context });
   context.setDefaultTimeout(20000);   // no single step may wait longer than 20 s
+  if (!options.tour) await context.addInitScript(() => { try { if (localStorage.getItem('sp.tour') === null) localStorage.setItem('sp.tour', '"done"'); } catch (e) { /* blocked */ } });
   if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
   const errors = [];
@@ -85,8 +88,7 @@ async function run(site) {
       await Promise.all([page.waitForEvent('load'), page.click('#pinForgot')]);
       const keys = await page.evaluate(() => Object.keys(localStorage).sort());
       check('F.1 reset erases progress, PIN and AI key', !keys.some(k => ['sp.pin', 'sp.history.p1', 'sp.ai'].includes(k)), keys.join(','));
-      check('F.1 reset keeps the language and other apps\' keys', keys.includes('sp.lang') && keys.includes('other-app.data'), keys.join(','));
-      await context.close();
+      check('F.1 reset keeps the language and other apps\' keys', keys.includes('sp.lang') && keys.includes('other-app.data'), keys.join(','));      await context.close();
     });
 
     // 4. F.2: keys from v1.6.3 ("mp.") move to "sp." once; the saved language still applies.
@@ -498,6 +500,86 @@ async function run(site) {
       check('R2.3 no raw text keys on Progress', !/topic\.|subject\.|null/.test(await page.textContent('#progBody')), recent);
       check('R2.4 Clear progress shows once there is progress', (await page.locator('#clearProgress').count()) === 1);
       check('R2 no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v1.8.0: the first visit opens a guided tour of Home; each step highlights its part; it is seen once, then on ? only.
+    await flow('v1.8.0 guided tour', async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { tour: true });
+      const tourOpen = () => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
+      await page.waitForTimeout(300);
+      check('tour: opens on the first visit', await tourOpen());
+      check('tour: starts at step 1 of 11', (await page.textContent('#tourStep')) === 'Step 1 of 11', await page.textContent('#tourStep'));
+      check('tour: Back is hidden on step 1', !(await page.isVisible('#tourBack')));
+      // walk every step: the highlight surrounds its part, the box stays on screen, nothing scrolls sideways, no raw keys
+      const problems = [];
+      for (let k = 1; k <= 11; k++) {
+        await page.waitForTimeout(400);   // the highlight slides to its part in 0.25 s
+        const r = await page.evaluate(() => {
+          const sels = [null, '#profileBtn', '#langBtn', '#parentBtn', '#subjectChips', '#practiceOptions', '#startBtn', '#printHome', '.tab[data-go="progress"]', '#navParent', '#tourBtn'];
+          const n = +/\d+/.exec(document.querySelector('#tourStep').textContent)[0], sel = sels[n - 1];
+          const h = document.querySelector('.tour-hole').getBoundingClientRect(), p = document.querySelector('.tour-pop').getBoundingClientRect();
+          const a = sel && document.querySelector(sel).getBoundingClientRect();
+          return { n, sel, around: !a || (h.left <= a.left && h.top <= a.top && h.right >= a.right && h.bottom >= a.bottom && h.width > 0),
+            onScreen: p.left >= 0 && p.top >= 0 && p.right <= innerWidth && p.bottom <= innerHeight,
+            side: document.documentElement.scrollWidth > innerWidth, text: document.querySelector('#tourTitle').textContent + document.querySelector('#tourText').textContent };
+        });
+        if (r.n !== k) problems.push(`step ${k} shows ${r.n}`);
+        if (!r.around) problems.push(`step ${k} highlight misses ${r.sel}`);
+        if (!r.onScreen) problems.push(`step ${k} box off screen`);
+        if (r.side) problems.push(`step ${k} scrolls sideways`);
+        if (/tour\./.test(r.text) || r.text.length < 10) problems.push(`step ${k} text "${r.text}"`);
+        if (k === 2) { await page.click('#tourBack'); if (!/^Step 1 /.test(await page.textContent('#tourStep'))) problems.push('Back does not go to step 1'); await page.click('#tourNext'); }
+        if (k < 11) await page.click('#tourNext');
+      }
+      check('tour: every step highlights its part, on screen', problems.length === 0, problems.join('; '));
+      check('tour: the last step says Done and has no Skip', (await page.textContent('#tourNext')) === 'Done' && !(await page.isVisible('#tourSkip')));
+      await page.click('#tourNext');
+      check('tour: Done closes it', !(await tourOpen()));
+      check('tour: Done is remembered', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"');
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForTimeout(300);
+      check('tour: not shown again on the next visit', !(await tourOpen()));
+      // the ? button opens it again; Escape closes it and gives focus back to ?
+      await page.click('#tourBtn');
+      check('tour: ? opens it again at step 1', (await tourOpen()) && /^Step 1 /.test(await page.textContent('#tourStep')));
+      await page.keyboard.press('ArrowRight');
+      check('tour: the right arrow key goes to the next step', /^Step 2 /.test(await page.textContent('#tourStep')));
+      await page.keyboard.press('Escape');
+      check('tour: Escape closes it', !(await tourOpen()));
+      check('tour: focus goes back to ?', (await page.evaluate(() => document.activeElement && document.activeElement.id)) === 'tourBtn');
+      check('tour: ? has a name for screen readers', (await page.getAttribute('#tourBtn', 'aria-label')) === 'Show the guide');
+      // Chinese
+      await page.click('#langBtn');
+      await page.click('#tourBtn');
+      check('tour: Chinese text in Chinese', (await page.textContent('#tourTitle')) === '欢迎！' && (await page.textContent('#tourNext')) === '下一步', await page.textContent('#tourTitle'));
+      await page.click('#tourSkip');
+      check('tour: Skip closes it', !(await tourOpen()));
+      await page.click('#langBtn');
+      // never during a set: ? is hidden while a quiz is open, and back on Home
+      await page.click('#startBtn');
+      check('tour: ? is hidden during a set', !(await page.isVisible('#tourBtn')));
+      await page.click('#quitBtn');
+      check('tour: ? is back on Home', await page.isVisible('#tourBtn'));
+      check('tour: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v1.8.0: someone who used an earlier version (profiles already stored) is not shown the tour, and a reset keeps it so
+    await flow('v1.8.0 tour and earlier users', async () => {
+      const { context, page, errors } = await freshPage(browser, site, {
+        'sp.profiles': JSON.stringify({ list: [{ id: 'p1', name: 'Ann' }], active: 'p1' }), [SETTINGS]: settings(),
+        'sp.pin': JSON.stringify({ salt: 'x', hash: 'y' })
+      }, null, { tour: true });
+      const tourOpen = () => page.evaluate(() => !!document.querySelector('#tourDlg'));
+      await page.waitForTimeout(300);
+      check('tour: not shown to an earlier user', !(await tourOpen()));
+      check('tour: stored as seen for an earlier user', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"');
+      await page.click('#parentBtn');
+      await Promise.all([page.waitForEvent('load'), page.click('#pinForgot')]);
+      await page.waitForTimeout(300);
+      check('tour: Forgot PIN reset keeps the tour as seen', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"' && !(await tourOpen()));
+      check('tour: earlier user, no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
   } finally {

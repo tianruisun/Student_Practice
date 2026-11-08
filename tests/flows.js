@@ -886,8 +886,11 @@ async function run(site) {
       check('sudoku: easy is 4 × 4 with 8 squares to fill', g.length === 16 && g.filter(v => !v).length === 8 && (await page.textContent('#pzScore')) === '8', JSON.stringify(g));
       const answer = await page.evaluate(gr => SudokuRules.solve(gr, SudokuRules.LEVELS.easy), g);
       check('sudoku: the puzzle can be solved', Array.isArray(answer) && answer.length === 16);
-      // a clash: the first empty square, given a number already in its row
-      const i0 = g.findIndex(v => !v), r0 = Math.floor(i0 / 4), clash = g.slice(r0 * 4, r0 * 4 + 4).find(v => v);
+      // a clash (R2.1): an empty square that shares a row, column or box with a given number, then that number.
+      // Its row alone can be empty (about 1 easy puzzle in 27), so the peers are used, not just the row.
+      const P = await page.evaluate(() => SudokuRules.peers(SudokuRules.LEVELS.easy));
+      const i0 = g.findIndex((v, i) => !v && P[i].some(j => g[j])), clash = i0 >= 0 ? g[P[i0].find(j => g[j])] : 0;
+      check('sudoku: an empty square has a given number next to it', i0 >= 0 && clash > 0, JSON.stringify(g));
       await page.locator('.sd-cell').nth(i0).click();
       check('sudoku: tapping a square selects it', await page.locator('.sd-cell').nth(i0).evaluate(c => c.classList.contains('sel')));
       await page.click(`#pzBody .pz-pad [data-k="${clash}"]`);

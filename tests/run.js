@@ -670,6 +670,15 @@ t('i18n: no key defined twice in a language', () => {
   });
 }
 
+/* v1.10.0 R3: answer to R2.1 */
+t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number, which the flow uses for its clash', () => {
+  const SD = require('../js/game-sudoku.js'), P = SD.peers(SD.LEVELS.easy);
+  for (let i = 0; i < 2000; i++) {
+    const g = SD.puzzle('easy', Math.random).grid;
+    assert.ok(g.some((v, k) => !v && P[k].some(j => g[j])), JSON.stringify(g));
+  }
+});
+
 /* v1.10.0 R2: answers to the R1 findings */
 {
   const fs = require('fs'), path = require('path'), vm = require('vm');

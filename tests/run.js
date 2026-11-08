@@ -458,9 +458,44 @@ t('i18n: no key defined twice in a language', () => {
   if (!tag) console.log('note: no v* tag found (or no git), the BUILD-since-last-push check is skipped');
   else t(`sw.js BUILD changed since ${tag} when an app file did`, () => {
     const changed = (git('diff', '--name-only', tag).stdout || '').split('\n').map(s => s.trim()).filter(Boolean)
-      .filter(f => !/^tests\/|\.md$|^\.|^package(-lock)?\.json$/.test(f));
+      // sw.js itself is left out (R7.1, v1.7.0): a change to it already changes the bytes phones compare
+      .filter(f => f !== 'sw.js' && !/^tests\/|\.md$|^\.|^package(-lock)?\.json$/.test(f));
     const before = buildOf(git('show', tag + ':sw.js').stdout);
     assert.ok(changed.length === 0 || before !== build, `app files changed since ${tag} (${changed.slice(0, 5).join(', ')}) but BUILD is still ${build}`);
+  });
+}
+
+/* v1.8.0: every script and stylesheet the page loads is in the offline list, or the app breaks offline (js/tour.js is new) */
+{
+  const fs = require('fs'), path = require('path'), root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8'), sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const files = [...html.matchAll(/<(?:script[^>]*\ssrc|link[^>]*rel="(?:stylesheet|manifest)"[^>]*\shref)="([^"]+)"/g)]
+    .map(m => m[1]).filter(u => !/^https?:/.test(u)).map(u => './' + u.replace(/^\.\//, ''));
+  t('offline list: the page loads files', () => assert.ok(files.includes('./js/tour.js') && files.length > 20, files.join(',')));
+  t('offline list: every file the page loads is cached by sw.js', () => {
+    assert.deepStrictEqual(files.filter(u => !sw.includes("'" + u + "'")), []);
+  });
+}
+
+/* v1.8.0 guided tour: every step names a text that exists in both languages, and every target is on the page */
+{
+  const fs = require('fs'), path = require('path'), vm = require('vm'), root = path.join(__dirname, '..');
+  const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8'), html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} };
+  box.window = box;
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8'), box);
+  const S = box.I18N.STRINGS;
+  const block = (/const TOUR = \[([\s\S]*?)\n\s*\];/.exec(app) || [])[1] || '';
+  const steps = [...block.matchAll(/target: (?:null|'([^']+)'), title: '([\w.]+)', text: '([\w.]+)'/g)];
+  t('tour: 11 steps found in app.js', () => assert.strictEqual(steps.length, 11));
+  t('tour: every text is in English and Chinese', () => {
+    const keys = steps.flatMap(m => [m[2], m[3]]).concat(['tour.open', 'tour.step', 'tour.next', 'tour.back', 'tour.skip', 'tour.done']);
+    assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.zh[k] === S.en[k]), []);
+  });
+  t('tour: every highlighted part is in index.html', () => {
+    const sels = steps.map(m => m[1]).filter(Boolean);
+    const found = sel => (sel.startsWith('#') ? html.includes('id="' + sel.slice(1) + '"') : /data-go="progress"/.test(html));
+    assert.deepStrictEqual(sels.filter(s => !found(s)), []);
   });
 }
 

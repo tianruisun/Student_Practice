@@ -623,3 +623,30 @@ legend.sec-title { padding: 0; }
 .profile-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0; }
 .profile-hint[hidden] { display: none; }
 .profile-edit input, .profile-edit select { min-height: 44px; padding: 0 0.7rem; border: 1.5px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; }
+
+/* ---------- guided tour (v1.8.0): a full-screen modal dialog; the hole's shadow dims everything around the highlight ---------- */
+dialog.tour {
+  position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: hidden;
+}
+dialog.tour::backdrop { background: transparent; backdrop-filter: none; }
+.tour-hole {
+  position: fixed; border-radius: var(--radius-sm); pointer-events: none;
+  box-shadow: 0 0 0 3px var(--accent), 0 0 0 200vmax rgba(5, 10, 30, .62);
+  transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease;
+}
+.tour-hole.none { box-shadow: 0 0 0 200vmax rgba(5, 10, 30, .62); }
+.tour-pop {
+  position: fixed; width: min(22rem, calc(100vw - 32px)); padding: 1rem 1.1rem 0.9rem;
+  background: var(--surface); color: var(--ink); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.tour-step { margin: 0; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.tour-pop h3 { margin: 0.15rem 0 0.35rem; font-size: 1.1rem; }
+#tourText { margin: 0 0 0.8rem; line-height: 1.45; }
+.tour-actions { display: flex; align-items: center; gap: 0.5rem; }
+.tour-actions .btn { width: auto; flex: none; margin: 0; min-height: 44px; padding: 0.5rem 1rem; }
+.tour-actions .tour-skip { padding: 0.5rem 0.3rem; }
+.tour-actions .tour-next { margin-left: auto; min-width: 6.5rem; }
+.tour-actions .btn[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .tour-hole { transition: none; } }
+@media print { dialog.tour { display: none; } }

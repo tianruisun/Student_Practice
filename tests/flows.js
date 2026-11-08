@@ -1307,6 +1307,32 @@ async function run(site) {
       check(`R4.1 ${tag}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();
     });
+    // R6.1: on a phone a long formula wraps inside its card instead of being cut off at the card edge, and the page does not
+    // pan sideways. A planted long formula makes the check certain; real sets (Year 8 and 10, Advanced) cover what comes up.
+    for (const W of [320, 375]) await flow(`R6.1 long formulas are readable on a phone ${W} px`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 10, diff: 3, count: 20 }) }, null,
+        { context: { viewport: { width: W, height: 640 }, isMobile: true, hasTouch: true } });
+      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - Math.min(innerWidth, window.visualViewport ? visualViewport.width : innerWidth));
+      const cut = () => page.evaluate(() => [...document.querySelectorAll('#qList .formula')].filter(e => e.scrollWidth > e.clientWidth + 1).length);
+      await page.click('#startBtn');
+      for (let pg = 0; pg < 4; pg++) {
+        check(`R6.1 ${W}: page ${pg + 1}: no formula is cut off`, (await cut()) === 0, String(await cut()));
+        check(`R6.1 ${W}: page ${pg + 1}: no sideways pan`, (await wide()) <= 0, String(await wide()));
+        if (await page.locator('#nextPage').isEnabled()) await page.click('#nextPage'); else break;
+      }
+      const planted = await page.evaluate(() => {
+        const f = document.createElement('div'); f.className = 'formula';
+        f.textContent = '3x² + 12x − 7 = 5(x + 4)(x − 2) − 18x + 36 − 4x² + 9';
+        document.querySelector('#qList .qcard').appendChild(f);
+        const card = f.closest('.qcard').getBoundingClientRect(), r = f.getBoundingClientRect();
+        return { cut: f.scrollWidth - f.clientWidth, lines: Math.round(f.clientHeight / parseFloat(getComputedStyle(f).lineHeight || 20)), inCard: r.right <= card.right + 0.5 };
+      });
+      check(`R6.1 ${W}: a planted long formula is not cut off`, planted.cut <= 1, JSON.stringify(planted));
+      check(`R6.1 ${W}: the planted formula stays inside its card`, planted.inCard, JSON.stringify(planted));
+      check(`R6.1 ${W}: no sideways pan with the planted formula`, (await wide()) <= 0, String(await wide()));
+      check(`R6.1 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
     // R4.2: in a long round the HUD, the chosen row, the cards, ⌫ and Check stay on screen, and the end card fits
     for (const [W, H] of [[320, 568], [568, 320]]) await flow(`R4.2 long rounds ${W}×${H}`, async () => {
       const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true, context: { viewport: { width: W, height: H } } });

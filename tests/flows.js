@@ -177,13 +177,13 @@ async function run(site) {
       await page.click('#startBtn');
       const wrap = page.locator('#qList .info').first(), tip = wrap.locator('.tip');
       check('v1.7 hint is not shown as a line of text', !(await page.locator('#qList p').filter({ hasText: 'Fractions like' }).count()));
-      check('v1.7 hint hidden until asked', (await tip.evaluate(e => getComputedStyle(e).visibility)) === 'hidden');
+      check('v1.7 hint hidden until asked', !(await tip.isVisible())   /* R4.1: a hidden tip is display: none now */);
       await wrap.locator('.info-btn').hover();
-      check('v1.7 hint shows on hover', (await tip.evaluate(e => getComputedStyle(e).visibility)) === 'visible');
+      check('v1.7 hint shows on hover', (await tip.isVisible()));
       check('v1.7 hint text', /3\/4/.test(await tip.textContent()), await tip.textContent());
       await page.mouse.move(5, 5);
       await wrap.locator('.info-btn').click();
-      check('v1.7 hint shows on tap', (await wrap.getAttribute('class')).includes('open') && (await tip.evaluate(e => getComputedStyle(e).visibility)) === 'visible');
+      check('v1.7 hint shows on tap', (await wrap.getAttribute('class')).includes('open') && (await tip.isVisible()));
       const box = await tip.boundingBox();
       check('v1.7 hint stays on a 375 px screen', box && box.x >= 0 && box.x + box.width <= 375, JSON.stringify(box));
       await context.close();
@@ -1166,10 +1166,12 @@ async function run(site) {
       await page.click('#startBtn');
       const answers = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers() : null));
       if (!answers) { console.log('  (flows: submit-all flow skipped: no test hook on a Production host)'); await context.close(); return; }
+      const wrongOf = x => { const s = String(x), w = s.replace(/\d+/, m => String(+m + 1)); return w === s ? s + '1' : w; };
       const fill = async (i, a, wrong) => {
         await page.locator('#palette .pal').nth(i).click();
         if (a.type === 'mc') await page.locator('#qc' + i + ' .choice').nth(wrong ? (a.correct + 1) % 2 : a.correct).click();
-        else await page.fill('#ans' + i, wrong ? String(a.answer) + '9' : String(a.answer));
+        // R4.3: a wrong answer the app can still read (58° → 59°, 44 cm → 45 cm), not an unreadable one such as 58°9
+        else await page.fill('#ans' + i, wrong ? wrongOf(a.answer) : String(a.answer));
       };
       for (let i = 0; i < answers.length - 1; i++) await fill(i, answers[i]);
       check('R4: chosen or typed answers count as answered, unchecked', (await page.textContent('#answeredCount')) === '4 of 5 answered', await page.textContent('#answeredCount'));
@@ -1196,11 +1198,23 @@ async function run(site) {
         for (let i = 0; i < again.length; i++) await fill(i, again[i], i === k);
         await page.locator('#palette .pal').nth(k).click();
         await page.click('#qc' + k + ' button[type="submit"]');
-        check('R4: a wrong Check offers a second try', (await page.locator('#qc' + k + ' .feedback.bad').count()) === 1 && !(await page.locator('#ans' + k).isDisabled()), await page.textContent('#qc' + k + ' .feedback'));
+        check('R4: a wrong Check offers a second try', (await page.textContent('#qc' + k + ' .feedback')) === 'Not quite. Have another go.' && !(await page.locator('#ans' + k).isDisabled()), await page.textContent('#qc' + k + ' .feedback'));
         await page.fill('#ans' + k, String(again[k].answer));
         await page.click('#finishBtn');
         const text2 = (await page.isVisible('#resBadge')) ? await page.textContent('#resBadgeText') : '';
         check('R4: after one wrong Check the set is still Perfect but not First try', (await page.locator('#resList > li.ok').count()) === 5 && /Perfect/.test(text2) && !/First try/.test(text2), text2);
+        // R4.4: a wrong Check left unchanged, then See results: the answer is shown once, not "777 → 777"
+        await page.click('#againBtn');
+        const third = await page.evaluate(() => window.__testAnswers());
+        const j = third.findIndex(a => a.type !== 'mc');
+        if (j >= 0) {
+          for (let i = 0; i < third.length; i++) await fill(i, third[i], i === j);
+          await page.locator('#palette .pal').nth(j).click();
+          await page.click('#qc' + j + ' button[type="submit"]');
+          await page.click('#finishBtn');
+          const yours = await page.locator('#resList > li').nth(j).locator('.rv-yours').textContent();
+          check('R4.4: an unchanged wrong answer is shown once in the review', !yours.includes('→') && yours.includes(wrongOf(third[j].answer)), yours);
+        }
       } else console.log('  (flows: wrong-Check part skipped: the set had no typed-answer question)');
       check('R4 submit all: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
@@ -1250,6 +1264,70 @@ async function run(site) {
       await page.locator('#progBody .rv-remove').first().click();
       check('R4: with every question removed the list says so', (await items()) === 0 && /Nothing to review/.test(await page.textContent('#progBody')));
       check('R4 remove from review: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.10.0 R5: answers to the R4 findings
+    // R4.1: hidden tips no longer widen Progress, so it cannot pan sideways (before or after a tip is opened)
+    for (const [W, H] of [[320, 568], [375, 812]]) await flow(`R4.1 Progress does not pan sideways ${W}×${H}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, {
+        [SETTINGS]: settings({ year: 4 }),
+        'sp.badges.p1': JSON.stringify([{ date: Date.now(), kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }])
+      }, null, { context: { viewport: { width: W, height: H } } });
+      await page.click('[data-go="progress"]');
+      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      check(`R4.1 ${W}×${H}: Progress is no wider than the screen`, (await wide()) <= 0, String(await wide()));
+      for (let k = 0; k < 3; k++) {
+        await page.locator('.badge-grid th.kind .info-btn').nth(k).click();
+        const tip = page.locator('.badge-grid th.kind').nth(k).locator('.tip');
+        const box = await tip.evaluate(e => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; });
+        check(`R4.1 ${W}×${H}: tip ${k + 1} opens inside the screen`, (await tip.isVisible()) && box.l >= 0 && box.r <= W, JSON.stringify(box));
+        check(`R4.1 ${W}×${H}: still no sideways pan with tip ${k + 1} open`, (await wide()) <= 0, String(await wide()));
+      }
+      await page.locator('.badge-head .info-btn').hover();
+      check(`R4.1 ${W}×${H}: the badge-section tip opens on hover inside the screen`, await page.locator('.badge-head .tip').evaluate(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; }));
+      await page.mouse.move(1, 1); await page.click('#progH');
+      check(`R4.1 ${W}×${H}: no sideways pan after the tips close`, (await wide()) <= 0, String(await wide()));
+      check(`R4.1 ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // R4.2: in a long round the HUD, the chosen row, the cards, ⌫ and Check stay on screen, and the end card fits
+    for (const [W, H] of [[320, 568], [568, 320]]) await flow(`R4.2 long rounds ${W}×${H}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true, context: { viewport: { width: W, height: H } } });
+      const run = ms => page.clock.runFor(ms);
+      await run(300);
+      await page.click('#navGames'); await page.click('#play-numbers'); await page.click('#pzGo');
+      if (!(await page.evaluate(() => !!window.__testGame))) { console.log('  (flows: R4.2 long rounds skipped: no test hook on a Production host)'); await context.close(); return; }
+      const keys = s => s.replace(/×/g, '*').replace(/÷/g, '/');
+      const inView = sel => page.evaluate(s => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); return r.height > 0 && r.top >= -0.5 && r.bottom <= innerHeight + 0.5; }, sel);
+      for (let r = 1; r <= 6; r++) {
+        const st = await page.evaluate(() => window.__testGame());
+        for (let k = 0; k < st.solution.length; k++) { if (k) await page.keyboard.press('ArrowDown'); await page.keyboard.type(keys(st.solution[k])); }
+        await page.keyboard.press('Enter'); await run(1300);
+      }
+      const st7 = await page.evaluate(() => window.__testGame());
+      check(`R4.2 ${W}×${H}: round 7 has seven rows`, st7.round === 7 && st7.rows.length === 7, JSON.stringify(st7.round));
+      const m = await pzSize(page);
+      check(`R4.2 ${W}×${H}: round 7 has no page scroll; top bar and Check on screen`, m.noScroll && m.hudIn && m.noSideways && (await inView('.un-acts [data-k="ok"]')), JSON.stringify(m));
+      for (let k = 0; k < 6; k++) await page.keyboard.press('ArrowDown');
+      check(`R4.2 ${W}×${H}: the chosen last row scrolls into view`, await page.evaluate(() => {
+        const box = document.querySelector('.un-rows'), row = document.querySelector('.un-row.sel'), a = box.getBoundingClientRect(), b = row.getBoundingClientRect();
+        return row.dataset.row === '6' && b.top >= a.top - 0.5 && b.bottom <= a.bottom + 0.5;
+      }));
+      await page.keyboard.type(keys(st7.solution[6]).slice(0, 1));
+      check(`R4.2 ${W}×${H}: the card typed lands in the row on screen`, (await page.evaluate(() => window.__testGame().rows[6].length)) === 1 && (await inView('.un-row.sel')));
+      await page.click('.un-acts [data-k="ok"]');
+      const end = await page.evaluate(() => ({ over: !document.querySelector('#pzOver').hidden, scroll: document.documentElement.scrollHeight - innerHeight, y: scrollY }));
+      check(`R4.2 ${W}×${H}: after a long round the end card fits with no page scroll`, end.over && end.scroll <= 1 && end.y === 0 && (await inView('#pzAgain')) && (await inView('.pz-hud')), JSON.stringify(end));
+      check(`R4.2 ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // R4.5: failing round 1 the first time does not say "Best: round 0"
+    await flow('R4.5 first game lost at round 1', async () => {
+      const { context, page, errors } = await freshPage(browser, site);
+      await page.click('#navGames'); await page.click('#play-numbers'); await page.click('#pzGo');
+      await page.click('.un-acts [data-k="ok"]');
+      check('R4.5: Rounds passed: 0, and "No round passed yet" instead of "Best: round 0"', (await page.textContent('#pzFinal')) === 'Rounds passed: 0' && (await page.textContent('#pzBest')) === 'No round passed yet', await page.textContent('#pzBest'));
+      check('R4.5: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
     // R3.3 (v1.7.0): a student with badges but no saved sessions (e.g. history cleared) still sees the badges on Progress

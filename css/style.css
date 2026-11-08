@@ -604,8 +604,9 @@ legend.sec-title { padding: 0; }
 .info-btn:hover, .info.open .info-btn { color: var(--pri); }
 .tip { position: absolute; left: -6px; top: calc(100% + 6px); z-index: 40; width: max-content; max-width: min(280px, 80vw); padding: 0.5rem 0.65rem; border-radius: 10px;
   background: var(--ink); color: var(--bg); font-size: 0.86rem; font-weight: 500; line-height: 1.35; letter-spacing: 0; text-transform: none; white-space: normal;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .25); visibility: hidden; pointer-events: none; }
-.info:hover .tip, .info-btn:focus-visible + .tip, .info.open .tip { visibility: visible; }
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25); display: none; pointer-events: none; }
+/* R4.1 (v1.10.0): a hidden tip takes no room (display: none, not just invisible), so it cannot widen the page and let it pan sideways */
+.info:hover .tip, .info-btn:focus-visible + .tip, .info.open .tip { display: block; }
 
 .badge-head { display: flex; align-items: center; gap: 0.2rem; }
 .badge-head h3 { margin: 0; }
@@ -872,8 +873,8 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
   #screen-puzzle.pz-on #pzOver .btn { min-height: 44px; margin-top: 0.35rem; padding: 0.35rem 0.6rem; font-size: 0.95rem; }
 }
 /* Use all the numbers (v1.10.0 R4): equation rows above, the cards still to place below */
-.un-rows { display: grid; gap: 0.4rem; }
-.un-row { display: flex; align-items: center; gap: 0.4rem; min-height: 52px; padding: 0.3rem 0.4rem; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); border: 2px solid transparent; cursor: pointer; }
+.un-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.un-row { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; min-height: 52px; padding: 0.3rem 0.4rem; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); border: 2px solid transparent; cursor: pointer; }
 .un-row.sel { border-color: var(--accent); background: var(--pri-soft); }
 .un-row.ok { border-color: var(--ok); }
 .un-row.no { border-color: var(--bad); background: var(--bad-soft); }
@@ -893,11 +894,24 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .un-acts { display: grid; grid-template-columns: 1fr 2fr; gap: 0.45rem; }
 .un-acts button { min-height: 48px; border: 0; border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer; touch-action: manipulation; }
 .un-acts .bl-fire { background: var(--head); color: #fff; }
-.un-msg { margin: 0; min-height: 1.4em; text-align: center; font-weight: 700; }
+.un-msg { flex: 0 0 auto; margin: 0; min-height: 1.4em; text-align: center; font-weight: 700; line-height: 1.3; }
 .un-msg.ok { color: var(--ok); } .un-msg.no { color: var(--bad); }
+/* R4.2: the game fills the screen; the rows scroll inside their own box and the tray inside its own, so the HUD, the chosen
+   row, the cards, ⌫ and Check stay on screen in long rounds, and the end card fits with no page scroll */
+#screen-puzzle.pz-on[data-game="numbers"] { height: calc(100dvh - 1.4rem); min-height: 0; }
+#screen-puzzle.pz-on[data-game="numbers"] .pz-body, #screen-puzzle.pz-on[data-game="numbers"] .pz-main { flex: 1 1 auto; min-height: 0; }
+#screen-puzzle.pz-on[data-game="numbers"] .un-pad, #screen-puzzle.pz-on[data-game="numbers"] #pzOver { flex: 0 0 auto; }
+.un-rows { position: relative; flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+#screen-puzzle.pz-on[data-game="numbers"] .un-msg { font-size: 0.9rem; }
+#screen-puzzle.pz-on[data-game="numbers"] .un-rows { min-height: 56px; }
+.un-tray { max-height: 30dvh; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
 @media (max-height: 640px) { .un-row { min-height: 48px; padding: 0.2rem 0.35rem; } .un-acts button { min-height: 44px; } }
 @media (max-height: 430px) and (min-aspect-ratio: 1/1) {
   .un-card { height: 40px; min-width: 28px; font-size: 1.1rem; } .un-row { min-height: 44px; padding: 0.15rem 0.3rem; } .un-pick { height: 40px; width: 30px; }
   .un-rows { gap: 0.3rem; } .un-msg { font-size: 0.85rem; } .un-pad { gap: 0.3rem; }
+  #screen-puzzle.pz-on[data-game="numbers"] .pz-main { align-self: stretch; min-height: 0; }
+  #screen-puzzle.pz-on[data-game="numbers"] .un-pad { min-height: 0; }
+  .un-tray { max-height: calc(100dvh - 200px); }
+  #screen-puzzle.pz-on[data-game="numbers"] .un-msg { font-size: 0.8rem; }
 }
 @media print { #screen-puzzle { display: none; } }

@@ -574,7 +574,9 @@
     }
     const input = String(st.draft || '').trim();
     if (!input) return { given: st.given, ok: false, tries: st.tries };
-    return { given: st.given.concat(input), ok: !!Checker.check(q, input).ok, tries: st.tries + 1 };
+    // R4.4: after a wrong Check left unchanged, the same answer is not stored twice ("777 → 777")
+    const last = st.given[st.given.length - 1];
+    return { given: last === input ? st.given : st.given.concat(input), ok: !!Checker.check(q, input).ok, tries: st.tries + 1 };
   }
 
   function setView(v) {
@@ -1091,7 +1093,8 @@
       all[id] = { best: Math.max(g.best || 0, res.score), plays: (g.plays || 0) + 1, last: res.score, date: Date.now() };
       $('#pzDone').textContent = id === 'broken' ? t('game.timeUp') : t(res.all ? 'numbers.doneAll' : 'numbers.done');
       $('#pzFinal').textContent = t(id + '.final', { n: res.score });
-      $('#pzBest').textContent = isBest && res.score > 0 ? t('game.newBest') : t(id === 'numbers' ? 'numbers.best' : 'game.best', { n: all[id].best });
+      // R4.5: no "Best: round 0" when no round has ever been passed
+      $('#pzBest').textContent = isBest && res.score > 0 ? t('game.newBest') : id === 'numbers' && !all[id].best ? t('numbers.noBest') : t(id === 'numbers' ? 'numbers.best' : 'game.best', { n: all[id].best });
     } else {
       const r = all[id] || {}, old = r[res.level] || {}, ms = Math.round(res.ms), isBest = !old.best || ms < old.best;
       r[res.level] = { best: isBest ? ms : old.best, plays: (old.plays || 0) + 1, last: ms, date: Date.now() };
@@ -1267,7 +1270,8 @@
       if (r.left + dx < pad) dx = pad - r.left;
       if (dx) tip.style.left = (parseFloat(getComputedStyle(tip).left) + dx) + 'px';
     };
-    const show = on => { if (on) place(); wrap.classList.toggle('open', on); btn.setAttribute('aria-expanded', String(on)); };
+    // open first, then place: a closed tip is not laid out (R4.1), so it can only be measured once shown
+    const show = on => { wrap.classList.toggle('open', on); if (on) place(); btn.setAttribute('aria-expanded', String(on)); };
     wrap.addEventListener('mouseenter', place);
     btn.addEventListener('focus', place);
     // inside a <label>, a click would also move focus to the input: keep the click to the icon

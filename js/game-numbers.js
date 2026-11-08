@@ -121,6 +121,7 @@
       tray = deal_.cards.map((c, id) => ({ id, c }));
       rows = deal_.solution.map(() => []);
       sel = 0; waiting = false;
+      nodes.rows.scrollTop = 0;
       ui.score.textContent = String(round);
       nodes.msg.className = 'un-msg';
       nodes.msg.textContent = t('numbers.find', { n: round, cards: tray.length });
@@ -137,7 +138,7 @@
     }
 
     function paint(marks) {
-      const box = nodes.rows; box.innerHTML = '';
+      const box = nodes.rows, keep = box.scrollTop; box.innerHTML = '';
       rows.forEach((cards, r) => {
         const row = document.createElement('div');
         row.className = 'un-row' + (r === sel ? ' sel' : '') + (marks ? (marks[r].ok ? ' ok' : ' no') : '');
@@ -158,6 +159,13 @@
         row.addEventListener('click', e => { if (e.target === row || e.target === slot || e.target.classList.contains('un-hint')) select(r); });
         box.append(row);
       });
+      // R4.2: the rows box scrolls on its own; keep its place and bring the chosen row into view
+      box.scrollTop = keep;
+      const cur = box.children[sel];
+      if (cur && box.scrollHeight > box.clientHeight) {
+        if (cur.offsetTop < box.scrollTop) box.scrollTop = cur.offsetTop;
+        else if (cur.offsetTop + cur.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = cur.offsetTop + cur.offsetHeight - box.clientHeight;
+      }
       const tr = nodes.tray; tr.innerHTML = '';
       tray.forEach((card, k) => { const b = cardBtn(card, 'tray'); b.addEventListener('click', () => place(k)); tr.append(b); });
       if (!tray.length) { const e = document.createElement('span'); e.className = 'un-hint'; e.textContent = t('numbers.trayEmpty'); tr.append(e); }

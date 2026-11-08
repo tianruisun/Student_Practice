@@ -800,17 +800,56 @@ async function run(site) {
       check('game: the best score is saved for this student', saved.balloons && saved.balloons.best === score && saved.balloons.plays === 1, JSON.stringify(saved));
       await page.click('#gameBack');
       check('game: the list shows the best score', (await page.textContent('#gameList')).includes(`Best: ${score}`), await page.textContent('#gameList'));
-      // stopping a round with ✕ keeps no score
-      await page.click('#play-balloons'); await page.click('#gameGo'); await run(2000);
+      // R1.4: the start card after a round shows a fresh clock and no points
+      await page.click('#play-balloons');
+      check('R1.4 game: the start card after a round reads 60 s and 0 points', (await page.textContent('#gameTime')) === '60' && (await page.textContent('#gameScore')) === '0',
+        (await page.textContent('#gameTime')) + ' / ' + (await page.textContent('#gameScore')));
+      // stopping a round with ✕ keeps no score, and leaves no timer behind even with an arrow in flight
+      await page.click('#gameGo'); await run(2000);
+      const q3 = (await questions())[0];
+      if (q3) { await press(String(answerOf(q3)).split('')); await press(['fire']); await run(50); }
       await page.click('#gameQuit');
       const after = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1')));
       check('game: ✕ goes back to the list and keeps no score', (await shown('#screen-games')) && after.balloons.plays === 1, JSON.stringify(after));
+      const left = await game();
+      check('game: ✕ with an arrow in flight leaves no timers', !!q3 && left.timers === 0, JSON.stringify(left) + ' q ' + q3);
       check('game: the bottom bar is back', await shown('.bottom-nav'));
       // Chinese
       await page.click('#langBtn');
       check('game: Chinese tab and title', (await page.textContent('#navGames')).trim() === '小游戏' && /乘法气球/.test(await page.textContent('#gameList')));
       check('game: fits a 375 px screen', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       check('game: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.9.0 R1.1 / R1.3: small phones (320×568, 375×667). The start and end cards fit inside the field, in both languages,
+    // and no bottom-bar label is cut short.
+    for (const [W, H] of [[320, 568], [375, 667]]) await flow(`v1.9.0 R1.1 small phone ${W}×${H}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true, context: { viewport: { width: W, height: H } } });
+      const run = ms => page.clock.runFor(ms);
+      // every line of the card is inside the field and nothing needs scrolling
+      const fits = sel => page.evaluate(s => {
+        const f = document.querySelector('#gameField').getBoundingClientRect(), o = document.querySelector(s);
+        const out = [...o.querySelectorAll('p, button')].filter(n => { const r = n.getBoundingClientRect(); return r.top < f.top - 0.5 || r.bottom > f.bottom + 0.5 || r.left < f.left - 0.5 || r.right > f.right + 0.5; });
+        return { ok: out.length === 0 && o.scrollHeight <= o.clientHeight + 1, field: Math.round(f.height), content: o.scrollHeight, out: out.map(n => n.id || n.className || n.textContent) };
+      }, sel);
+      const tabsWhole = () => page.evaluate(() => [...document.querySelectorAll('.bottom-nav .tl')].filter(n => n.scrollWidth > n.clientWidth + 0.5).map(n => n.textContent));
+      await run(500);
+      for (const lang of ['en', 'zh']) {
+        if (lang === 'zh') await page.click('#langBtn');
+        const cut = await tabsWhole();
+        check(`R1.3 ${W}×${H} ${lang}: every bottom-bar label is whole`, cut.length === 0, cut.join(', '));
+        await page.click('#navGames'); await page.click('#play-balloons');
+        let m = await fits('#gameIntro');
+        check(`R1.1 ${W}×${H} ${lang}: the start card fits the field`, m.ok, JSON.stringify(m));
+        await page.click('#gameGo');
+        for (let s = 0; s < 62; s++) await run(1000);
+        check(`R1.1 ${W}×${H} ${lang}: the round ends`, await page.isVisible('#gameOver'));
+        m = await fits('#gameOver');
+        check(`R1.1 ${W}×${H} ${lang}: the end card fits the field`, m.ok, JSON.stringify(m));
+        await page.click('#gameBack');
+      }
+      check(`R1.1 ${W}×${H}: no sideways scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      check(`R1.1 ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();
     });
   } finally {

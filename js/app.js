@@ -951,7 +951,7 @@
       if (best) text.append(el('p', 'small game-best', t('game.best', { n: best })));
       const play = el('button', 'btn primary', t('game.play')); play.type = 'button'; play.id = 'play-' + g.id;
       play.setAttribute('aria-label', t('game.play') + ' – ' + t(g.title));
-      play.addEventListener('click', () => openGame());
+      play.addEventListener('click', () => openGame(g.id));
       card.append(icon, text, play);
       box.append(card);
     }
@@ -959,9 +959,16 @@
 
   function renderGame() { /* the round draws itself; static text is filled by applyStatic */ }
 
-  function openGame() {
+  /* R1.5: the game id travels from its card to the record it writes, so a second game gets its own best score
+     (today 'balloons' is the only game, and the only one the game screen can play) */
+  let gameId = 'balloons';
+  function openGame(id) {
+    gameId = id;
     go('game');
     $('#gameOver').hidden = true; $('#gameIntro').hidden = false;
+    // R1.4: the start card shows a fresh round, not the last one's clock and points
+    $('#gameTime').textContent = window.BalloonRules ? window.BalloonRules.SECONDS : 60;
+    $('#gameScore').textContent = '0';
     $('#gameGo').focus();
   }
 
@@ -971,19 +978,19 @@
       game = window.BalloonGame.create($('#gameField'), {
         time: $('#gameTime'), score: $('#gameScore'), typed: $('#gameTyped'), status: $('#gameStatus'),
         warn: $('#gameWarn'), pad: $('#gamePad')
-      }, { t, onEnd: endGame });
+      }, { t, onEnd: res => endGame(gameId, res) });
     }
     $('#gameIntro').hidden = true; $('#gameOver').hidden = true;
     game.start();
   }
 
-  function endGame(res) {
-    const all = store.get(Profiles.gameKey(), {}) || {}, g = all.balloons || { best: 0, plays: 0 };
+  function endGame(id, res) {
+    const all = store.get(Profiles.gameKey(), {}) || {}, g = all[id] || { best: 0, plays: 0 };
     const isBest = res.score > (g.best || 0);
-    all.balloons = { best: Math.max(g.best || 0, res.score), plays: (g.plays || 0) + 1, last: res.score, date: Date.now() };
+    all[id] = { best: Math.max(g.best || 0, res.score), plays: (g.plays || 0) + 1, last: res.score, date: Date.now() };
     store.set(Profiles.gameKey(), all);
     $('#gameFinal').textContent = t('game.final', { n: res.score });
-    $('#gameBest').textContent = isBest && res.score > 0 ? t('game.newBest') : t('game.best', { n: all.balloons.best });
+    $('#gameBest').textContent = isBest && res.score > 0 ? t('game.newBest') : t('game.best', { n: all[id].best });
     $('#gameOver').hidden = false;
     $('#gameAgain').focus();
   }

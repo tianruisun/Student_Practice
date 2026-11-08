@@ -524,6 +524,26 @@ t('i18n: no key defined twice in a language', () => {
     const busy = new Set([6, 12, 24, 36, 18]);
     for (let i = 0; i < 3000; i++) assert.ok(!busy.has(B.question(Math.random, busy).answer));
   });
+  t('balloons: the no-repeat rule holds even after 60 unlucky draws (R1 caveat)', () => {
+    // rand() = 0 always draws 1 × 1; with 1 busy, every draw collides and the fallback must pick a free pair
+    const q = B.question(() => 0, new Set([1]));
+    assert.ok(q.answer !== 1 && q.answer === q.a * q.b, JSON.stringify(q));
+    const almost = new Set(); for (let x = 1; x <= 9; x++) for (let y = 1; y <= 9; y++) if (x * y !== 72) almost.add(x * y);
+    for (let i = 0; i < 50; i++) assert.strictEqual(B.question(Math.random, almost).answer, 72);
+  });
+  t('balloons: the question text has at least 4.5:1 contrast on every balloon (R1.2)', () => {
+    const css = require('fs').readFileSync(require('path').join(__dirname, '../css/style.css'), 'utf8');
+    const ink = (/\.bl-q\s*\{[^}]*?[\s;]color:\s*(#[0-9a-f]{6})/i.exec(css) || [])[1];
+    assert.ok(ink, 'no .bl-q colour in style.css');
+    const lum = hex => {
+      const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (x, y) => { const [h, l] = [lum(x), lum(y)].sort((p, q) => q - p); return (h + 0.05) / (l + 0.05); };
+    assert.strictEqual(B.COLORS.length, 6);
+    const low = B.COLORS.map(c => [c, ratio(ink, c)]).filter(([, r]) => r < 4.5);
+    assert.deepStrictEqual(low, []);
+  });
   t('balloons: an answer hits the matching balloon closest to flying away', () => {
     const list = [{ answer: 12, y: 300 }, { answer: 12, y: 80 }, { answer: 56, y: 10 }, { answer: 12, y: 5, hit: true }];
     assert.strictEqual(B.target(list, '12'), list[1]);

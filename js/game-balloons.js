@@ -23,10 +23,15 @@
       let a, b;
       for (let i = 0; i < 60; i++) {
         a = 1 + Math.floor(rand() * 9); b = 1 + Math.floor(rand() * 9);
-        if (!busy.has(a * b)) break;
+        if (!busy.has(a * b)) return { a, b, answer: a * b };
       }
+      // 60 unlucky draws: pick from the pairs whose answer is free, so the rule holds for certain, not just almost always
+      const free = [];
+      for (let x = 1; x <= 9; x++) for (let y = 1; y <= 9; y++) if (!busy.has(x * y)) free.push([x, y]);
+      if (free.length) [a, b] = free[Math.floor(rand() * free.length)];
       return { a, b, answer: a * b };
     },
+    COLORS: ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6'],   // balloon fills (tests check the question text on them)
     /* the balloon a typed answer hits: the one with that answer that is highest (closest to flying away), or null */
     target(balloons, typed) {
       const n = Number(typed);
@@ -42,7 +47,7 @@
     }
   };
 
-  const COLORS = ['#f87171', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6'];
+  const COLORS = R.COLORS;
   const NS = 'http://www.w3.org/2000/svg';
 
   function balloonSVG(color) {
@@ -63,6 +68,8 @@
     const t = opts.t, rand = opts.rand || Math.random;
     let balloons = [], running = false, paused = false, elapsed = 0, last = 0, nextAt = 0, raf = 0;
     let score = 0, missed = 0, wrong = 0, typed = '', lockUntil = 0, seq = 0;
+    const timers = new Set();   // an arrow's two timeouts; clear() cancels them, so a stopped round leaves none
+    const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
 
     const now = () => performance.now();
     const say = text => { ui.status.textContent = text; };
@@ -135,12 +142,12 @@
         arrow.style.transition = 'left .22s linear, top .22s linear';
         arrow.style.left = tx + 'px'; arrow.style.top = ty + 'px';
       });
-      setTimeout(() => {
+      later(() => {
         arrow.remove();
         b.node.classList.add('pop');
         const plus = document.createElement('span'); plus.className = 'bl-plus'; plus.textContent = '+1';
         b.node.append(plus);
-        setTimeout(() => { b.node.remove(); balloons = balloons.filter(x => x !== b); }, 450);
+        later(() => { b.node.remove(); balloons = balloons.filter(x => x !== b); }, 450);
       }, 230);
     }
 
@@ -177,6 +184,7 @@
 
     function clear() {
       cancelAnimationFrame(raf);
+      timers.forEach(clearTimeout); timers.clear();
       document.removeEventListener('keydown', onKeydown);
       document.removeEventListener('visibilitychange', onVisibility);
       field.querySelectorAll('.bl, .bl-arrow').forEach(n => n.remove());
@@ -202,7 +210,7 @@
       stop() { if (running) { running = false; clear(); } },   // leaving the screen: no score is kept
       key,
       get running() { return running; },
-      get state() { return { score, missed, wrong, elapsed, typed, locked: locked(), balloons: balloons.filter(b => !b.hit).length }; }
+      get state() { return { score, missed, wrong, elapsed, typed, locked: locked(), balloons: balloons.filter(b => !b.hit).length, timers: timers.size }; }
     };
   }
 

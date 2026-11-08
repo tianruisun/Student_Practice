@@ -875,7 +875,7 @@ async function run(site) {
       await run(300);
       await page.click('#navGames');
       const titles = await page.evaluate(() => [...document.querySelectorAll('#gameList h3')].map(h => h.textContent));
-      check('sudoku: four games are listed', JSON.stringify(titles) === JSON.stringify(['Times-table balloons', 'Maths Sudoku', 'Money Master', 'Broken Calculator']), JSON.stringify(titles));
+      check('sudoku: five games are listed', JSON.stringify(titles) === JSON.stringify(['Times-table balloons', 'Maths Sudoku', 'Money Master', 'Broken Calculator', 'Use all the numbers']), JSON.stringify(titles));
       await page.click('#play-sudoku');
       const levels = await page.evaluate(() => [...document.querySelectorAll('#pzLevels button')].map(b => b.id));
       check('sudoku: the start card offers easy, medium and hard', JSON.stringify(levels) === '["pzGo-easy","pzGo-medium","pzGo-hard"]', JSON.stringify(levels));
@@ -891,6 +891,7 @@ async function run(site) {
       const P = await page.evaluate(() => SudokuRules.peers(SudokuRules.LEVELS.easy));
       const i0 = g.findIndex((v, i) => !v && P[i].some(j => g[j])), clash = i0 >= 0 ? g[P[i0].find(j => g[j])] : 0;
       check('sudoku: an empty square has a given number next to it', i0 >= 0 && clash > 0, JSON.stringify(g));
+      if (i0 < 0) throw new Error('sudoku: no clash square in ' + JSON.stringify(g));   // R3.1: stop here, not 20 s later
       await page.locator('.sd-cell').nth(i0).click();
       check('sudoku: tapping a square selects it', await page.locator('.sd-cell').nth(i0).evaluate(c => c.classList.contains('sel')));
       await page.click(`#pzBody .pz-pad [data-k="${clash}"]`);
@@ -1032,7 +1033,7 @@ async function run(site) {
         const cut = await page.evaluate(() => [...document.querySelectorAll('.bottom-nav .tl')].filter(n => n.scrollWidth > n.clientWidth + 0.5).map(n => n.textContent));
         check('R2.1 360×640: every bottom-bar label is whole', cut.length === 0, cut.join(', '));
       }
-      for (const [id, lv] of [['sudoku', 'hard'], ['sudoku', 'medium'], ['money', 'hard'], ['broken', '']]) {
+      for (const [id, lv] of [['sudoku', 'hard'], ['sudoku', 'medium'], ['money', 'hard'], ['broken', ''], ['numbers', '']]) {
         await page.click('#navGames'); await page.click('#play-' + id); await page.click('#pzGo' + (lv ? '-' + lv : ''));
         await run(500);
         const m = await pzSize(page);
@@ -1050,7 +1051,7 @@ async function run(site) {
           return { split, words, cut: h.scrollWidth > h.clientWidth + 0.5 };
         });
         check(`R1.4 ${W}×${H}: ${id} title breaks between words only`, !hud.split.length && !hud.cut, JSON.stringify(hud));
-        const want = { sudoku: 'left', money: 'question', broken: 'points' }[id];
+        const want = { sudoku: 'left', money: 'question', broken: 'points', numbers: 'round' }[id];
         check(`R1.5 ${W}×${H}: ${id} top bar reads "time" and "${want}"`, JSON.stringify(hud.words) === JSON.stringify(['time', want]), JSON.stringify(hud.words));
         if (id === 'sudoku' && lv === 'hard' && W > H) {
           const cell = await page.evaluate(() => document.querySelector('.sd-cell').getBoundingClientRect().width);
@@ -1079,6 +1080,176 @@ async function run(site) {
         await page.click('#gameQuit');
       }
       check(`games ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.10.0 R4: Use all the numbers. Round 1 is solved from the cards on the page (so it runs on Production too);
+    // round 2 needs the test hook for its answer and is skipped without it.
+    await flow('v1.10.0 R4 Use all the numbers', async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true });
+      const run = ms => page.clock.runFor(ms);
+      const tray = () => page.evaluate(() => [...document.querySelectorAll('.un-tray .un-card')].map(b => b.dataset.c));
+      const rows = () => page.evaluate(() => [...document.querySelectorAll('.un-row')].map(r => [...r.querySelectorAll('.un-card')].map(b => b.dataset.c).join('')));
+      await run(300);
+      await page.click('#navGames');
+      check('numbers: listed fifth', (await page.locator('#gameList h3').nth(4).textContent()) === 'Use all the numbers');
+      await page.click('#play-numbers');
+      check('numbers: one Start button that says no round passed yet', (await page.locator('#pzLevels button').count()) === 1 && /No round passed yet/.test(await page.textContent('#pzGo')), await page.textContent('#pzGo'));
+      await page.click('#pzGo');
+      const cards = await tray();
+      check('numbers: round 1 is one row with the cards of one equation', (await page.locator('.un-row').count()) === 1 && cards.filter(c => c === '=').length === 1 && (await page.textContent('#pzScore')) === '1', JSON.stringify(cards));
+      check('numbers: the count of cards left is shown', (await page.textContent('.un-left')) === 'Cards left: ' + cards.length);
+      // find a true order of round 1's cards in the page, with the app's own rules
+      const order = await page.evaluate(cs => {
+        const out = [], used = cs.map(() => false), cur = [];
+        const go = () => {
+          if (out.length) return;
+          if (cur.length === cs.length) { if (NumbersRules.check(cur).ok) out.push(cur.slice()); return; }
+          const seen = new Set();
+          cs.forEach((c, i) => { if (used[i] || seen.has(c)) return; seen.add(c); used[i] = true; cur.push(c); go(); cur.pop(); used[i] = false; });
+        };
+        go();
+        return out[0] || null;
+      }, cards);
+      check('numbers: round 1 can be solved', !!order, JSON.stringify(cards));
+      if (!order) throw new Error('numbers: no order found for ' + JSON.stringify(cards));
+      await page.locator('.un-tray .un-card').first().click();
+      check('numbers: a tapped card moves into the row', (await rows())[0].length === 1 && (await tray()).length === cards.length - 1);
+      await page.locator('.un-row .un-card').first().click();
+      check('numbers: a tapped card in the row goes back', (await rows())[0] === '' && (await tray()).length === cards.length);
+      for (const c of order) await page.locator(`.un-tray .un-card[data-c="${c}"]`).first().click();
+      check('numbers: every card placed; the tray says so', (await tray()).length === 0 && (await page.textContent('.un-left')) === 'Cards left: 0' && (await rows())[0] === order.join(''));
+      check('numbers: round 1 fits the screen', Object.values(await pzSize(page)).every(Boolean), JSON.stringify(await pzSize(page)));
+      await page.click('.un-acts [data-k="ok"]');
+      check('numbers: a true round passes', (await page.locator('.un-row.ok').count()) === 1 && /Round 1 passed/.test(await page.textContent('.un-msg')), await page.textContent('.un-msg'));
+      await run(1300);
+      check('numbers: round 2 has two rows and more cards', (await page.locator('.un-row').count()) === 2 && (await page.textContent('#pzScore')) === '2' && (await tray()).filter(c => c === '=').length === 2);
+      let passed = 1;
+      const st = await page.evaluate(() => (window.__testGame ? window.__testGame() : null));
+      if (st && st.solution) {
+        // keyboard: digits and signs move cards, the down arrow picks the next row, Backspace sends one back, Enter checks
+        const keys = s => s.replace(/×/g, '*').replace(/÷/g, '/');
+        await page.keyboard.type(keys(st.solution[0]));
+        await page.keyboard.press('Backspace');
+        check('numbers: Backspace sends the last card of the row back', (await rows())[0] === st.solution[0].slice(0, -1), JSON.stringify(await rows()));
+        await page.keyboard.type(keys(st.solution[0].slice(-1)));
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.type(keys(st.solution[1]));
+        check('numbers: typed cards fill both rows', JSON.stringify(await rows()) === JSON.stringify(st.solution), JSON.stringify(await rows()));
+        await page.keyboard.press('Enter');
+        check('numbers: round 2 passes', /Round 2 passed/.test(await page.textContent('.un-msg')), await page.textContent('.un-msg'));
+        await run(1300);
+        passed = 2;
+      } else console.log('  (flows: numbers round 2 skipped: no test hook on a Production host)');
+      // Check with cards left over: the round fails and the game ends
+      const left = (await tray()).length;
+      await page.locator('.un-tray .un-card').first().click();
+      await page.click('.un-acts [data-k="ok"]');
+      const msg = await page.textContent('.un-msg');
+      check('numbers: cards left over fail the round and end the game', (await page.isVisible('#pzOver')) && (await page.textContent('#pzDone')) === 'Game over' &&
+        msg.startsWith('Not every card was used (' + (left - 1) + ' left). One way: '), msg);
+      check('numbers: the end card gives the rounds passed', (await page.textContent('#pzFinal')) === 'Rounds passed: ' + passed && (await page.textContent('#pzBest')) === 'New best score!', await page.textContent('#pzFinal'));
+      check('numbers: the rows stay; the tray goes', (await page.locator('.un-row').count()) === passed + 1 && !(await page.isVisible('.un-tray')));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1') || '{}'));
+      check('numbers: the best round is saved', saved.numbers && saved.numbers.best === passed && saved.numbers.plays === 1, JSON.stringify(saved));
+      await page.click('#pzBack');
+      check('numbers: the list shows the best round', (await page.locator('.game-card').nth(4).textContent()).includes('Best: round ' + passed));
+      await page.click('#play-numbers');
+      check('numbers: the start button shows the best round', (await page.textContent('#pzGo')).includes('Best: round ' + passed), await page.textContent('#pzGo'));
+      check('numbers: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v1.10.0 R4: answer everything, then See results once. Unchecked answers are marked as first tries; a reminder names
+    // questions with nothing chosen or typed, and Cancel goes back to the first one. One wrong Check costs the First try badge.
+    await flow('v1.10.0 R4 submit all in one go', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 4, diff: 1, view: 'single' }) });
+      await page.click('#startBtn');
+      const answers = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers() : null));
+      if (!answers) { console.log('  (flows: submit-all flow skipped: no test hook on a Production host)'); await context.close(); return; }
+      const fill = async (i, a, wrong) => {
+        await page.locator('#palette .pal').nth(i).click();
+        if (a.type === 'mc') await page.locator('#qc' + i + ' .choice').nth(wrong ? (a.correct + 1) % 2 : a.correct).click();
+        else await page.fill('#ans' + i, wrong ? String(a.answer) + '9' : String(a.answer));
+      };
+      for (let i = 0; i < answers.length - 1; i++) await fill(i, answers[i]);
+      check('R4: chosen or typed answers count as answered, unchecked', (await page.textContent('#answeredCount')) === '4 of 5 answered', await page.textContent('#answeredCount'));
+      check('R4: no answer was checked yet', (await page.locator('.feedback.ok, .feedback.bad').count()) === 0);
+      page.removeAllListeners('dialog');
+      let asked = '';
+      page.once('dialog', d => { asked = d.message(); d.dismiss(); });
+      await page.click('#finishBtn');
+      check('R4: See results reminds about the one unanswered question', /You still have 1 unanswered question/.test(asked), asked);
+      check('R4: Cancel stays on the quiz, on the unanswered question', (await page.isVisible('#screen-quiz')) && /5/.test(await page.textContent('#qProgress')) && (await page.locator('#qc4').count()) === 1, await page.textContent('#qProgress'));
+      await fill(4, answers[4]);
+      asked = '';
+      page.on('dialog', d => { asked = d.message(); d.accept(); });
+      await page.click('#finishBtn');
+      check('R4: with every question answered there is no reminder', asked === '', asked);
+      check('R4: every unchecked answer is marked right', (await page.locator('#resList > li.ok').count()) === 5, await page.textContent('#resScore'));
+      const text = await page.textContent('#resBadgeText');
+      check('R4: unchecked answers count as first tries (Perfect and First try)', /Perfect/.test(text) && /First try/.test(text), text);
+      // one wrong Check, then the right answer marked at See results: Perfect, but no First try
+      await page.click('#againBtn');
+      const again = await page.evaluate(() => window.__testAnswers());
+      const k = again.findIndex(a => a.type !== 'mc');
+      if (k >= 0) {
+        for (let i = 0; i < again.length; i++) await fill(i, again[i], i === k);
+        await page.locator('#palette .pal').nth(k).click();
+        await page.click('#qc' + k + ' button[type="submit"]');
+        check('R4: a wrong Check offers a second try', (await page.locator('#qc' + k + ' .feedback.bad').count()) === 1 && !(await page.locator('#ans' + k).isDisabled()), await page.textContent('#qc' + k + ' .feedback'));
+        await page.fill('#ans' + k, String(again[k].answer));
+        await page.click('#finishBtn');
+        const text2 = (await page.isVisible('#resBadge')) ? await page.textContent('#resBadgeText') : '';
+        check('R4: after one wrong Check the set is still Perfect but not First try', (await page.locator('#resList > li.ok').count()) === 5 && /Perfect/.test(text2) && !/First try/.test(text2), text2);
+      } else console.log('  (flows: wrong-Check part skipped: the set had no typed-answer question)');
+      check('R4 submit all: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v1.10.0 R4: each badge kind tells how to earn it, on hover, keyboard focus or a tap
+    await flow('v1.10.0 R4 badge tips', async () => {
+      const { context, page, errors } = await freshPage(browser, site, {
+        [SETTINGS]: settings({ year: 4 }),
+        'sp.badges.p1': JSON.stringify([{ date: Date.now(), kind: 'firstTry', subject: 'maths', year: 4, diff: 2, n: 5 }])
+      });
+      await page.click('[data-go="progress"]');
+      const heads = page.locator('.badge-grid th.kind .info-btn');
+      check('R4: the three kind icons are buttons', (await heads.count()) === 3 && (await heads.allTextContents()).join('') === '🏅🎯⚡', (await heads.allTextContents()).join(''));
+      await heads.nth(1).hover();
+      const tip = page.locator('.badge-grid th.kind').nth(1).locator('.tip');
+      check('R4: hovering 🎯 shows how to earn First try', (await tip.isVisible()) && /First try: get every question right/.test(await tip.textContent()) && /press Check and an answer is wrong/.test(await tip.textContent()), await tip.textContent());
+      await page.mouse.move(1, 1);
+      await heads.nth(2).click();
+      const tip2 = page.locator('.badge-grid th.kind').nth(2).locator('.tip');
+      check('R4: tapping ⚡ shows the Speed rule with the seconds', (await tip2.isVisible()) && /20 \/ 30 \/ 60 \/ 90 seconds/.test(await tip2.textContent()), await tip2.textContent());
+      check('R4: the tip stays inside the screen', await tip2.evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }));
+      check('R4: each badge square also has the rule as its hover text', /Perfect: get every question/.test(await page.locator('.badge-grid td').first().getAttribute('title')));
+      check('R4 badge tips: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v1.10.0 R4: a reviewed question can be removed from the review list, with Undo; it stays removed after a reload
+    await flow('v1.10.0 R4 remove from review', async () => {
+      const w = (en, a) => ({ topic: 'add', type: 'num', q: { en }, answer: a, given: ['0'], subject: 'maths', year: 4, diff: 2 });
+      const { context, page, errors } = await freshPage(browser, site, {
+        [SETTINGS]: settings({ year: 4 }),
+        'sp.history.p1': JSON.stringify([{ date: 1700000000000, subject: 'maths', year: 4, topic: 'mixed', diff: 2, n: 5, correct: 3, byTopic: { add: [3, 5] }, wrong: [w('What is 2 + 2?', '4'), w('What is 3 + 3?', '6')], stars: 1 }])
+      });
+      await page.click('[data-go="progress"]');
+      const items = () => page.locator('#progBody ol.review > li').count();
+      check('R4: two questions to review, each with Done – remove', (await items()) === 2 && (await page.locator('#progBody .rv-remove').count()) === 2);
+      await page.locator('#progBody .rv-remove').first().click();
+      check('R4: Remove takes it off the list', (await items()) === 1 && /Removed from the review list/.test(await page.textContent('#toast')));
+      const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('sp.history.p1'))[0].wrong.map(x => x.reviewed === true));
+      check('R4: the question is kept in the history, marked reviewed', JSON.stringify(await stored()) === '[false,true]', JSON.stringify(await stored()));
+      await page.click('#toast button');
+      check('R4: Undo puts it back', (await items()) === 2 && JSON.stringify(await stored()) === '[false,false]', JSON.stringify(await stored()));
+      await page.locator('#progBody .rv-remove').first().click();
+      await page.reload(); await page.click('[data-go="progress"]');
+      check('R4: still removed after a reload', (await items()) === 1);
+      await page.locator('#progBody .rv-remove').first().click();
+      check('R4: with every question removed the list says so', (await items()) === 0 && /Nothing to review/.test(await page.textContent('#progBody')));
+      check('R4 remove from review: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
     // R3.3 (v1.7.0): a student with badges but no saved sessions (e.g. history cleared) still sees the badges on Progress

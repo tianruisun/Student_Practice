@@ -504,6 +504,8 @@ legend.sec-title { padding: 0; }
 .review li { border-left: 0; border-radius: 20px; padding: 0.9rem 1rem 0.8rem; position: relative; box-shadow: var(--shadow); border: 2px solid transparent; }
 .review li.picked { border-color: var(--pri); }
 .rv-top { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.35rem; flex-wrap: wrap; }
+.rv-foot { display: flex; justify-content: flex-end; margin-top: 0.5rem; }   /* R4 (v1.10.0): Done – remove */
+.rv-foot .rv-remove { width: auto; min-height: 44px; padding: 0.3rem 0.9rem; font-size: 0.9rem; }
 .rv-mark { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; flex: none; }
 .rv-mark.ok { background: var(--ok-soft); color: var(--ok); }
 .rv-mark.bad { background: var(--bad-soft); color: var(--bad); }
@@ -612,6 +614,11 @@ legend.sec-title { padding: 0; }
 .badge-grid th.corner { background: none; }
 .badge-grid th { font-weight: 600; font-size: 0.85rem; color: var(--muted); text-align: left; }
 .badge-grid th[scope="col"] { text-align: center; font-size: 1.15rem; }
+/* R4 (v1.10.0): the kind icons open how to earn that badge */
+.info-face { margin: 0; }
+.info-face .info-btn { margin: 0; width: 44px; height: 44px; font-size: 1.2rem; color: inherit; border-radius: 12px; text-decoration: underline dotted var(--muted); text-underline-offset: 6px; }
+.info-face .info-btn:hover, .info-face.open .info-btn { background: var(--pri-soft); }
+.badge-grid th.kind .tip { text-align: left; }
 .badge-grid td { text-align: center; height: 44px; border-radius: 12px; background: var(--surface-2); font-size: 1.15rem; font-weight: 700; }
 .badge-grid td.got { background: #fef3c7; color: #7c4a03; }
 .badge-grid td.empty { filter: grayscale(1); opacity: .35; }
@@ -863,5 +870,34 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
   #screen-puzzle.pz-on #pzOver .bl-over-score { margin-top: 0.15rem; font-size: 1rem; }
   #screen-puzzle.pz-on #pzOver .bl-over-best { margin: 0.15rem 0 0.2rem; font-size: 0.9rem; }
   #screen-puzzle.pz-on #pzOver .btn { min-height: 44px; margin-top: 0.35rem; padding: 0.35rem 0.6rem; font-size: 0.95rem; }
+}
+/* Use all the numbers (v1.10.0 R4): equation rows above, the cards still to place below */
+.un-rows { display: grid; gap: 0.4rem; }
+.un-row { display: flex; align-items: center; gap: 0.4rem; min-height: 52px; padding: 0.3rem 0.4rem; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); border: 2px solid transparent; cursor: pointer; }
+.un-row.sel { border-color: var(--accent); background: var(--pri-soft); }
+.un-row.ok { border-color: var(--ok); }
+.un-row.no { border-color: var(--bad); background: var(--bad-soft); }
+.un-pick { flex: 0 0 auto; width: 36px; height: 44px; border: 0; border-radius: 8px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.un-row.sel .un-pick { background: var(--head); color: #fff; }
+.un-slot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem; min-width: 0; flex: 1 1 auto; }
+.un-hint { color: var(--muted); font-size: 0.9rem; }
+.un-card {
+  min-width: 30px; height: 44px; padding: 0 0.25rem; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; cursor: pointer; touch-action: manipulation; box-shadow: var(--shadow);
+}
+.un-card.op { color: var(--pri); }
+.un-card:disabled { cursor: default; opacity: 0.85; }
+.un-pad { display: grid; gap: 0.4rem; }
+.un-tray { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem; min-height: 44px; align-items: center; }
+.un-left { margin: 0; text-align: center; font-weight: 700; color: var(--muted); font-size: 0.9rem; }
+.un-acts { display: grid; grid-template-columns: 1fr 2fr; gap: 0.45rem; }
+.un-acts button { min-height: 48px; border: 0; border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.un-acts .bl-fire { background: var(--head); color: #fff; }
+.un-msg { margin: 0; min-height: 1.4em; text-align: center; font-weight: 700; }
+.un-msg.ok { color: var(--ok); } .un-msg.no { color: var(--bad); }
+@media (max-height: 640px) { .un-row { min-height: 48px; padding: 0.2rem 0.35rem; } .un-acts button { min-height: 44px; } }
+@media (max-height: 430px) and (min-aspect-ratio: 1/1) {
+  .un-card { height: 40px; min-width: 28px; font-size: 1.1rem; } .un-row { min-height: 44px; padding: 0.15rem 0.3rem; } .un-pick { height: 40px; width: 30px; }
+  .un-rows { gap: 0.3rem; } .un-msg { font-size: 0.85rem; } .un-pad { gap: 0.3rem; }
 }
 @media print { #screen-puzzle { display: none; } }

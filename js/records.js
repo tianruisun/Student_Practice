@@ -152,6 +152,7 @@
     const sol = text2(w.sol, 4000); if (sol) out.sol = sol;
     if (isObj(w.fig) && WORD.test(w.fig.type || '') && figOk(w.fig)) out.fig = w.fig;
     const ref = cleanRef(w.ref); if (ref) out.ref = ref;
+    if (w.reviewed === true) out.reviewed = true;   // R4 (v1.10.0): removed from the review list
     if (QUESTION_SUBJECTS.includes(w.subject)) out.subject = w.subject;
     const year = int(w.year, 1, 14), diff = int(w.diff, 1, 4);
     if (year !== null) out.year = year;

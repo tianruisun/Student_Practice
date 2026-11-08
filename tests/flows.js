@@ -1308,7 +1308,8 @@ async function run(site) {
       await context.close();
     });
     // R6.1: on a phone a long formula wraps inside its card instead of being cut off at the card edge, and the page does not
-    // pan sideways. A planted long formula makes the check certain; real sets (Year 8 and 10, Advanced) cover what comes up.
+    // pan sideways. A planted long formula makes the check certain; real sets (Year 10, Advanced) cover what comes up.
+    // R7.1: a planted 40-digit number is not split across lines; it scrolls inside its box, which stays inside the card.
     for (const W of [320, 375]) await flow(`R6.1 long formulas are readable on a phone ${W} px`, async () => {
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 10, diff: 3, count: 20 }) }, null,
         { context: { viewport: { width: W, height: 640 }, isMobile: true, hasTouch: true } });
@@ -1330,6 +1331,16 @@ async function run(site) {
       check(`R6.1 ${W}: a planted long formula is not cut off`, planted.cut <= 1, JSON.stringify(planted));
       check(`R6.1 ${W}: the planted formula stays inside its card`, planted.inCard, JSON.stringify(planted));
       check(`R6.1 ${W}: no sideways pan with the planted formula`, (await wide()) <= 0, String(await wide()));
+      const num = await page.evaluate(() => {
+        const f = document.createElement('div'); f.className = 'formula'; f.textContent = '1234567890123456789012345678901234567890';
+        document.querySelector('#qList .qcard').appendChild(f);
+        const card = f.closest('.qcard').getBoundingClientRect(), r = f.getBoundingClientRect();
+        const rg = document.createRange(); rg.selectNodeContents(f);
+        return { lines: new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size, scrolls: f.scrollWidth > f.clientWidth, inCard: r.left >= card.left - 0.5 && r.right <= card.right + 0.5 };
+      });
+      check(`R7.1 ${W}: a planted 40-digit number stays on one line (not split into two numbers)`, num.lines === 1, JSON.stringify(num));
+      check(`R7.1 ${W}: it scrolls inside its box, which stays inside the card`, num.scrolls && num.inCard, JSON.stringify(num));
+      check(`R7.1 ${W}: no sideways pan with the long number`, (await wide()) <= 0, String(await wide()));
       check(`R6.1 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();
     });

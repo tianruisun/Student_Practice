@@ -788,11 +788,12 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
 {
   const fs = require('fs'), path = require('path');
   const css = fs.readFileSync(path.join(__dirname, '../css/style.css'), 'utf8');
-  t('R6.1: a long formula wraps inside its card instead of staying on one cut-off line', () => {
+  t('R6.1 / R7.1: a long formula wraps at its spaces, and a long token is not split (it scrolls in its box)', () => {
     const rule = (css.match(/\n\.formula \{[^}]*\}/) || [""])[0];
     assert.ok(/white-space: normal;/.test(rule), rule);
     assert.ok(!/nowrap/.test(rule), rule);
-    assert.ok(/overflow-wrap: break-word;/.test(rule), rule);
+    assert.ok(!/overflow-wrap|word-break/.test(rule), rule);
+    assert.ok(/overflow-x: auto;/.test(rule), rule);
   });
 }
 

@@ -129,6 +129,7 @@
 
     function shootAt(b) {
       b.hit = true;
+      b.node.classList.add('hit');   // the page shows which balloons are still in play (tests read it on Production too)
       const fr = field.getBoundingClientRect(), br = b.node.getBoundingClientRect();
       const arrow = document.createElement('div');
       arrow.className = 'bl-arrow'; arrow.setAttribute('aria-hidden', 'true');

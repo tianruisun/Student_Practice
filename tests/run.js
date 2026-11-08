@@ -558,5 +558,117 @@ t('i18n: no key defined twice in a language', () => {
   });
 }
 
+/* v1.10.0 mini games: Sudoku, Money Master, Broken Calculator (the pure rules, no page needed) */
+{
+  const SD = require('../js/game-sudoku.js'), MM = require('../js/game-money.js'), BC = require('../js/game-broken.js'), Kit = require('../js/game-kit.js');
+  t('sudoku: three levels, 4×4, 6×6 and 9×9 with boxes that tile the grid', () => {
+    assert.deepStrictEqual(Object.keys(SD.LEVELS), ['easy', 'medium', 'hard']);
+    for (const L of Object.values(SD.LEVELS)) assert.ok(L.br * L.bc === L.n && L.n % L.br === 0 && L.n % L.bc === 0, JSON.stringify(L));
+    assert.deepStrictEqual(Object.values(SD.LEVELS).map(L => L.n), [4, 6, 9]);
+  });
+  t('sudoku: a made solution is a valid full grid', () => {
+    for (const L of Object.values(SD.LEVELS)) for (let i = 0; i < 50; i++) assert.ok(SD.done(SD.solved(L, Math.random), L));
+  });
+  t('sudoku: every puzzle has exactly one answer, fits its solution, and has the planned number of blanks', () => {
+    for (const lv of ['easy', 'medium', 'hard']) {
+      const L = SD.LEVELS[lv];
+      for (let i = 0; i < (lv === 'hard' ? 15 : 60); i++) {
+        const p = SD.puzzle(lv, Math.random);
+        assert.strictEqual(SD.count(p.grid, L, 3), 1, lv);
+        assert.ok(p.grid.every((v, j) => !v || v === p.solution[j]), lv);
+        assert.strictEqual(p.grid.filter(v => !v).length, L.holes, lv);
+      }
+    }
+  });
+  t('sudoku: a clash is found in a row, a column and a box; a correct full grid is done', () => {
+    const L = SD.LEVELS.easy, g = SD.solved(L, Math.random);
+    assert.strictEqual(SD.conflicts(g, L).size, 0);
+    const row = g.slice(); row[1] = row[0]; assert.ok(SD.conflicts(row, L).has(0) && SD.conflicts(row, L).has(1));
+    const col = g.slice(); col[4] = col[0]; assert.ok(SD.conflicts(col, L).has(4));
+    const box = g.slice(); box[5] = box[0]; assert.ok(SD.conflicts(box, L).has(5));
+    const gap = g.slice(); gap[3] = 0; assert.ok(!SD.done(gap, L));
+    assert.ok(!SD.done(row, L));
+  });
+  t('sudoku: the solver counts two answers when a grid has two', () => {
+    assert.strictEqual(SD.count(new Array(16).fill(0), SD.LEVELS.easy, 2), 2);
+  });
+
+  t('money: five questions a round; change is always above 0 and a multiple of 5c', () => {
+    assert.strictEqual(MM.ROUNDS, 5);
+    for (const lv of ['easy', 'medium', 'hard']) for (let i = 0; i < 3000; i++) {
+      const q = MM.question(lv, Math.random);
+      assert.ok(q.change > 0 && q.change % 5 === 0 && q.total % 5 === 0 && q.change === q.paid - q.total, JSON.stringify(q));
+      assert.ok(q.total === q.items.reduce((s, x) => s + x.cents, 0));
+      assert.strictEqual(new Set(q.items.map(x => x.id)).size, q.items.length);
+    }
+  });
+  t('money: each level pays with its own notes and has its own number of items', () => {
+    const want = { easy: [[1, 1], [1000, 2000]], medium: [[1, 2], [2000, 5000]], hard: [[2, 3], [5000, 10000]] };
+    for (const [lv, [[lo, hi], notes]] of Object.entries(want)) for (let i = 0; i < 2000; i++) {
+      const q = MM.question(lv, Math.random);
+      assert.ok(q.items.length >= lo && q.items.length <= hi && notes.includes(q.paid), lv + ' ' + JSON.stringify(q));
+      if (lv === 'easy') assert.ok(q.total % 100 === 0 && q.change % 100 === 0, 'easy is whole dollars');
+    }
+  });
+  t('money: a typed answer is read as dollars and cents', () => {
+    const cases = { '3': 300, '3.5': 350, '3.50': 350, '$3.05': 305, '0.45': 45, '12.': 1200, ' 7.25 ': 725 };
+    for (const [s, c] of Object.entries(cases)) assert.strictEqual(MM.parse(s), c, s);
+    for (const s of ['', 'abc', '1.234', '3..5', '-2', '1,50', '1234']) assert.strictEqual(MM.parse(s), null, s);
+  });
+  t('money: change is shown with the fewest Australian notes and coins (no 1c or 2c)', () => {
+    assert.ok(!MM.DENOMS.includes(1) && !MM.DENOMS.includes(2));
+    assert.deepStrictEqual(MM.breakdown(1385), [[1000, 1], [200, 1], [100, 1], [50, 1], [20, 1], [10, 1], [5, 1]]);
+    assert.deepStrictEqual(MM.breakdown(4000), [[2000, 2]]);
+    for (let c = 5; c <= 10000; c += 5) assert.strictEqual(MM.breakdown(c).reduce((s, [d, n]) => s + d * n, 0), c);
+    assert.deepStrictEqual(Object.keys(MM.NOTE_COLOURS).map(Number), [500, 1000, 2000, 5000, 10000]);
+  });
+
+  t('broken: a round is three minutes', () => assert.strictEqual(BC.SECONDS, 180));
+  t('broken: the solver finds every way to fill the broken digits, with no leading zeros', () => {
+    assert.deepStrictEqual(BC.solve('4?+25=7?'), ['50', '61', '72', '83', '94']);
+    assert.deepStrictEqual(BC.solve('?+5=12'), ['7']);
+    assert.deepStrictEqual(BC.solve('?7+1=8'), []);   // only 07 works, and a number may not start with 0
+    assert.deepStrictEqual(BC.solve('12×?=36'), ['3']);
+  });
+  t('broken: every sum is right, and its broken digits have exactly one answer', () => {
+    for (const score of [0, 2, 3, 6, 10, 15, 25]) for (let i = 0; i < 150; i++) {
+      const q = BC.make(score, Math.random);
+      const m = /^(\d+)([+\-×])(\d+)=(\d+)$/.exec(q.text);
+      assert.ok(m && BC.calc(+m[1], m[2], +m[3]) === +m[4], q.text);
+      assert.deepStrictEqual(BC.solve(q.masked), [q.answer], q.masked);
+      assert.strictEqual(q.answer.length, (q.masked.match(/\?/g) || []).length);
+      assert.notStrictEqual(q.text, '1+1=2', 'fell back to the spare sum at score ' + score);
+    }
+  });
+  t('broken: sums get harder as the score goes up', () => {
+    const holes = s => { const h = BC.stage(s).holes; return Array.isArray(h) ? h[1] : h; };
+    assert.deepStrictEqual(BC.stage(0).ops, ['+']);
+    assert.ok(BC.stage(10).ops.includes('×'));
+    for (let s = 1; s < 30; s++) assert.ok(holes(s) >= holes(s - 1) && BC.stage(s).a[1] >= BC.stage(s - 1).a[1], 'score ' + s);
+  });
+  t('games: m:ss clock text', () => {
+    assert.strictEqual(Kit.fmt(0), '0:00'); assert.strictEqual(Kit.fmt(59999), '0:59'); assert.strictEqual(Kit.fmt(180000), '3:00'); assert.strictEqual(Kit.fmt(-5), '0:00');
+  });
+}
+
+/* v1.10.0 low fixes */
+{
+  const css = require('fs').readFileSync(require('path').join(__dirname, '../css/style.css'), 'utf8');
+  t('R2.1 (v1.9.0): the bottom bar switches to small labels up to 365 px', () => assert.ok(/@media \(max-width: 365px\)/.test(css)));
+  t('R2.2 (v1.9.0): very short screens have their own balloon layout', () => {
+    assert.ok(/@media \(max-height: 520px\)/.test(css));
+    assert.ok(/@media \(max-height: 430px\) and \(min-aspect-ratio: 1\/1\)\s*\{\s*#screen-game/.test(css));
+  });
+  t('R3.2 (v1.7.0): a figure that would draw NaN is not drawn and not kept', () => {
+    const bad = { type: 'coord', xmin: 'a', xmax: 5, ymin: 0, ymax: 5 };
+    const warn = console.warn; console.warn = () => {};
+    try {
+      assert.strictEqual(Fig.draws(bad), false);
+      assert.strictEqual(Fig.render(bad, 'en'), '');
+    } finally { console.warn = warn; }
+    assert.ok(Fig.draws({ type: 'coord', xmin: 0, xmax: 5, ymin: 0, ymax: 5 }));
+  });
+}
+
 console.log(`${pass} passed, ${fail} failed (${gen} generated questions checked)`);
 process.exit(fail ? 1 : 0);

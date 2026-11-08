@@ -244,17 +244,24 @@
   }
 
   const R = { bar, line: lineGraph, dial, jug, clock, spinner, shape, grid, picto, table, pie, coord, triangle };
+  /* Markup is only kept when it is real drawing: not empty, not huge, and no attribute holding NaN / undefined / Infinity
+     (R3.2, v1.7.0: a figure from a hand-edited file with xmin "a" drew width="NaN" and put 18 errors in the console). */
+  const MAX_MARKUP = 300000;
+  const valid = out => typeof out === 'string' && out.length > 0 && out.length <= MAX_MARKUP && !/="[^"]*(?:NaN|undefined|Infinity)[^"]*"/.test(out);
   function render(fig, lang) {
     if (!fig || !Object.prototype.hasOwnProperty.call(R, fig.type)) return '';
     budget = BUDGET;
-    try { return `<figure class="fig fig-${fig.type}">${R[fig.type](fig, lang || 'en')}</figure>`; }
-    catch (e) { console.warn('figure failed', e); return ''; }
+    try {
+      const out = R[fig.type](fig, lang || 'en');
+      if (!valid(out)) { console.warn('figure not drawn: invalid numbers', fig.type); return ''; }
+      return `<figure class="fig fig-${fig.type}">${out}</figure>`;
+    } catch (e) { console.warn('figure failed', e); return ''; }
   }
-  /* Whether a figure draws without an error: used to check a figure read from a progress file (R2.3, v1.7.0). */
+  /* Whether a figure draws real markup: used to check a figure read from a progress file (R2.3, v1.7.0; R3.2). */
   function draws(fig) {
     if (!fig || !Object.prototype.hasOwnProperty.call(R, fig.type)) return false;
     budget = BUDGET;
-    try { return typeof R[fig.type](fig, 'en') === 'string'; } catch (e) { return false; }
+    try { return valid(R[fig.type](fig, 'en')); } catch (e) { return false; }
   }
   const api = { render, draws, esc, math, questionHTML };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

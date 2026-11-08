@@ -248,6 +248,31 @@
       </div>
     </section>
 
+    <!-- PUZZLE GAMES (v1.10.0): Sudoku, Money Master, Broken Calculator share this screen -->
+    <section id="screen-puzzle" class="screen" hidden aria-labelledby="pzH">
+      <div class="bl-hud pz-hud">
+        <span class="bl-stat"><span aria-hidden="true">⏱</span> <span class="sr-only" id="pzClockLabel" data-i18n="pz.time">Time</span> <b id="pzClock">0:00</b></span>
+        <h2 id="pzH" class="pz-title">Sudoku</h2>
+        <span class="bl-stat"><span aria-hidden="true" id="pzScoreIcon">⭐</span> <span class="sr-only" id="pzScoreLabel"></span> <b id="pzScore">0</b></span>
+        <button type="button" id="pzQuit" class="round-btn" data-i18n-aria="game.quit"><span aria-hidden="true">✕</span></button>
+      </div>
+      <div id="pzBody" class="pz-body"></div>
+      <div id="pzIntro" class="card pz-card" hidden>
+        <p class="pz-how" id="pzHow"></p>
+        <div id="pzLevels" class="pz-levels"></div>
+      </div>
+      <div id="pzOver" class="card pz-card" hidden>
+        <p class="bl-over-title" id="pzDone"></p>
+        <p class="bl-over-score" id="pzFinal"></p>
+        <p class="bl-over-best" id="pzBest"></p>
+        <div class="bl-over-acts">
+          <button type="button" id="pzAgain" class="btn primary" data-i18n="game.again">Play again</button>
+          <button type="button" id="pzBack" class="btn ghost" data-i18n="game.back">Back to games</button>
+        </div>
+      </div>
+      <p id="pzStatus" class="sr-only" role="status"></p>
+    </section>
+
     <!-- PARENT SETTINGS -->
     <section id="screen-parent" class="screen" hidden aria-labelledby="parH">
       <h2 id="parH" data-i18n="parent.heading">Parent settings</h2>
@@ -375,6 +400,10 @@
   <script src="./js/ai.js"></script>
   <script src="./js/tour.js"></script>
   <script src="./js/game-balloons.js"></script>
+  <script src="./js/game-kit.js"></script>
+  <script src="./js/game-sudoku.js"></script>
+  <script src="./js/game-money.js"></script>
+  <script src="./js/game-broken.js"></script>
   <script src="./js/app.js"></script>
 </body>
 </html>

@@ -577,12 +577,14 @@ legend.sec-title { padding: 0; }
 .avatar-badge { position: absolute; right: -8px; bottom: -6px; background: var(--surface); color: var(--ink); border-radius: 999px; padding: 0 0.35rem; font-size: 0.72rem; font-weight: 700; line-height: 1.5; box-shadow: var(--shadow); white-space: nowrap; }
 
 /* ---------- bottom bar: every slot the same size in every language ---------- */
-.bottom-nav { grid-template-columns: repeat(2, minmax(0, 1fr)) 72px repeat(2, minmax(0, 1fr)); }
+.bottom-nav { grid-template-columns: repeat(2, minmax(0, 1fr)) 64px repeat(3, minmax(0, 1fr)); gap: 0.15rem; padding-left: 0.5rem; padding-right: 0.5rem; }   /* v1.9.0: six items */
 .tab, .tab[aria-current="page"] { flex-direction: column; gap: 3px; width: 100%; min-width: 0; height: 56px; min-height: 56px; padding: 0 2px; font-size: 0.7rem; box-shadow: none; }
 .tab .ni, .tab[aria-current="page"] .ni { width: 23px; height: 23px; flex: none; }
 .tab .tl { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
 .tab[aria-current="page"] { background: var(--pri-soft); color: var(--pri); }
 .round-btn { width: 46px; min-width: 46px; padding: 0; font-size: 0.85rem; }
+/* R1.3 (v1.9.0): at 320 px each of the six tabs is ~46 px; a smaller label keeps "Progress", "Students", "Settings" whole */
+@media (max-width: 340px) { .bottom-nav { gap: 0.1rem; padding-left: 0.3rem; padding-right: 0.3rem; } .tab, .tab[aria-current="page"] { padding: 0 1px; font-size: 0.6rem; } }
 
 /* subject tiles: equal height in every layout, icons on one line, text below */
 .tiles { align-items: stretch; }
@@ -650,3 +652,80 @@ dialog.tour::backdrop { background: transparent; backdrop-filter: none; }
 .tour-actions .btn[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .tour-hole { transition: none; } }
 @media print { dialog.tour { display: none; } }
+
+/* ---------- mini games (v1.9.0) ---------- */
+.game-list { display: grid; gap: 0.8rem; }
+.game-card { display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 0.9rem; align-items: center; }
+.game-icon { font-size: 2.6rem; line-height: 1; }
+.game-text h3 { margin: 0; font-size: 1.1rem; }
+.game-text p { margin: 0.15rem 0 0; }
+.game-best { color: var(--pri); font-weight: 600; }
+.game-card .btn { grid-column: 1 / -1; margin-top: 0.4rem; }
+
+#screen-game { display: flex; flex-direction: column; gap: 0.5rem; }
+#screen-game[hidden] { display: none; }
+.bl-hud { display: flex; align-items: center; gap: 0.6rem; }
+.bl-stat { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.8rem; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow); font-size: 1.05rem; }
+.bl-stat b { min-width: 1.6em; text-align: center; font-variant-numeric: tabular-nums; }
+.bl-hud .round-btn { margin-left: auto; }
+.bl-field {
+  position: relative; overflow: hidden; border-radius: var(--radius);
+  height: clamp(190px, calc(100dvh - 390px), 600px);
+  background: linear-gradient(180deg, #bfe3ff 0%, #e8f4ff 70%, #d9f2d0 100%);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+@media (prefers-color-scheme: dark) { .bl-field { background: linear-gradient(180deg, #1e2a55 0%, #2b3a6e 70%, #24452f 100%); } }
+.bl { position: absolute; top: 0; width: 82px; will-change: transform; pointer-events: none; }
+.bl-svg { display: block; width: 82px; height: 133px; }
+.bl-q {
+  position: absolute; left: 0; right: 0; top: 22px; text-align: center; color: #1f2937; font-weight: 700; font-size: 1.05rem;   /* R1.2: dark on every balloon fill, ≥ 4.5:1 */
+  text-shadow: 0 0 3px rgba(255, 255, 255, .55); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.bl.pop .bl-svg { transform: scale(1.35); opacity: 0; transition: transform .35s ease-out, opacity .35s ease-out; }
+.bl.pop .bl-q { opacity: 0; transition: opacity .2s; }
+.bl-plus { position: absolute; left: 0; right: 0; top: 18px; text-align: center; font-weight: 800; font-size: 1.5rem; color: #16a34a; animation: bl-up .45s ease-out forwards; }
+@keyframes bl-up { to { transform: translateY(-26px); opacity: 0; } }
+.bl-arrow { position: absolute; width: 34px; height: 4px; margin: -2px 0 0 -30px; transform-origin: 30px 2px; background: #7c2d12; border-radius: 2px; pointer-events: none; z-index: 2; }
+.bl-arrow::after { content: ""; position: absolute; right: -7px; top: -4px; border: 6px solid transparent; border-left: 9px solid #7c2d12; border-right: 0; }
+.bl-bow { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); font-size: 2rem; z-index: 3; pointer-events: none; }
+/* R1.1: centred while the card fits; if it ever does not, it starts at the top and scrolls instead of being cut off at both ends */
+.bl-over {
+  position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  overflow-y: auto; padding: 1rem 1.4rem; text-align: center; background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+.bl-over > :first-child { margin-top: auto; }
+.bl-over > :last-child { margin-bottom: auto; }
+.bl-over[hidden] { display: none; }
+.bl-over-title { margin: 0; font-size: 1.5rem; font-weight: 700; }
+.bl-over-score { margin: 0.4rem 0 0; font-size: 1.2rem; font-weight: 600; }
+.bl-over-best { margin: 0.3rem 0 0.4rem; color: var(--muted); }
+.bl-over .btn { max-width: 18rem; flex: none; }
+.bl-over-acts { width: 100%; max-width: 18rem; flex: none; }
+/* R1.1: a short phone (320×568: the field is 190 px; 375×667: 277 px) gets a compact card, the end card's two buttons side by side */
+@media (max-height: 700px) {
+  .bl-over { padding: 0.5rem 0.8rem; }
+  .bl-over-title { font-size: 1.1rem; }
+  .bl-over-score { margin-top: 0.2rem; font-size: 1rem; }
+  .bl-over-best { margin: 0.2rem 0 0; font-size: 0.9rem; line-height: 1.3; }
+  .bl-over .btn, .bl-over .btn.big { min-height: 44px; margin-top: 0.5rem; padding: 0.4rem 0.6rem; font-size: 1rem; }
+  .bl-over-acts { display: flex; gap: 0.5rem; }
+  .bl-over-acts .btn { flex: 1 1 0; min-width: 0; }
+}
+.bl-entry { display: flex; align-items: center; gap: 0.7rem; min-height: 48px; }
+.bl-typed {
+  min-width: 4.5rem; padding: 0.2rem 0.8rem; border-radius: var(--radius-sm); border: 2px solid var(--pri);
+  background: var(--surface); font-size: 1.6rem; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums;
+}
+.bl-warn { margin: 0; color: var(--bad); font-weight: 700; }
+.bl-warn[hidden] { display: none; }
+.bl-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; }
+.bl-pad button {
+  min-height: 50px; border: 0; border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
+  font: inherit; font-size: 1.45rem; font-weight: 700; cursor: pointer; touch-action: manipulation;
+}
+.bl-pad button:active { transform: translateY(1px); }
+.bl-pad .bl-fire { background: var(--head); color: #fff; }
+.bl-pad.locked button { opacity: 0.45; cursor: not-allowed; }
+body.in-game .top { display: none; }
+@media (max-height: 640px) { .bl-pad button { min-height: 44px; font-size: 1.25rem; } .bl-pad { gap: 0.35rem; } .bl-entry { min-height: 42px; } .bl-typed { font-size: 1.35rem; } }
+@media print { #screen-games, #screen-game { display: none; } }

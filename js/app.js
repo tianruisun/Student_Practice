@@ -42,7 +42,7 @@
     },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour' };
+  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour', games: 'sp.games' };
   /* This app's keys that are not a student's data: the language, the "moved" flag and the tour flag. They do not make a
      browser look used (below), and a Forgot-PIN erase keeps them (eraseAll). One list, so the two cannot drift apart. */
   const NOT_USER_DATA = ['sp.lang', 'sp.moved', K.tour];
@@ -79,11 +79,12 @@
       histKey() { return K.history + '.' + P.active; },
       setKey() { return K.settings + '.' + P.active; },
       badgeKey() { return K.badges + '.' + P.active; },
+      gameKey() { return K.games + '.' + P.active; },
       select(id) { P.active = id; store.set(K.profiles, P); },
       add(name) { if (P.list.length >= MAX_PROFILES) return null; let n = 1; while (P.list.some(x => x.id === 'p' + n)) n++; const pr = { id: 'p' + n, name }; P.list.push(pr); P.active = pr.id; store.set(K.profiles, P); return pr; },
       // fields: name, schoolYear (1–12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
       update(id, fields) { const pr = P.list.find(x => x.id === id); if (pr) { Object.assign(pr, fields); store.set(K.profiles, P); } },
-      remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
+      remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
     };
   })();
   const histKey = () => Profiles.histKey();
@@ -109,10 +110,12 @@
   /* ---------- navigation ---------- */
   function go(screen) {
     if (screen === 'parent' && !S.parent) return;
+    if (S.screen === 'game' && screen !== 'game' && game) game.stop();   // leaving a round ends it, with no score kept
     S.screen = screen;
     document.querySelectorAll('.screen').forEach(s => { s.hidden = s.id !== 'screen-' + screen; });
     document.querySelectorAll('.tab').forEach(b => {
-      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading'].includes(screen));
+      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading'].includes(screen)) ||
+        (b.dataset.go === 'games' && screen === 'game');
       if (cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
     render();
@@ -131,9 +134,10 @@
     $('#profileAvatar').textContent = (who.trim()[0] || 'S').toUpperCase();
     const nb = badgeCount(), ab = $('#avatarBadge');
     ab.hidden = !nb; ab.textContent = '🏅' + nb;
-    document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading');
-    $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading';   // the tour shows Home; never leave a set for it
-    ({ home: renderHome, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent })[S.screen]();
+    document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || S.screen === 'game');
+    document.body.classList.toggle('in-game', S.screen === 'game');   // the header too: a round needs the whole screen on a small phone
+    $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading' || S.screen === 'game';   // the tour shows Home; never leave a set for it
+    ({ home: renderHome, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame })[S.screen]();
   }
 
   /* ---------- HOME ---------- */
@@ -930,6 +934,67 @@
   }
 
   /* ---------- PROGRESS ---------- */
+  /* ---------- MINI GAMES (v1.9.0) ---------- */
+  let game = null;   // the balloon game, made the first time it is played
+  const GAMES = [{ id: 'balloons', icon: '🎈', title: 'game.balloons', sub: 'game.balloonsSub' }];
+  const gameBest = id => ((store.get(Profiles.gameKey(), {}) || {})[id] || {}).best || 0;
+  const gameBusy = () => S.screen === 'game' && !!game && game.running;
+
+  function renderGames() {
+    const box = $('#gameList'); box.innerHTML = '';
+    for (const g of GAMES) {
+      const card = el('div', 'card game-card');
+      const icon = el('span', 'game-icon', g.icon); icon.setAttribute('aria-hidden', 'true');
+      const text = el('div', 'game-text');
+      text.append(el('h3', '', t(g.title)), el('p', 'muted small', t(g.sub)));
+      const best = gameBest(g.id);
+      if (best) text.append(el('p', 'small game-best', t('game.best', { n: best })));
+      const play = el('button', 'btn primary', t('game.play')); play.type = 'button'; play.id = 'play-' + g.id;
+      play.setAttribute('aria-label', t('game.play') + ' – ' + t(g.title));
+      play.addEventListener('click', () => openGame(g.id));
+      card.append(icon, text, play);
+      box.append(card);
+    }
+  }
+
+  function renderGame() { /* the round draws itself; static text is filled by applyStatic */ }
+
+  /* R1.5: the game id travels from its card to the record it writes, so a second game gets its own best score
+     (today 'balloons' is the only game, and the only one the game screen can play) */
+  let gameId = 'balloons';
+  function openGame(id) {
+    gameId = id;
+    go('game');
+    $('#gameOver').hidden = true; $('#gameIntro').hidden = false;
+    // R1.4: the start card shows a fresh round, not the last one's clock and points
+    $('#gameTime').textContent = window.BalloonRules ? window.BalloonRules.SECONDS : 60;
+    $('#gameScore').textContent = '0';
+    $('#gameGo').focus();
+  }
+
+  function playGame() {
+    if (!window.BalloonGame) return toast(t('game.missing'));
+    if (!game) {
+      game = window.BalloonGame.create($('#gameField'), {
+        time: $('#gameTime'), score: $('#gameScore'), typed: $('#gameTyped'), status: $('#gameStatus'),
+        warn: $('#gameWarn'), pad: $('#gamePad')
+      }, { t, onEnd: res => endGame(gameId, res) });
+    }
+    $('#gameIntro').hidden = true; $('#gameOver').hidden = true;
+    game.start();
+  }
+
+  function endGame(id, res) {
+    const all = store.get(Profiles.gameKey(), {}) || {}, g = all[id] || { best: 0, plays: 0 };
+    const isBest = res.score > (g.best || 0);
+    all[id] = { best: Math.max(g.best || 0, res.score), plays: (g.plays || 0) + 1, last: res.score, date: Date.now() };
+    store.set(Profiles.gameKey(), all);
+    $('#gameFinal').textContent = t('game.final', { n: res.score });
+    $('#gameBest').textContent = isBest && res.score > 0 ? t('game.newBest') : t('game.best', { n: all[id].best });
+    $('#gameOver').hidden = false;
+    $('#gameAgain').focus();
+  }
+
   function renderProgress() {
     const box = $('#progBody'); box.innerHTML = '';
     $('#progH').textContent = t('prog.headingFor', { name: Profiles.name(Profiles.active) });
@@ -1284,7 +1349,7 @@
     applySuggestedYear();
   }
   function switchProfile(id) {
-    if (S.screen === 'quiz' || S.screen === 'loading') return toast(t('profile.busy'));
+    if (S.screen === 'quiz' || S.screen === 'loading' || gameBusy()) return toast(t('profile.busy'));
     Profiles.select(id); loadProfileSettings();
     renderProfiles(); render();
     toast(t('profile.switched', { name: Profiles.name(Profiles.active) }));
@@ -1328,6 +1393,7 @@
     { target: '#startBtn', title: 'tour.startT', text: 'tour.start' },
     { target: '#printHome', title: 'tour.printT', text: 'tour.print' },
     { target: '.tab[data-go="progress"]', title: 'tour.progressT', text: 'tour.progress' },
+    { target: '#navGames', title: 'tour.gamesT', text: 'tour.games' },
     { target: '#navParent', title: 'tour.settingsT', text: 'tour.settings' },
     { target: '#tourBtn', title: 'tour.againT', text: 'tour.again' }
   ];
@@ -1362,7 +1428,7 @@
     render();   // instant: re-renders text only, the typed answer and quiz state are untouched
   });
   $('#parentBtn').addEventListener('click', async () => {
-    if (S.screen === 'quiz') { await unlockParent(); return; }
+    if (S.screen === 'quiz' || gameBusy()) { await unlockParent(); return; }
     if (await unlockParent()) { draftProvider = null; delete $('#aiKey').dataset.touched; go('parent'); }
   });
   $('#startBtn').addEventListener('click', () => startQuiz(S.settings));
@@ -1437,9 +1503,14 @@
   $('#promptReset').addEventListener('click', () => { savePrompt(''); toast(t('parent.promptDefault')); });
   $('#profileBtn').addEventListener('click', () => { renderProfiles(); window.I18N.applyStatic($('#profileDlg')); $('#profileDlg').showModal(); });
   $('#profileClose').addEventListener('click', () => $('#profileDlg').close());
+  $('#gameGo').addEventListener('click', playGame);
+  $('#gameAgain').addEventListener('click', playGame);
+  $('#gameBack').addEventListener('click', () => go('games'));
+  $('#gameQuit').addEventListener('click', () => go('games'));
+  $('#gamePad').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b && game) game.key(b.dataset.k); });
   $('#profileAdd').addEventListener('submit', e => {
     e.preventDefault();
-    if (S.screen === 'quiz' || S.screen === 'loading') return toast(t('profile.busy'));
+    if (S.screen === 'quiz' || S.screen === 'loading' || gameBusy()) return toast(t('profile.busy'));
     const name = $('#profileNew').value.trim().slice(0, 20);
     const pr = Profiles.add(name);
     if (!pr) return toast(t('profile.full'));
@@ -1476,6 +1547,7 @@
      Production host, so students there cannot use it to see answers. */
   if (!(self.PRODUCTION_HOSTS || []).includes(location.hostname)) {
     window.__testAnswers = () => (S.quiz ? S.quiz.questions.map(q => ({ type: q.type, answer: q.answer, correct: q.correct })) : null);
+    window.__testGame = () => (game ? game.state : null);   // v1.9.0: score, typed, locked, balloons in the air
   }
 
   registerSW();

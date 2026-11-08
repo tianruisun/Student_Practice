@@ -4,6 +4,7 @@ A mobile-first, installable maths and reasoning practice web app (PWA) for stude
 Plain HTML/CSS/JS – no frameworks, no build step, relative paths only – so it runs on GitHub Pages as-is.
 
 ## Features
+- **Mini games (Games tab):** the bottom bar has a **Games** tab next to Students, with a list of mini games. The first is **Times-table balloons** (1×1 to 9×9): balloons with a gift hanging below rise from the bottom and fly away off the top, each with a question. Type the answer on the big number pad (or a keyboard) and tap 🏹 to shoot it for a point; a wrong answer locks the bow for 1.5 seconds with a warning. One minute a round; balloons start slow and one at a time and end fast with up to five at once. Each student's best score is kept on this device (`js/game-balloons.js`).
 - **Guided tour (first visit):** the first time a browser opens the app, a short tour dims the page and highlights each part of Home in turn (students, language, parent lock, subjects, practice options when the subject has them, Start, Print, Progress, Settings) with one line on what it is for. Next / Back / Skip, arrow keys and Escape work; it is shown once (earlier users who already have data are not shown it), and the **?** button in the header replays it at any time (`js/tour.js`).
 - **Two subjects** (toggle on Home):
   - **Maths** – typed answers. Levels follow **China (人教版) and Singapore (MOE)** expectations for each year, which are noticeably harder than Australian/UK ones. 22 topics, including 简便计算 (clever calculation), 数论 (number theory), 找规律 (sequences), equations, simultaneous equations, quadratics, π = 3.14 circle/cylinder/cone work, and trigonometry.
@@ -72,6 +73,7 @@ On a phone, open the address and use **Add to Home Screen** / **Install app**. T
 | `js/gen-selective.js` | Selective test (35 questions / 40 minutes, 5 options) |
 | `js/ai.js` | Claude / DeepSeek question generation (maths and general ability) and validation |
 | `js/app.js` | Screens, state, parent mode, progress |
+| `js/game-balloons.js` | Mini game: times-table balloons (the rules, testable without a page, and the game itself) |
 | `js/tour.js` | First-visit guided tour: highlight one part at a time with a short explanation |
 | `version.js` | App version (also names the offline cache) and the Production host names |
 | `js/test-badge.js` | TEST badge on every host that is not Production |

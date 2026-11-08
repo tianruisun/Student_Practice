@@ -487,7 +487,7 @@ t('i18n: no key defined twice in a language', () => {
   const S = box.I18N.STRINGS;
   const block = (/const TOUR = \[([\s\S]*?)\n\s*\];/.exec(app) || [])[1] || '';
   const steps = [...block.matchAll(/target: (?:null|'([^']+)'), title: '([\w.]+)', text: '([\w.]+)'/g)];
-  t('tour: 11 steps found in app.js', () => assert.strictEqual(steps.length, 11));
+  t('tour: 12 steps found in app.js (v1.9.0: Games tab)', () => assert.strictEqual(steps.length, 12));
   t('tour: every text is in English and Chinese', () => {
     const keys = steps.flatMap(m => [m[2], m[3]]).concat(['tour.open', 'tour.step', 'tour.next', 'tour.back', 'tour.skip', 'tour.done']);
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.zh[k] === S.en[k]), []);
@@ -496,6 +496,65 @@ t('i18n: no key defined twice in a language', () => {
     const sels = steps.map(m => m[1]).filter(Boolean);
     const found = sel => (sel.startsWith('#') ? html.includes('id="' + sel.slice(1) + '"') : /data-go="progress"/.test(html));
     assert.deepStrictEqual(sels.filter(s => !found(s)), []);
+  });
+}
+
+/* v1.9.0 mini game: the rules of times-table balloons (js/game-balloons.js, no page needed) */
+{
+  const B = require('../js/game-balloons.js');
+  t('balloons: a round is one minute; a wrong answer locks for 1.5 s', () => { assert.strictEqual(B.SECONDS, 60); assert.strictEqual(B.LOCK_MS, 1500); });
+  t('balloons: slow and one at a time at the start', () => assert.deepStrictEqual(B.level(0), { rise: 9, every: 2.4, max: 1 }));
+  t('balloons: fast and up to 5 at once at the end', () => { const e = B.level(60); assert.ok(Math.abs(e.rise - 4) < 1e-9 && Math.abs(e.every - 0.9) < 1e-9 && e.max === 5, JSON.stringify(e)); });
+  t('balloons: never slower, never fewer as the minute goes on', () => {
+    for (let s = 1; s <= 60; s++) {
+      const a = B.level(s - 1), b = B.level(s);
+      assert.ok(b.rise < a.rise && b.every < a.every && b.max >= a.max, `second ${s}`);
+    }
+  });
+  t('balloons: questions are 1×1 to 9×9 and all 81 come up', () => {
+    const seen = new Set();
+    for (let i = 0; i < 20000; i++) {
+      const q = B.question(Math.random, new Set());
+      assert.ok(q.a >= 1 && q.a <= 9 && q.b >= 1 && q.b <= 9 && q.answer === q.a * q.b, JSON.stringify(q));
+      seen.add(q.a + 'x' + q.b);
+    }
+    assert.strictEqual(seen.size, 81);
+  });
+  t('balloons: a new question never repeats an answer already in the air', () => {
+    const busy = new Set([6, 12, 24, 36, 18]);
+    for (let i = 0; i < 3000; i++) assert.ok(!busy.has(B.question(Math.random, busy).answer));
+  });
+  t('balloons: the no-repeat rule holds even after 60 unlucky draws (R1 caveat)', () => {
+    // rand() = 0 always draws 1 × 1; with 1 busy, every draw collides and the fallback must pick a free pair
+    const q = B.question(() => 0, new Set([1]));
+    assert.ok(q.answer !== 1 && q.answer === q.a * q.b, JSON.stringify(q));
+    const almost = new Set(); for (let x = 1; x <= 9; x++) for (let y = 1; y <= 9; y++) if (x * y !== 72) almost.add(x * y);
+    for (let i = 0; i < 50; i++) assert.strictEqual(B.question(Math.random, almost).answer, 72);
+  });
+  t('balloons: the question text has at least 4.5:1 contrast on every balloon (R1.2)', () => {
+    const css = require('fs').readFileSync(require('path').join(__dirname, '../css/style.css'), 'utf8');
+    const ink = (/\.bl-q\s*\{[^}]*?[\s;]color:\s*(#[0-9a-f]{6})/i.exec(css) || [])[1];
+    assert.ok(ink, 'no .bl-q colour in style.css');
+    const lum = hex => {
+      const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (x, y) => { const [h, l] = [lum(x), lum(y)].sort((p, q) => q - p); return (h + 0.05) / (l + 0.05); };
+    assert.strictEqual(B.COLORS.length, 6);
+    const low = B.COLORS.map(c => [c, ratio(ink, c)]).filter(([, r]) => r < 4.5);
+    assert.deepStrictEqual(low, []);
+  });
+  t('balloons: an answer hits the matching balloon closest to flying away', () => {
+    const list = [{ answer: 12, y: 300 }, { answer: 12, y: 80 }, { answer: 56, y: 10 }, { answer: 12, y: 5, hit: true }];
+    assert.strictEqual(B.target(list, '12'), list[1]);
+    assert.strictEqual(B.target(list, '56'), list[2]);
+    assert.strictEqual(B.target(list, '7'), null);
+    assert.strictEqual(B.target(list, ''), null);
+    assert.strictEqual(B.target(list, '012'), null);
+  });
+  t('balloons: a new balloon avoids lanes with one still low down', () => {
+    const list = [{ lane: 0, y: 400 }, { lane: 1, y: 380 }, { lane: 2, y: 300 }, { lane: 3, y: 50 }];
+    for (let i = 0; i < 200; i++) assert.strictEqual(B.lane(Math.random, list, 500), 3);
   });
 }
 

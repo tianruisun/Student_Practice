@@ -6,6 +6,7 @@ const SETTINGS = 'sp.settings.p1';
 const PIN = '2468';
 
 /* initScript: code run in the page before the app (e.g. to make storage fail).
+   options.clock: install Playwright's fake clock before the app loads (page.clock.runFor moves time on).
    options.tour: leave the first-visit guided tour (v1.8.0) on. Otherwise it is marked as seen before the app runs, so
    it does not cover the screen in flows that test something else. */
 async function freshPage(browser, site, seed, initScript, options = {}) {
@@ -15,6 +16,7 @@ async function freshPage(browser, site, seed, initScript, options = {}) {
   if (initScript) await context.addInitScript(initScript);
   if (options.route) await context.route('**/*', options.route);   // e.g. answer one file with 404
   const page = await context.newPage();
+  if (options.clock) await page.clock.install();   // v1.9.0: a fake clock, so a one-minute game runs in seconds
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());   // confirm() dialogs: finish with unanswered questions, reset PIN
@@ -510,14 +512,14 @@ async function run(site) {
       const tourOpen = () => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
       await page.waitForTimeout(300);
       check('tour: opens on the first visit', await tourOpen());
-      check('tour: starts at step 1 of 11', (await page.textContent('#tourStep')) === 'Step 1 of 11', await page.textContent('#tourStep'));
+      check('tour: starts at step 1 of 12', (await page.textContent('#tourStep')) === 'Step 1 of 12', await page.textContent('#tourStep'));
       check('tour: Back is hidden on step 1', !(await page.isVisible('#tourBack')));
       // walk every step: the highlight surrounds its part, the box stays on screen, nothing scrolls sideways, no raw keys
       const problems = [];
-      for (let k = 1; k <= 11; k++) {
+      for (let k = 1; k <= 12; k++) {   // v1.9.0: 12 steps (Games tab)
         await page.waitForTimeout(400);   // the highlight slides to its part in 0.25 s
         const r = await page.evaluate(() => {
-          const sels = [null, '#profileBtn', '#langBtn', '#parentBtn', '#subjectChips', '#practiceOptions', '#startBtn', '#printHome', '.tab[data-go="progress"]', '#navParent', '#tourBtn'];
+          const sels = [null, '#profileBtn', '#langBtn', '#parentBtn', '#subjectChips', '#practiceOptions', '#startBtn', '#printHome', '.tab[data-go="progress"]', '#navGames', '#navParent', '#tourBtn'];
           const n = +/\d+/.exec(document.querySelector('#tourStep').textContent)[0], sel = sels[n - 1];
           const h = document.querySelector('.tour-hole').getBoundingClientRect(), p = document.querySelector('.tour-pop').getBoundingClientRect();
           const a = sel && document.querySelector(sel).getBoundingClientRect();
@@ -531,7 +533,7 @@ async function run(site) {
         if (r.side) problems.push(`step ${k} scrolls sideways`);
         if (/tour\./.test(r.text) || r.text.length < 10) problems.push(`step ${k} text "${r.text}"`);
         if (k === 2) { await page.click('#tourBack'); if (!/^Step 1 /.test(await page.textContent('#tourStep'))) problems.push('Back does not go to step 1'); await page.click('#tourNext'); }
-        if (k < 11) await page.click('#tourNext');
+        if (k < 12) await page.click('#tourNext');
       }
       check('tour: every step highlights its part, on screen', problems.length === 0, problems.join('; '));
       check('tour: the last step says Done and has no Skip', (await page.textContent('#tourNext')) === 'Done' && !(await page.isVisible('#tourSkip')));
@@ -592,14 +594,14 @@ async function run(site) {
       const walk = async page => {
         await page.click('#tourBtn');
         const out = [];
-        for (let k = 0; k < 12 && (await tourOpen(page)); k++) {
+        for (let k = 0; k < 13 && (await tourOpen(page)); k++) {
           out.push({ step: await page.textContent('#tourStep'), title: await page.textContent('#tourTitle'), text: await page.textContent('#tourText'),
             hole: await page.evaluate(() => { const h = document.querySelector('.tour-hole'); return h.classList.contains('none') ? 0 : h.getBoundingClientRect().width; }) });
           await page.click('#tourNext');
         }
         return out;
       };
-      for (const [subject, btn, total] of [['maths', 'Start practice', 11], ['sel', 'Start test', 10], ['comp', 'Start paper', 10]]) {
+      for (const [subject, btn, total] of [['maths', 'Start practice', 12], ['sel', 'Start test', 11], ['comp', 'Start paper', 11]]) {
         const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ subject }) });
         const steps = await walk(page);
         const start = steps.find(s => s.title === 'Start') || {};
@@ -719,6 +721,136 @@ async function run(site) {
         check('R2.2 erase: no page errors', errors.length === 0, errors.join(' | '));
         await context.close();
       }
+    });
+    // v1.9.0: mini games — the Games tab, then a full one-minute round of times-table balloons on a fake clock
+    await flow('v1.9.0 mini game', async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true });
+      const game = () => page.evaluate(() => window.__testGame());
+      const shown = sel => page.isVisible(sel);
+      const run = ms => page.clock.runFor(ms);
+      const questions = () => page.evaluate(() => [...document.querySelectorAll('#gameField .bl:not(.pop) .bl-q')].map(e => e.textContent));
+      const answerOf = q => q.split(' × ').map(Number).reduce((a, b) => a * b);
+      const press = async keys => { for (const k of keys) await page.click(`#gamePad [data-k="${k}"]`); };
+      await run(500);
+      check('game: a Games tab is in the bottom bar, after Students', await page.evaluate(() => {
+        const tabs = [...document.querySelectorAll('.bottom-nav > button')].map(b => b.id || b.dataset.go);
+        return tabs.indexOf('navGames') === tabs.indexOf('navStudents') + 1;
+      }));
+      check('game: the tab reads "Games" and is named "Mini games"', (await page.textContent('#navGames')).trim() === 'Games' && (await page.getAttribute('#navGames', 'aria-label')) === 'Mini games');
+      await page.click('#navGames');
+      check('game: the tab opens the list of mini games', (await shown('#screen-games')) && /Times-table balloons/.test(await page.textContent('#gameList')));
+      check('game: the Games tab is marked as the current page', (await page.getAttribute('#navGames', 'aria-current')) === 'page');
+      await page.click('#play-balloons');
+      check('game: Play shows the start card', (await shown('#gameIntro')) && (await shown('#gameGo')));
+      check('game: no bottom bar and no ? during the game', !(await shown('.bottom-nav')) && !(await shown('#tourBtn')));
+      await page.click('#gameGo');
+      await run(1000);
+      const first = await game();
+      check('game: one balloon at a time at the start', first.balloons === 1, JSON.stringify(first));
+      const q1 = (await questions())[0] || '';
+      check('game: the balloon carries a question from 1 × 1 to 9 × 9', /^[1-9] × [1-9]$/.test(q1), q1);
+      check('game: the balloon is inside the field', await page.evaluate(() => {
+        const f = document.querySelector('#gameField').getBoundingClientRect(), b = document.querySelector('#gameField .bl').getBoundingClientRect();
+        return b.left >= f.left && b.right <= f.right;
+      }));
+      // a balloon rises: a moment later it is higher
+      const y = () => page.evaluate(() => document.querySelector('#gameField .bl').getBoundingClientRect().top);
+      const y0 = await y(); await run(500); const y1 = await y();
+      check('game: the balloon rises', y1 < y0, `${y0} -> ${y1}`);
+      // right answer on the keypad: an arrow, a point
+      await press(String(answerOf(q1)).split(''));
+      check('game: typed digits show', (await page.textContent('#gameTyped')).trim() === String(answerOf(q1)));
+      await press(['fire']);
+      await run(50);
+      check('game: firing shows an arrow', (await page.locator('#gameField .bl-arrow').count()) === 1);
+      await run(800);
+      let st = await game();
+      check('game: the right answer scores a point', st.score === 1 && (await page.textContent('#gameScore')) === '1', JSON.stringify(st));
+      check('game: the hit balloon is gone', (await page.locator('#gameField .bl').count()) === st.balloons, JSON.stringify(st));
+      check('game: a hit is announced for screen readers', /Hit! Points: 1/.test(await page.textContent('#gameStatus')));
+      // wrong answer: no point, a warning, the bow locked for a short time
+      await press(['0', 'fire']);
+      await run(50);
+      st = await game();
+      check('game: a wrong answer scores nothing and locks the bow', st.score === 1 && st.locked && st.wrong === 1, JSON.stringify(st));
+      check('game: the warning shows', await shown('#gameWarn'));
+      check('game: the keys are disabled while locked', await page.evaluate(() => [...document.querySelectorAll('#gamePad button')].every(b => b.disabled)));
+      await page.keyboard.type('5'); await page.keyboard.press('Enter');
+      check('game: nothing can be typed or fired while locked', (await game()).wrong === 1 && (await page.textContent('#gameTyped')).trim() === '');
+      await run(1600);
+      st = await game();
+      check('game: the lock ends after a moment', !st.locked && !(await shown('#gameWarn')) && !(await page.isDisabled('#gamePad [data-k="1"]')), JSON.stringify(st));
+      // a physical keyboard works too
+      const q2 = (await questions())[0];
+      if (q2) { await page.keyboard.type(String(answerOf(q2))); await page.keyboard.press('Enter'); await run(800); }
+      check('game: a keyboard answer and Enter score too', !q2 || (await game()).score === 2, q2);
+      // later in the round: more balloons at once
+      let most = 0;
+      for (let s = 0; s < 45; s++) { await run(1000); most = Math.max(most, (await game()).balloons); }
+      check('game: more balloons at once later on', most >= 3, 'most ' + most);
+      check('game: the clock counts down', Number(await page.textContent('#gameTime')) <= 12, await page.textContent('#gameTime'));
+      // the header (profile, language, parent lock) is hidden, so nothing there can end the round; the keypad is on screen
+      check('game: the header is hidden during a round', !(await shown('#parentBtn')) && !(await shown('#profileBtn')));
+      check('game: the whole keypad is on screen', await page.evaluate(() => document.querySelector('#gamePad').getBoundingClientRect().bottom <= innerHeight));
+      await run(15000);
+      check('game: after one minute the round ends', (await shown('#gameOver')) && (await page.locator('#gameField .bl').count()) === 0);
+      const score = (await game()).score;
+      check('game: the end card gives the score', (await page.textContent('#gameFinal')) === `Balloons popped: ${score}`, await page.textContent('#gameFinal'));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1') || '{}'));
+      check('game: the best score is saved for this student', saved.balloons && saved.balloons.best === score && saved.balloons.plays === 1, JSON.stringify(saved));
+      await page.click('#gameBack');
+      check('game: the list shows the best score', (await page.textContent('#gameList')).includes(`Best: ${score}`), await page.textContent('#gameList'));
+      // R1.4: the start card after a round shows a fresh clock and no points
+      await page.click('#play-balloons');
+      check('R1.4 game: the start card after a round reads 60 s and 0 points', (await page.textContent('#gameTime')) === '60' && (await page.textContent('#gameScore')) === '0',
+        (await page.textContent('#gameTime')) + ' / ' + (await page.textContent('#gameScore')));
+      // stopping a round with ✕ keeps no score, and leaves no timer behind even with an arrow in flight
+      await page.click('#gameGo'); await run(2000);
+      const q3 = (await questions())[0];
+      if (q3) { await press(String(answerOf(q3)).split('')); await press(['fire']); await run(50); }
+      await page.click('#gameQuit');
+      const after = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1')));
+      check('game: ✕ goes back to the list and keeps no score', (await shown('#screen-games')) && after.balloons.plays === 1, JSON.stringify(after));
+      const left = await game();
+      check('game: ✕ with an arrow in flight leaves no timers', !!q3 && left.timers === 0, JSON.stringify(left) + ' q ' + q3);
+      check('game: the bottom bar is back', await shown('.bottom-nav'));
+      // Chinese
+      await page.click('#langBtn');
+      check('game: Chinese tab and title', (await page.textContent('#navGames')).trim() === '小游戏' && /乘法气球/.test(await page.textContent('#gameList')));
+      check('game: fits a 375 px screen', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      check('game: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.9.0 R1.1 / R1.3: small phones (320×568, 375×667). The start and end cards fit inside the field, in both languages,
+    // and no bottom-bar label is cut short.
+    for (const [W, H] of [[320, 568], [375, 667]]) await flow(`v1.9.0 R1.1 small phone ${W}×${H}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true, context: { viewport: { width: W, height: H } } });
+      const run = ms => page.clock.runFor(ms);
+      // every line of the card is inside the field and nothing needs scrolling
+      const fits = sel => page.evaluate(s => {
+        const f = document.querySelector('#gameField').getBoundingClientRect(), o = document.querySelector(s);
+        const out = [...o.querySelectorAll('p, button')].filter(n => { const r = n.getBoundingClientRect(); return r.top < f.top - 0.5 || r.bottom > f.bottom + 0.5 || r.left < f.left - 0.5 || r.right > f.right + 0.5; });
+        return { ok: out.length === 0 && o.scrollHeight <= o.clientHeight + 1, field: Math.round(f.height), content: o.scrollHeight, out: out.map(n => n.id || n.className || n.textContent) };
+      }, sel);
+      const tabsWhole = () => page.evaluate(() => [...document.querySelectorAll('.bottom-nav .tl')].filter(n => n.scrollWidth > n.clientWidth + 0.5).map(n => n.textContent));
+      await run(500);
+      for (const lang of ['en', 'zh']) {
+        if (lang === 'zh') await page.click('#langBtn');
+        const cut = await tabsWhole();
+        check(`R1.3 ${W}×${H} ${lang}: every bottom-bar label is whole`, cut.length === 0, cut.join(', '));
+        await page.click('#navGames'); await page.click('#play-balloons');
+        let m = await fits('#gameIntro');
+        check(`R1.1 ${W}×${H} ${lang}: the start card fits the field`, m.ok, JSON.stringify(m));
+        await page.click('#gameGo');
+        for (let s = 0; s < 62; s++) await run(1000);
+        check(`R1.1 ${W}×${H} ${lang}: the round ends`, await page.isVisible('#gameOver'));
+        m = await fits('#gameOver');
+        check(`R1.1 ${W}×${H} ${lang}: the end card fits the field`, m.ok, JSON.stringify(m));
+        await page.click('#gameBack');
+      }
+      check(`R1.1 ${W}×${H}: no sideways scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      check(`R1.1 ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
     });
   } finally {
     await browser.close();

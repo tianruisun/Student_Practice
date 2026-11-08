@@ -205,6 +205,49 @@
       <div id="progBody"></div>
     </section>
 
+    <!-- MINI GAMES: the list, then one game -->
+    <section id="screen-games" class="screen" hidden aria-labelledby="gamesH">
+      <h2 id="gamesH" data-i18n="games.heading">Mini games</h2>
+      <div id="gameList" class="game-list"></div>
+    </section>
+
+    <section id="screen-game" class="screen" hidden aria-labelledby="gameH">
+      <h2 id="gameH" class="sr-only" data-i18n="game.balloons">Times-table balloons</h2>
+      <div class="bl-hud">
+        <span class="bl-stat"><span aria-hidden="true">⏱</span> <span class="sr-only" data-i18n="game.timeLeft">Seconds left</span> <b id="gameTime">60</b></span>
+        <span class="bl-stat"><span aria-hidden="true">⭐</span> <span class="sr-only" data-i18n="game.points">Points</span> <b id="gameScore">0</b></span>
+        <button type="button" id="gameQuit" class="round-btn" data-i18n-aria="game.quit"><span aria-hidden="true">✕</span></button>
+      </div>
+      <div id="gameField" class="bl-field">
+        <div class="bl-bow" aria-hidden="true">🏹</div>
+        <div id="gameOver" class="bl-over" hidden>
+          <p class="bl-over-title" data-i18n="game.timeUp">Time is up!</p>
+          <p class="bl-over-score" id="gameFinal"></p>
+          <p class="bl-over-best" id="gameBest"></p>
+          <div class="bl-over-acts">
+            <button type="button" id="gameAgain" class="btn primary" data-i18n="game.again">Play again</button>
+            <button type="button" id="gameBack" class="btn ghost" data-i18n="game.back">Back to games</button>
+          </div>
+        </div>
+        <div id="gameIntro" class="bl-over" hidden>
+          <p class="bl-over-title" data-i18n="game.balloons">Times-table balloons</p>
+          <p class="bl-over-best" data-i18n="game.howTo">Type the answer on a balloon and tap 🏹 to shoot it.</p>
+          <button type="button" id="gameGo" class="btn primary big" data-i18n="game.go">Start</button>
+        </div>
+      </div>
+      <div class="bl-entry">
+        <output id="gameTyped" class="bl-typed" aria-live="off">&nbsp;</output>
+        <p id="gameWarn" class="bl-warn" hidden data-i18n="game.locked">Wrong answer! Wait a moment…</p>
+      </div>
+      <p id="gameStatus" class="sr-only" role="status"></p>
+      <div id="gamePad" class="bl-pad" role="group" data-i18n-aria="game.pad">
+        <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+        <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+        <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+        <button type="button" data-k="back" data-i18n-aria="game.del">⌫</button><button type="button" data-k="0">0</button><button type="button" data-k="fire" class="bl-fire" data-i18n-aria="game.fire">🏹</button>
+      </div>
+    </section>
+
     <!-- PARENT SETTINGS -->
     <section id="screen-parent" class="screen" hidden aria-labelledby="parH">
       <h2 id="parH" data-i18n="parent.heading">Parent settings</h2>
@@ -266,6 +309,7 @@
     <button type="button" class="tab" data-go="progress"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span class="tl" data-i18n="nav.progress">Progress</span></button>
     <button type="button" id="fabStart" class="fab" data-i18n-aria="home.start"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg></button>
     <button type="button" class="tab" id="navStudents"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.6a3.3 3.3 0 0 1 0 6.6M18 14.8c2 .7 3.2 2.5 3.6 5.2"/></svg><span class="tl" data-i18n="nav.students">Students</span></button>
+    <button type="button" class="tab" id="navGames" data-go="games" data-i18n-aria="games.heading"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c-3.3 0-5.8 2.6-5.8 5.9 0 3.5 2.7 6.4 5.8 6.4s5.8-2.9 5.8-6.4c0-3.3-2.5-5.9-5.8-5.9z"/><path d="M12 15.8l-1 1.6h2zM12 17.4c-.6 1.3.6 2.1 0 3.3"/><path d="M9.6 7.4a2.6 2.6 0 0 1 2-1.4"/></svg><span class="tl" data-i18n="nav.games">Games</span></button>
     <button type="button" class="tab" id="navParent" data-go="parent"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="tl" data-i18n="nav.settings">Settings</span></button>
   </nav>
 
@@ -330,6 +374,7 @@
   <script src="./js/records.js"></script>
   <script src="./js/ai.js"></script>
   <script src="./js/tour.js"></script>
+  <script src="./js/game-balloons.js"></script>
   <script src="./js/app.js"></script>
 </body>
 </html>

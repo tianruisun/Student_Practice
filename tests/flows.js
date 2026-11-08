@@ -595,6 +595,7 @@ async function run(site) {
         await page.click('#tourBtn');
         const out = [];
         for (let k = 0; k < 13 && (await tourOpen(page)); k++) {
+          await page.waitForTimeout(300);   // v1.10.0: the highlight grows from 0 over 0.25 s; measured at once it read 0 on a busy machine (the same on v1.9.0)
           out.push({ step: await page.textContent('#tourStep'), title: await page.textContent('#tourTitle'), text: await page.textContent('#tourText'),
             hole: await page.evaluate(() => { const h = document.querySelector('.tour-hole'); return h.classList.contains('none') ? 0 : h.getBoundingClientRect().width; }) });
           await page.click('#tourNext');
@@ -725,7 +726,15 @@ async function run(site) {
     // v1.9.0: mini games — the Games tab, then a full one-minute round of times-table balloons on a fake clock
     await flow('v1.9.0 mini game', async () => {
       const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true });
-      const game = () => page.evaluate(() => window.__testGame());
+      /* the round as the page shows it, so this flow also runs on Production (v1.10.0: it used window.__testGame, which
+         Production does not have); the hook only adds what the page cannot show (wrong answers, timers) where it exists */
+      const hook = await page.evaluate(() => typeof window.__testGame === 'function');
+      const game = async () => {
+        const d = await page.evaluate(() => ({ score: Number(document.querySelector('#gameScore').textContent),
+          balloons: document.querySelectorAll('#gameField .bl:not(.hit)').length, locked: !document.querySelector('#gameWarn').hidden }));
+        if (hook) Object.assign(d, await page.evaluate(() => { const s = window.__testGame() || {}; return { wrong: s.wrong, timers: s.timers }; }));
+        return d;
+      };
       const shown = sel => page.isVisible(sel);
       const run = ms => page.clock.runFor(ms);
       const questions = () => page.evaluate(() => [...document.querySelectorAll('#gameField .bl:not(.pop) .bl-q')].map(e => e.textContent));
@@ -772,11 +781,11 @@ async function run(site) {
       await press(['0', 'fire']);
       await run(50);
       st = await game();
-      check('game: a wrong answer scores nothing and locks the bow', st.score === 1 && st.locked && st.wrong === 1, JSON.stringify(st));
+      check('game: a wrong answer scores nothing and locks the bow', st.score === 1 && st.locked && (!hook || st.wrong === 1), JSON.stringify(st));
       check('game: the warning shows', await shown('#gameWarn'));
       check('game: the keys are disabled while locked', await page.evaluate(() => [...document.querySelectorAll('#gamePad button')].every(b => b.disabled)));
       await page.keyboard.type('5'); await page.keyboard.press('Enter');
-      check('game: nothing can be typed or fired while locked', (await game()).wrong === 1 && (await page.textContent('#gameTyped')).trim() === '');
+      check('game: nothing can be typed or fired while locked', (!hook || (await game()).wrong === 1) && (await game()).score === 1 && (await page.textContent('#gameTyped')).trim() === '');
       await run(1600);
       st = await game();
       check('game: the lock ends after a moment', !st.locked && !(await shown('#gameWarn')) && !(await page.isDisabled('#gamePad [data-k="1"]')), JSON.stringify(st));
@@ -812,7 +821,7 @@ async function run(site) {
       const after = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1')));
       check('game: ✕ goes back to the list and keeps no score', (await shown('#screen-games')) && after.balloons.plays === 1, JSON.stringify(after));
       const left = await game();
-      check('game: ✕ with an arrow in flight leaves no timers', !!q3 && left.timers === 0, JSON.stringify(left) + ' q ' + q3);
+      check('game: ✕ with an arrow in flight leaves no timers', !!q3 && (!hook || left.timers === 0), JSON.stringify(left) + ' q ' + q3);   // timers: test hosts only
       check('game: the bottom bar is back', await shown('.bottom-nav'));
       // Chinese
       await page.click('#langBtn');
@@ -850,6 +859,239 @@ async function run(site) {
       }
       check(`R1.1 ${W}×${H}: no sideways scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       check(`R1.1 ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.10.0: the three puzzle games. Each flow reads the page (not window.__testGame), so it also runs on Production.
+    const pzSize = page => page.evaluate(() => {
+      const pad = document.querySelector('#pzBody .pz-pad'), hud = document.querySelector('.pz-hud').getBoundingClientRect();
+      return { padIn: !pad || pad.getBoundingClientRect().bottom <= innerHeight + 0.5, hudIn: hud.top >= -0.5,
+        noScroll: document.documentElement.scrollHeight <= innerHeight + 1, noSideways: document.documentElement.scrollWidth <= innerWidth };
+    });
+    await flow('v1.10.0 Sudoku', async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true });
+      const run = ms => page.clock.runFor(ms);
+      const shown = sel => page.isVisible(sel);
+      const grid = () => page.evaluate(() => [...document.querySelectorAll('.sd-cell')].map(c => Number(c.textContent) || 0));
+      await run(300);
+      await page.click('#navGames');
+      const titles = await page.evaluate(() => [...document.querySelectorAll('#gameList h3')].map(h => h.textContent));
+      check('sudoku: four games are listed', JSON.stringify(titles) === JSON.stringify(['Times-table balloons', 'Maths Sudoku', 'Money Master', 'Broken Calculator']), JSON.stringify(titles));
+      await page.click('#play-sudoku');
+      const levels = await page.evaluate(() => [...document.querySelectorAll('#pzLevels button')].map(b => b.id));
+      check('sudoku: the start card offers easy, medium and hard', JSON.stringify(levels) === '["pzGo-easy","pzGo-medium","pzGo-hard"]', JSON.stringify(levels));
+      check('sudoku: no bottom bar, header or ? during the game', !(await shown('.bottom-nav')) && !(await shown('#profileBtn')) && !(await shown('#tourBtn')));
+      check('sudoku: the Games tab stays current', (await page.getAttribute('#navGames', 'aria-current')) === 'page');
+      await page.click('#pzGo-easy');
+      let g = await grid();
+      check('sudoku: easy is 4 × 4 with 8 squares to fill', g.length === 16 && g.filter(v => !v).length === 8 && (await page.textContent('#pzScore')) === '8', JSON.stringify(g));
+      const answer = await page.evaluate(gr => SudokuRules.solve(gr, SudokuRules.LEVELS.easy), g);
+      check('sudoku: the puzzle can be solved', Array.isArray(answer) && answer.length === 16);
+      // a clash (R2.1): an empty square that shares a row, column or box with a given number, then that number.
+      // Its row alone can be empty (about 1 easy puzzle in 27), so the peers are used, not just the row.
+      const P = await page.evaluate(() => SudokuRules.peers(SudokuRules.LEVELS.easy));
+      const i0 = g.findIndex((v, i) => !v && P[i].some(j => g[j])), clash = i0 >= 0 ? g[P[i0].find(j => g[j])] : 0;
+      check('sudoku: an empty square has a given number next to it', i0 >= 0 && clash > 0, JSON.stringify(g));
+      await page.locator('.sd-cell').nth(i0).click();
+      check('sudoku: tapping a square selects it', await page.locator('.sd-cell').nth(i0).evaluate(c => c.classList.contains('sel')));
+      await page.click(`#pzBody .pz-pad [data-k="${clash}"]`);
+      check('sudoku: a clash is marked red and announced', (await page.locator('.sd-cell.bad').count()) >= 2 && /already in this row/.test(await page.textContent('#pzStatus')));
+      await page.click('#pzBody .pz-pad [data-k="back"]');
+      check('sudoku: ⌫ clears the square', (await grid())[i0] === 0 && (await page.locator('.sd-cell.bad').count()) === 0);
+      const given = g.findIndex(v => v);
+      await page.locator('.sd-cell').nth(given).click(); await page.click(`#pzBody .pz-pad [data-k="${g[given] === 1 ? 2 : 1}"]`);
+      check('sudoku: a given number cannot be changed', (await grid())[given] === g[given]);
+      await run(5000);
+      check('sudoku: the clock runs', (await page.textContent('#pzClock')) === '0:05', await page.textContent('#pzClock'));
+      check('sudoku: board and keypad fit the screen', Object.values(await pzSize(page)).every(Boolean), JSON.stringify(await pzSize(page)));
+      // fill every square: one by keyboard, the rest on the keypad
+      const empty = g.map((v, i) => (v ? -1 : i)).filter(i => i >= 0);
+      await page.locator('.sd-cell').nth(empty[0]).click(); await page.keyboard.press(String(answer[empty[0]]));
+      for (const i of empty.slice(1)) { await page.locator('.sd-cell').nth(i).click(); await page.click(`#pzBody .pz-pad [data-k="${answer[i]}"]`); }
+      check('sudoku: a full, correct grid ends the game', await shown('#pzOver'));
+      const t1 = await page.textContent('#pzClock');
+      check('sudoku: the end card gives the level and time', (await page.textContent('#pzFinal')) === 'Easy: ' + t1 && (await page.textContent('#pzBest')) === 'New best time!', await page.textContent('#pzFinal'));
+      let saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1') || '{}'));
+      check('sudoku: the best time is saved per level for this student', saved.sudoku && saved.sudoku.easy && saved.sudoku.easy.best >= 5000 && saved.sudoku.easy.plays === 1 && !saved.sudoku.hard, JSON.stringify(saved));
+      await run(3000);
+      check('sudoku: the clock stops at the end', (await page.textContent('#pzClock')) === t1);
+      await page.click('#pzBack');
+      check('sudoku: the list shows the best time', (await page.textContent('#gameList')).includes('Best times: Easy ' + t1), await page.textContent('#gameList'));
+      await page.click('#play-sudoku');
+      check('sudoku: the start card shows the best time for easy only', (await page.textContent('#pzGo-easy')).includes('Best: ' + t1) && (await page.textContent('#pzGo-hard')).includes('No time yet'));
+      await page.click('#pzGo-hard');
+      g = await grid();
+      check('sudoku: hard is 9 × 9 with 33 numbers given', g.length === 81 && g.filter(Boolean).length === 33);
+      check('sudoku: hard fits the screen', Object.values(await pzSize(page)).every(Boolean), JSON.stringify(await pzSize(page)));
+      await run(2000);
+      await page.click('#pzQuit');
+      saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1') || '{}'));
+      check('sudoku: ✕ goes back to the list and keeps no time', (await shown('#screen-games')) && !saved.sudoku.hard && (await shown('.bottom-nav')), JSON.stringify(saved));
+      await page.click('#langBtn');
+      check('sudoku: Chinese title', /数独/.test(await page.textContent('#gameList')));
+      check('sudoku: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    await flow('v1.10.0 Money Master', async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true });
+      const run = ms => page.clock.runFor(ms);
+      const shown = sel => page.isVisible(sel);
+      const q = () => page.evaluate(() => {
+        const items = [...document.querySelectorAll('.mm-item')].map(li => Number(li.dataset.cents)), note = document.querySelector('.mm-note');
+        return { items, paid: Number(note.dataset.cents), colour: note.className, change: Number(note.dataset.cents) - items.reduce((s, c) => s + c, 0) };
+      });
+      const type = async cents => { for (const k of (cents / 100).toFixed(2)) await page.click(`#pzBody .pz-pad [data-k="${k}"]`); };
+      await run(300);
+      await page.click('#navGames'); await page.click('#play-money');
+      check('money: the start card offers three levels', (await page.locator('#pzLevels button').count()) === 3);
+      await page.click('#pzGo-medium');
+      let a = await q();
+      check('money: medium is one or two items, paid with $20 or $50', a.items.length >= 1 && a.items.length <= 2 && [2000, 5000].includes(a.paid) && a.change > 0, JSON.stringify(a));
+      check('money: prices are in 5 cents and shown as $x.xx', a.items.every(c => c % 5 === 0) && (await page.locator('.mm-price').first().textContent()) === '$' + (a.items[0] / 100).toFixed(2));
+      check('money: the note has its Australian colour', a.colour.includes(a.paid === 2000 ? 'mm-red' : 'mm-yellow'), a.colour);
+      check('money: question 1 of 5', (await page.textContent('#pzScore')) === '1/5');
+      await type(a.change + 5); await page.click('#pzBody .pz-pad [data-k="ok"]');
+      check('money: a wrong answer says try again and stays on the question', /Not quite/.test(await page.textContent('.mm-msg')) && (await page.textContent('#pzScore')) === '1/5');
+      check('money: the answer box is cleared for another try', (await page.textContent('.mm-typed')).trim() === '$');
+      await run(4000);
+      // right: typed on the keyboard, as dollars and cents
+      await page.keyboard.type((a.change / 100).toFixed(2)); await page.keyboard.press('Enter');
+      check('money: a right answer shows the notes and coins', /^Right! \$[\d.]+ = /.test(await page.textContent('.mm-msg')), await page.textContent('.mm-msg'));
+      await run(1500);
+      check('money: then the next question', (await page.textContent('#pzScore')) === '2/5');
+      for (let k = 2; k <= 5; k++) { a = await q(); await type(a.change); await page.click('#pzBody .pz-pad [data-k="ok"]'); await run(1500); }
+      check('money: five right answers end the round', await shown('#pzOver'));
+      const t1 = await page.textContent('#pzClock');
+      check('money: the end card gives the level and time', (await page.textContent('#pzFinal')) === 'Medium: ' + t1, await page.textContent('#pzFinal'));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1') || '{}'));
+      check('money: the best time is saved for medium', saved.money && saved.money.medium && saved.money.medium.best >= 4000 && !saved.money.easy, JSON.stringify(saved));
+      await page.click('#pzAgain');
+      check('money: play again starts the same level', (await page.locator('.mm-item').count()) >= 1 && (await page.textContent('#pzScore')) === '1/5' && (await page.textContent('#pzClock')) === '0:00');
+      check('money: fits the screen', Object.values(await pzSize(page)).every(Boolean), JSON.stringify(await pzSize(page)));
+      await page.click('#pzQuit');
+      check('money: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    await flow('v1.10.0 Broken Calculator', async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true });
+      const run = ms => page.clock.runFor(ms);
+      const shown = sel => page.isVisible(sel);
+      const answer = () => page.evaluate(() => { const m = document.querySelector('.bc-lcd').dataset.masked; return { masked: m, ways: BrokenRules.solve(m) }; });
+      const press = async keys => { for (const k of keys) await page.click(`#pzBody .pz-pad [data-k="${k}"]`); };
+      await run(300);
+      await page.click('#navGames'); await page.click('#play-broken');
+      check('broken: one Start button (no levels) and a 3:00 clock', (await page.locator('#pzLevels button').count()) === 1 && (await page.textContent('#pzClock')) === '3:00');
+      await page.click('#pzGo');
+      let a = await answer();
+      check('broken: the screen shows a sum with broken digits', /\?/.test(a.masked) && (await page.locator('.bc-hole').count()) === a.masked.split('?').length - 1, a.masked);
+      check('broken: the broken digits have exactly one answer', a.ways.length === 1, JSON.stringify(a));
+      // R1.2: = before every broken digit is typed says how many are still to type (it used to do nothing)
+      await press(['ok']);
+      const holes = a.ways[0].length;
+      check('R1.2: = with no digits typed says how many are still to type', (await page.textContent('.bc-msg')) === 'Digits still to type: ' + holes &&
+        (await page.textContent('#pzStatus')) === 'Digits still to type: ' + holes && (await page.locator('.bc-msg.warn').count()) === 1, await page.textContent('.bc-msg'));
+      check('R1.2: and keeps the same sum and score', (await answer()).masked === a.masked && (await page.textContent('#pzScore')) === '0');
+      if (holes > 1) {
+        await press([a.ways[0][0], 'ok']);
+        check('R1.2: with one digit typed it counts one fewer', (await page.textContent('.bc-msg')) === 'Digits still to type: ' + (holes - 1), await page.textContent('.bc-msg'));
+        await press(['back']);
+      }
+      await press(['back']);
+      check('R1.2: typing again brings back the normal message', (await page.textContent('.bc-msg')) === 'Missing digits to find: ' + holes && (await page.locator('.bc-msg.warn').count()) === 0, await page.textContent('.bc-msg'));
+      await press(a.ways[0].split(''));
+      check('broken: typed digits fill the broken places', (await page.locator('.bc-hole.filled').count()) === a.ways[0].length);
+      await press(['ok']);
+      check('broken: a right answer scores a point', (await page.textContent('#pzScore')) === '1');
+      await run(600);
+      a = await answer();
+      const wrongDigits = a.ways[0].split('').map(d => String((Number(d) + 1) % 10));
+      await page.keyboard.type(wrongDigits.join('')); await page.keyboard.press('Enter');
+      check('broken: a wrong answer scores nothing and shows the right sum', (await page.textContent('#pzScore')) === '1' && (await page.locator('.bc-lcd.no').count()) === 1);
+      await run(1600);
+      check('broken: then a new sum', (await page.locator('.bc-lcd.no').count()) === 0);
+      check('broken: the clock counts down', (await page.textContent('#pzClock')) < '3:00', await page.textContent('#pzClock'));
+      check('broken: fits the screen', Object.values(await pzSize(page)).every(Boolean), JSON.stringify(await pzSize(page)));
+      let score = 1;
+      for (let k = 0; k < 8; k++) { a = await answer(); await press(a.ways[0].split('').concat('ok')); score++; await run(600); }
+      check('broken: each right answer adds a point', score === Number(await page.textContent('#pzScore')), score + ' / ' + await page.textContent('#pzScore'));
+      for (let s = 0; s < 18; s++) await run(10000);
+      check('broken: after three minutes the round ends', await shown('#pzOver'));
+      check('broken: the end card gives the number right', (await page.textContent('#pzFinal')) === 'Correct answers: ' + score, await page.textContent('#pzFinal'));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.games.p1') || '{}'));
+      check('broken: the best score is saved', saved.broken && saved.broken.best === score && saved.broken.plays === 1, JSON.stringify(saved));
+      await page.click('#pzBack');
+      check('broken: the list shows the best score', (await page.locator('.game-card').nth(3).textContent()).includes('Best: ' + score));
+      check('broken: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.10.0: every puzzle game fits small, short and sideways phones; R2.1 / R2.2 (v1.9.0) are checked here too
+    for (const [W, H] of [[320, 568], [360, 640], [568, 320]]) await flow(`v1.10.0 games fit ${W}×${H}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { clock: true, context: { viewport: { width: W, height: H } } });
+      const run = ms => page.clock.runFor(ms);
+      await run(300);
+      if (W === 360) {
+        const cut = await page.evaluate(() => [...document.querySelectorAll('.bottom-nav .tl')].filter(n => n.scrollWidth > n.clientWidth + 0.5).map(n => n.textContent));
+        check('R2.1 360×640: every bottom-bar label is whole', cut.length === 0, cut.join(', '));
+      }
+      for (const [id, lv] of [['sudoku', 'hard'], ['sudoku', 'medium'], ['money', 'hard'], ['broken', '']]) {
+        await page.click('#navGames'); await page.click('#play-' + id); await page.click('#pzGo' + (lv ? '-' + lv : ''));
+        await run(500);
+        const m = await pzSize(page);
+        check(`games ${W}×${H}: ${id} ${lv} fits`, Object.values(m).every(Boolean), JSON.stringify(m));
+        // R1.4: the title breaks between words only; R1.5: each number in the top bar has a visible word
+        const hud = await page.evaluate(() => {
+          const h = document.querySelector('#pzH'), node = h.firstChild, split = [];
+          let at = 0;
+          for (const word of h.textContent.split(' ')) {
+            const r = document.createRange(); r.setStart(node, at); r.setEnd(node, at + word.length);
+            if (new Set([...r.getClientRects()].map(x => Math.round(x.top))).size > 1) split.push(word);
+            at += word.length + 1;
+          }
+          const words = [...document.querySelectorAll('.pz-hud .pz-stat-l')].map(s => { const b = s.getBoundingClientRect(); return b.width > 0 && b.height >= 8 ? s.textContent : ''; });
+          return { split, words, cut: h.scrollWidth > h.clientWidth + 0.5 };
+        });
+        check(`R1.4 ${W}×${H}: ${id} title breaks between words only`, !hud.split.length && !hud.cut, JSON.stringify(hud));
+        const want = { sudoku: 'left', money: 'question', broken: 'points' }[id];
+        check(`R1.5 ${W}×${H}: ${id} top bar reads "time" and "${want}"`, JSON.stringify(hud.words) === JSON.stringify(['time', want]), JSON.stringify(hud.words));
+        if (id === 'sudoku' && lv === 'hard' && W > H) {
+          const cell = await page.evaluate(() => document.querySelector('.sd-cell').getBoundingClientRect().width);
+          check(`R1.3 ${W}×${H}: a 9 × 9 square is at least 30 px sideways (was 25)`, cell >= 30, String(cell));
+        }
+        await page.click('#pzQuit');
+      }
+      // R1.1: a solved hard Sudoku and its end card fit together, with no page scroll and the top bar still on screen
+      await page.click('#navGames'); await page.click('#play-sudoku'); await page.click('#pzGo-hard');
+      const g = await page.evaluate(() => [...document.querySelectorAll('.sd-cell')].map(c => Number(c.textContent) || 0));
+      const ans = await page.evaluate(gr => SudokuRules.solve(gr, SudokuRules.LEVELS.hard), g);
+      for (let i = 0; i < g.length; i++) if (!g[i]) { await page.locator('.sd-cell').nth(i).click(); await page.keyboard.press(String(ans[i])); }
+      const end = await page.evaluate(() => {
+        const d = document.documentElement, o = document.querySelector('#pzOver').getBoundingClientRect(), hud = document.querySelector('.pz-hud').getBoundingClientRect();
+        return { over: !document.querySelector('#pzOver').hidden, scroll: d.scrollHeight - innerHeight, y: scrollY, cardIn: o.bottom <= innerHeight + 0.5, hudIn: hud.top >= -0.5,
+          grid: document.querySelectorAll('.sd-cell').length, pad: !!document.querySelector('#pzBody .pz-pad') && document.querySelector('#pzBody .pz-pad').getBoundingClientRect().height > 0 };
+      });
+      check(`R1.1 ${W}×${H}: solved hard grid and end card fit with no page scroll`, end.over && end.scroll <= 1 && end.y === 0 && end.cardIn && end.hudIn && end.grid === 81 && !end.pad, JSON.stringify(end));
+      await page.click('#pzAgain');
+      check(`R1.1 ${W}×${H}: play again brings the keypad back`, await page.evaluate(() => document.querySelector('#pzBody .pz-pad').getBoundingClientRect().height > 0 && !document.querySelector('#screen-puzzle').classList.contains('pz-ended')));
+      await page.click('#pzQuit');
+      if (H <= 520) {
+        await page.click('#navGames'); await page.click('#play-balloons'); await page.click('#gameGo'); await run(3000);
+        const b = await page.evaluate(() => { const f = document.querySelector('#gameField').getBoundingClientRect(), p = document.querySelector('#gamePad').getBoundingClientRect(); return { field: Math.round(f.height), pad: p.bottom <= innerHeight + 0.5 }; });
+        check(`R2.2 ${W}×${H}: balloon field and keypad both on screen`, b.field >= 120 && b.pad, JSON.stringify(b));
+        await page.click('#gameQuit');
+      }
+      check(`games ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // R3.3 (v1.7.0): a student with badges but no saved sessions (e.g. history cleared) still sees the badges on Progress
+    await flow('R3.3 badges with no sessions', async () => {
+      const t0 = Date.now();
+      const { context, page, errors } = await freshPage(browser, site, {
+        [SETTINGS]: settings({ year: 4 }),
+        'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }])
+      });
+      await page.click('[data-go="progress"]');
+      check('R3.3: Progress says there are no sessions', /No|no/.test(await page.textContent('#progBody')));
+      check('R3.3: the badge shelf is shown anyway', (await page.locator('#progBody .badge-shelf').count()) === 1 && /1/.test(await page.textContent('#progBody .badge-shelf h3')), await page.textContent('#progBody'));
+      check('R3.3: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
   } finally {

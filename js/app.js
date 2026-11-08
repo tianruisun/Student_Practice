@@ -111,11 +111,12 @@
   function go(screen) {
     if (screen === 'parent' && !S.parent) return;
     if (S.screen === 'game' && screen !== 'game' && game) game.stop();   // leaving a round ends it, with no score kept
+    if (S.screen === 'puzzle' && screen !== 'puzzle' && puzzle) puzzle.stop();   // the same for the puzzle games
     S.screen = screen;
     document.querySelectorAll('.screen').forEach(s => { s.hidden = s.id !== 'screen-' + screen; });
     document.querySelectorAll('.tab').forEach(b => {
       const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading'].includes(screen)) ||
-        (b.dataset.go === 'games' && screen === 'game');
+        (b.dataset.go === 'games' && (screen === 'game' || screen === 'puzzle'));
       if (cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
     render();
@@ -134,10 +135,11 @@
     $('#profileAvatar').textContent = (who.trim()[0] || 'S').toUpperCase();
     const nb = badgeCount(), ab = $('#avatarBadge');
     ab.hidden = !nb; ab.textContent = '🏅' + nb;
-    document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || S.screen === 'game');
-    document.body.classList.toggle('in-game', S.screen === 'game');   // the header too: a round needs the whole screen on a small phone
-    $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading' || S.screen === 'game';   // the tour shows Home; never leave a set for it
-    ({ home: renderHome, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame })[S.screen]();
+    const inGame = S.screen === 'game' || S.screen === 'puzzle';
+    document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || inGame);
+    document.body.classList.toggle('in-game', inGame);   // the header too: a round needs the whole screen on a small phone
+    $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading' || inGame;   // the tour shows Home; never leave a set for it
+    ({ home: renderHome, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
   }
 
   /* ---------- HOME ---------- */
@@ -934,11 +936,22 @@
   }
 
   /* ---------- PROGRESS ---------- */
-  /* ---------- MINI GAMES (v1.9.0) ---------- */
+  /* ---------- MINI GAMES (v1.9.0 balloons; v1.10.0 Sudoku, Money Master, Broken Calculator) ---------- */
   let game = null;   // the balloon game, made the first time it is played
-  const GAMES = [{ id: 'balloons', icon: '🎈', title: 'game.balloons', sub: 'game.balloonsSub' }];
-  const gameBest = id => ((store.get(Profiles.gameKey(), {}) || {})[id] || {}).best || 0;
-  const gameBusy = () => S.screen === 'game' && !!game && game.running;
+  let puzzle = null, puzzleId = '', puzzleLevel = '';   // the puzzle game on the puzzle screen, made each time one is opened
+  const LEVELS = ['easy', 'medium', 'hard'];
+  /* kind 'score': most points in a timed round is best. kind 'time': fastest finish, kept per level */
+  const GAMES = [
+    { id: 'balloons', icon: '🎈', title: 'game.balloons', sub: 'game.balloonsSub', kind: 'score' },
+    { id: 'sudoku', icon: '🔢', title: 'sudoku.title', sub: 'sudoku.sub', kind: 'time', make: 'SudokuGame', scoreIcon: '✏️', scoreLabel: 'sudoku.left', scoreShort: 'pz.leftShort' },
+    { id: 'money', icon: '💵', title: 'money.title', sub: 'money.sub', kind: 'time', make: 'MoneyGame', scoreIcon: '🧾', scoreLabel: 'money.question', scoreShort: 'pz.questionShort' },
+    { id: 'broken', icon: '🧮', title: 'broken.title', sub: 'broken.sub', kind: 'score', make: 'BrokenGame', scoreIcon: '⭐', scoreLabel: 'game.points', scoreShort: 'pz.pointsShort' }
+  ];
+  const fmtMs = ms => (window.GameKit ? window.GameKit.fmt(ms) : '');   // R1.6: one m:ss for the games (js/game-kit.js)
+  const gameRec = id => (store.get(Profiles.gameKey(), {}) || {})[id] || {};
+  const gameBest = id => gameRec(id).best || 0;
+  const levelBest = (id, lv) => (gameRec(id)[lv] || {}).best || 0;   // fastest finish in ms; 0 = not finished yet
+  const gameBusy = () => (S.screen === 'game' && !!game && game.running) || (S.screen === 'puzzle' && !!puzzle && puzzle.running);
 
   function renderGames() {
     const box = $('#gameList'); box.innerHTML = '';
@@ -947,8 +960,13 @@
       const icon = el('span', 'game-icon', g.icon); icon.setAttribute('aria-hidden', 'true');
       const text = el('div', 'game-text');
       text.append(el('h3', '', t(g.title)), el('p', 'muted small', t(g.sub)));
-      const best = gameBest(g.id);
-      if (best) text.append(el('p', 'small game-best', t('game.best', { n: best })));
+      if (g.kind === 'time') {
+        const times = LEVELS.filter(lv => levelBest(g.id, lv)).map(lv => t('lv.' + lv) + ' ' + fmtMs(levelBest(g.id, lv)));
+        if (times.length) text.append(el('p', 'small game-best', t('game.bestTimes', { list: times.join(' · ') })));
+      } else {
+        const best = gameBest(g.id);
+        if (best) text.append(el('p', 'small game-best', t('game.best', { n: best })));
+      }
       const play = el('button', 'btn primary', t('game.play')); play.type = 'button'; play.id = 'play-' + g.id;
       play.setAttribute('aria-label', t('game.play') + ' – ' + t(g.title));
       play.addEventListener('click', () => openGame(g.id));
@@ -958,11 +976,12 @@
   }
 
   function renderGame() { /* the round draws itself; static text is filled by applyStatic */ }
+  function renderPuzzle() { /* the same: the puzzle game draws its own board */ }
 
-  /* R1.5: the game id travels from its card to the record it writes, so a second game gets its own best score
-     (today 'balloons' is the only game, and the only one the game screen can play) */
+  /* R1.5 (v1.9.0): the game id travels from its card to the record it writes */
   let gameId = 'balloons';
   function openGame(id) {
+    if (id !== 'balloons') return openPuzzle(id);
     gameId = id;
     go('game');
     $('#gameOver').hidden = true; $('#gameIntro').hidden = false;
@@ -995,6 +1014,80 @@
     $('#gameAgain').focus();
   }
 
+  /* v1.10.0: Sudoku, Money Master and Broken Calculator share the puzzle screen */
+  function openPuzzle(id) {
+    const g = GAMES.find(x => x.id === id);
+    if (!g || !window[g.make] || !window.GameKit) return toast(t('game.missing'));
+    if (puzzle) puzzle.stop();
+    puzzleId = id;
+    puzzle = window[g.make].create($('#pzBody'), { clock: $('#pzClock'), score: $('#pzScore'), status: $('#pzStatus') },
+      { t, onEnd: res => endPuzzle(id, res) });
+    go('puzzle');
+    puzzleIntro();
+  }
+
+  function puzzleIntro() {
+    const g = GAMES.find(x => x.id === puzzleId);
+    $('#pzH').textContent = t(g.title);
+    $('#pzScoreIcon').textContent = g.scoreIcon;
+    $('#pzScoreLabel').textContent = t(g.scoreLabel);
+    $('#pzScoreShort').textContent = t(g.scoreShort);   // R1.5: a visible word under each number; the full label stays for screen readers
+    $('#pzClock').textContent = fmtMs(g.id === 'broken' && window.BrokenRules ? window.BrokenRules.SECONDS * 1000 : 0);
+    $('#pzScore').textContent = g.id === 'money' && window.MoneyRules ? '1/' + window.MoneyRules.ROUNDS : g.id === 'sudoku' ? '–' : '0';
+    $('#pzBody').innerHTML = '';
+    $('#screen-puzzle').classList.remove('pz-ended', 'pz-on');
+    $('#screen-puzzle').dataset.game = g.id;
+    $('#pzOver').hidden = true; $('#pzIntro').hidden = false;
+    $('#pzHow').textContent = t(g.id + '.how');
+    const box = $('#pzLevels'); box.innerHTML = '';
+    for (const lv of g.kind === 'time' ? LEVELS : ['']) {
+      const b = el('button', 'btn primary pz-level', lv ? t(g.id + '.lv.' + lv) : t('game.go'));
+      b.type = 'button'; b.id = 'pzGo' + (lv ? '-' + lv : '');
+      if (lv) {
+        const best = levelBest(g.id, lv);
+        b.append(el('span', 'pz-lvbest', best ? t('game.bestTime', { v: fmtMs(best) }) : t('game.noTime')));
+      } else b.classList.add('big');
+      b.addEventListener('click', () => playPuzzle(lv));
+      box.append(b);
+    }
+    box.querySelector('button').focus();
+  }
+
+  function playPuzzle(lv) {
+    if (!puzzle) return;
+    puzzleLevel = lv;
+    $('#pzIntro').hidden = true; $('#pzOver').hidden = true;
+    $('#screen-puzzle').classList.remove('pz-ended');
+    $('#screen-puzzle').classList.add('pz-on');   // a round is on screen (the sideways layout uses it, R1.3)
+    $('#pzStatus').textContent = '';
+    puzzle.start(lv);
+  }
+
+  function endPuzzle(id, res) {
+    const all = store.get(Profiles.gameKey(), {}) || {};
+    if (id === 'broken') {
+      const g = all[id] || { best: 0, plays: 0 }, isBest = res.score > (g.best || 0);
+      all[id] = { best: Math.max(g.best || 0, res.score), plays: (g.plays || 0) + 1, last: res.score, date: Date.now() };
+      $('#pzDone').textContent = t('game.timeUp');
+      $('#pzFinal').textContent = t('broken.final', { n: res.score });
+      $('#pzBest').textContent = isBest && res.score > 0 ? t('game.newBest') : t('game.best', { n: all[id].best });
+    } else {
+      const r = all[id] || {}, old = r[res.level] || {}, ms = Math.round(res.ms), isBest = !old.best || ms < old.best;
+      r[res.level] = { best: isBest ? ms : old.best, plays: (old.plays || 0) + 1, last: ms, date: Date.now() };
+      all[id] = r;
+      $('#pzDone').textContent = t(id + '.done');
+      $('#pzFinal').textContent = t('pz.finalTime', { lv: t('lv.' + res.level), v: fmtMs(ms) });
+      $('#pzBest').textContent = isBest ? t('pz.newBestTime') : t('game.bestTime', { v: fmtMs(old.best) });
+    }
+    store.set(Profiles.gameKey(), all);
+    // the finished Sudoku grid stays beside or above the card; the others clear
+    if (id !== 'sudoku') { $('#pzBody').innerHTML = ''; $('#screen-puzzle').classList.remove('pz-on'); }
+    // R1.1: with the card shown the keypad goes and the grid shrinks, so grid + card fit the screen with no page scroll
+    $('#screen-puzzle').classList.add('pz-ended');
+    $('#pzOver').hidden = false;
+    $('#pzAgain').focus();
+  }
+
   function renderProgress() {
     const box = $('#progBody'); box.innerHTML = '';
     $('#progH').textContent = t('prog.headingFor', { name: Profiles.name(Profiles.active) });
@@ -1008,7 +1101,8 @@
   function progressSections(box) {
     const part = fn => { try { fn(); } catch (e) { console.error('progress section', e); } };
     const h = (store.get(histKey(), []) || []).filter(x => x && typeof x === 'object');
-    if (!h.length) { box.append(el('p', 'muted', t('prog.none'))); return; }
+    // badges can exist with no sessions (an import whose session rows were all refused): show them anyway (R3.3, v1.7.0)
+    if (!h.length) { box.append(el('p', 'muted', t('prog.none'))); part(() => renderBadges(box)); return; }
     part(() => progressTop(box, h));
     part(() => renderBadges(box));
     part(() => progressTopics(box, h));
@@ -1508,6 +1602,9 @@
   $('#gameBack').addEventListener('click', () => go('games'));
   $('#gameQuit').addEventListener('click', () => go('games'));
   $('#gamePad').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b && game) game.key(b.dataset.k); });
+  $('#pzAgain').addEventListener('click', () => playPuzzle(puzzleLevel));
+  $('#pzBack').addEventListener('click', () => go('games'));
+  $('#pzQuit').addEventListener('click', () => go('games'));
   $('#profileAdd').addEventListener('submit', e => {
     e.preventDefault();
     if (S.screen === 'quiz' || S.screen === 'loading' || gameBusy()) return toast(t('profile.busy'));
@@ -1547,7 +1644,7 @@
      Production host, so students there cannot use it to see answers. */
   if (!(self.PRODUCTION_HOSTS || []).includes(location.hostname)) {
     window.__testAnswers = () => (S.quiz ? S.quiz.questions.map(q => ({ type: q.type, answer: q.answer, correct: q.correct })) : null);
-    window.__testGame = () => (game ? game.state : null);   // v1.9.0: score, typed, locked, balloons in the air
+    window.__testGame = () => (S.screen === 'puzzle' && puzzle ? puzzle.state : game ? game.state : null);   // v1.9.0 balloons; v1.10.0 the puzzle game on screen
   }
 
   registerSW();

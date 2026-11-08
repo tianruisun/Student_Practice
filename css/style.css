@@ -584,7 +584,8 @@ legend.sec-title { padding: 0; }
 .tab[aria-current="page"] { background: var(--pri-soft); color: var(--pri); }
 .round-btn { width: 46px; min-width: 46px; padding: 0; font-size: 0.85rem; }
 /* R1.3 (v1.9.0): at 320 px each of the six tabs is ~46 px; a smaller label keeps "Progress", "Students", "Settings" whole */
-@media (max-width: 340px) { .bottom-nav { gap: 0.1rem; padding-left: 0.3rem; padding-right: 0.3rem; } .tab, .tab[aria-current="page"] { padding: 0 1px; font-size: 0.6rem; } }
+/* R2.1 (v1.9.0): up to 365 px, so the common 360 px Android width shows whole labels too */
+@media (max-width: 365px) { .bottom-nav { gap: 0.1rem; padding-left: 0.3rem; padding-right: 0.3rem; } .tab, .tab[aria-current="page"] { padding: 0 1px; font-size: 0.6rem; } }
 
 /* subject tiles: equal height in every layout, icons on one line, text below */
 .tiles { align-items: stretch; }
@@ -728,4 +729,139 @@ dialog.tour::backdrop { background: transparent; backdrop-filter: none; }
 .bl-pad.locked button { opacity: 0.45; cursor: not-allowed; }
 body.in-game .top { display: none; }
 @media (max-height: 640px) { .bl-pad button { min-height: 44px; font-size: 1.25rem; } .bl-pad { gap: 0.35rem; } .bl-entry { min-height: 42px; } .bl-typed { font-size: 1.35rem; } }
+/* R2.2 (v1.9.0): very short screens. Portrait (e.g. 320×480): smaller balloons and keys so field and keypad fit together.
+   Sideways (e.g. 568×320): the field on the left, time, answer and keypad on the right. */
+@media (max-height: 520px) {
+  .bl { width: 60px; } .bl-svg { width: 60px; height: 97px; } .bl-q { top: 14px; font-size: 0.85rem; }
+  .bl-pad button { min-height: 38px; font-size: 1.15rem; } .bl-pad { gap: 0.3rem; }
+  .bl-entry { min-height: 38px; } .bl-typed { font-size: 1.2rem; padding: 0 0.6rem; }
+  .bl-field { height: clamp(120px, calc(100dvh - 330px), 600px); }
+}
+@media (max-height: 430px) and (min-aspect-ratio: 1/1) {
+  #screen-game:not([hidden]) {
+    display: grid; gap: 0.4rem 0.7rem; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr; grid-template-areas: "field hud" "field entry" "field pad";
+  }
+  #screen-game .bl-hud { grid-area: hud; } #screen-game .bl-entry { grid-area: entry; } #screen-game .bl-pad { grid-area: pad; align-content: end; }
+  #screen-game .bl-field { grid-area: field; height: calc(100dvh - 2.8rem); min-height: 180px; }
+  #screen-game .bl-pad button { min-height: 34px; }
+}
 @media print { #screen-games, #screen-game { display: none; } }
+
+/* ---------- v1.10.0 puzzle games: Sudoku, Money Master, Broken Calculator (one shared screen) ---------- */
+#screen-puzzle { display: flex; flex-direction: column; gap: 0.6rem; }
+#screen-puzzle[hidden] { display: none; }
+.pz-hud { gap: 0.45rem; }
+/* R1.4: the title breaks between words only ("Broken / Calculator", never "Calcula / tor") */
+.pz-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.98rem; line-height: 1.15; text-align: center; overflow-wrap: normal; word-break: normal; }
+.pz-hud .bl-stat { padding: 0.35rem 0.65rem; }
+/* R1.5: each number has a short visible word under it */
+.pz-stat { flex-direction: column; gap: 0; padding: 0.2rem 0.6rem; line-height: 1.1; }
+.pz-stat-v { display: inline-flex; align-items: center; gap: 0.3rem; }
+.pz-stat-l { font-size: 0.68rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+@media (max-width: 340px) { .pz-title { font-size: 0.9rem; } .pz-hud .bl-stat { padding: 0.2rem 0.45rem; } .pz-hud { gap: 0.3rem; } }
+.pz-hud .round-btn { margin-left: 0; }
+.pz-card { text-align: center; }
+.pz-card[hidden] { display: none; }
+.pz-how { margin: 0 0 0.8rem; line-height: 1.45; }
+.pz-levels { display: grid; gap: 0.55rem; }
+.pz-level { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; width: 100%; }
+.pz-lvbest { font-size: 0.82rem; font-weight: 500; opacity: 0.92; }
+.pz-body { display: flex; flex-direction: column; gap: 0.6rem; }
+.pz-body:empty { display: none; }
+.pz-main { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.pz-pad .pz-wide { grid-column: 1 / -1; }
+.mm-pad { grid-template-columns: repeat(4, 1fr); }
+body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, so no room kept for it */
+.pz-pad button:disabled { opacity: 0.45; }
+
+/* Sudoku: square cells; thick lines between boxes */
+.sd-board {
+  --cell: min(calc((100vw - 2rem - 6px) / var(--n)), calc((100dvh - 290px) / var(--n)), 64px);
+  display: grid; grid-template-columns: repeat(var(--n), var(--cell)); justify-content: center;
+  margin: 0 auto; border: 3px solid var(--ink); border-radius: 10px; overflow: hidden; background: var(--ink); gap: 1px;
+}
+.sd-cell {
+  width: var(--cell); height: var(--cell); padding: 0; border: 0; background: var(--surface); color: var(--pri);
+  font: inherit; font-weight: 700; font-size: calc(var(--cell) * 0.52); line-height: 1; cursor: pointer; touch-action: manipulation;
+}
+.sd-cell.given { color: var(--ink); background: var(--surface-2); cursor: default; }
+.sd-cell.sb-t { box-shadow: inset 0 2px 0 var(--ink); }
+.sd-cell.sb-l { box-shadow: inset 2px 0 0 var(--ink); }
+.sd-cell.sb-t.sb-l { box-shadow: inset 0 2px 0 var(--ink), inset 2px 0 0 var(--ink); }
+.sd-cell.sel { background: var(--pri-soft); outline: 3px solid var(--accent); outline-offset: -3px; }
+.sd-cell.bad { color: var(--bad); background: var(--bad-soft); }
+.sd-cell:disabled { cursor: default; }
+.sd-pad-4 { grid-template-columns: repeat(5, 1fr); }
+.sd-pad-6 { grid-template-columns: repeat(7, 1fr); }
+.sd-pad-9 { grid-template-columns: repeat(5, 1fr); }
+/* R1.1: a finished grid stays above the end card; the keypad goes and the grid shrinks so both fit with no page scroll */
+#screen-puzzle.pz-ended .pz-pad { display: none; }
+#screen-puzzle.pz-ended .sd-board { --cell: min(calc((100vw - 2rem - 6px) / var(--n)), calc((100dvh - 320px) / var(--n)), 64px); }
+
+/* Money Master: the shop list, the note handed over, the change typed */
+.mm-shop { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 0.7rem 0.9rem; }
+.mm-ask { margin: 0 0 0.4rem; font-weight: 700; }
+.mm-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.mm-item { display: grid; grid-template-columns: 2rem 1fr auto; align-items: center; gap: 0.4rem; font-size: 1.05rem; }
+.mm-icon { font-size: 1.5rem; text-align: center; }
+.mm-price { font-weight: 700; font-variant-numeric: tabular-nums; }
+.mm-pay { display: flex; align-items: center; justify-content: space-between; margin: 0.55rem 0 0; padding-top: 0.5rem; border-top: 1.5px dashed var(--line); font-weight: 600; }
+.mm-note { display: inline-block; min-width: 4.4rem; padding: 0.35rem 0.7rem; border-radius: 8px; border: 2px solid rgba(0, 0, 0, .25); color: #1f2937; font-weight: 800; font-size: 1.15rem; text-align: center; }
+.mm-pink { background: #f9a8d4; } .mm-blue { background: #7dd3fc; } .mm-red { background: #fca5a5; } .mm-yellow { background: #fde047; } .mm-green { background: #86efac; }
+.mm-entry { display: flex; align-items: center; justify-content: center; gap: 0.7rem; }
+.mm-label { font-weight: 700; }
+.mm-typed { min-width: 7rem; }
+.mm-msg { margin: 0; min-height: 1.4em; text-align: center; font-weight: 700; }
+.mm-msg.ok { color: var(--ok); } .mm-msg.no { color: var(--bad); }
+
+/* Broken Calculator: a calculator with an LCD; broken digits show ■ */
+.bc-calc { background: #374151; border-radius: var(--radius); padding: 0.8rem; box-shadow: var(--shadow); }
+.bc-lcd {
+  display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.05em; padding: 0.6rem 0.8rem; border-radius: 10px; background: #c9e4b4; color: #102a12;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: clamp(1.6rem, 9vw, 2.4rem); font-weight: 700; font-variant-numeric: tabular-nums; min-height: 1.6em;
+}
+.bc-lcd.ok { background: #a7f3d0; } .bc-lcd.no { background: #fecaca; }
+.bc-op { padding: 0 0.12em; }
+.bc-hole { min-width: 0.7em; text-align: center; color: #4b5563; border-bottom: 3px solid transparent; }
+.bc-hole.filled { color: #1d4ed8; }
+.bc-lcd.no .bc-hole { color: #991b1b; }
+.bc-hole.cur { border-bottom-color: #1d4ed8; animation: bc-blink 1s steps(2) infinite; }
+@keyframes bc-blink { 50% { border-bottom-color: transparent; } }
+.bc-msg { margin: 0; text-align: center; color: var(--muted); font-weight: 600; }
+.bc-msg.warn { color: var(--bad); }   /* R1.2: = pressed before every digit is typed */
+@media (prefers-reduced-motion: reduce) { .bc-hole.cur { animation: none; } }
+
+@media (max-height: 640px) {
+  .sd-board { --cell: min(calc((100vw - 2rem - 6px) / var(--n)), calc((100dvh - 250px) / var(--n)), 56px); }
+  .mm-shop { padding: 0.45rem 0.7rem; } .mm-ask { margin-bottom: 0.2rem; } .mm-items { gap: 0.1rem; } .mm-item { font-size: 0.95rem; } .mm-icon { font-size: 1.2rem; }
+  .mm-pay { margin-top: 0.35rem; padding-top: 0.35rem; } .mm-note { padding: 0.2rem 0.6rem; font-size: 1.05rem; }
+  .bc-calc { padding: 0.5rem; } .pz-body, .pz-main { gap: 0.4rem; }
+}
+/* sideways short screens: board or question on the left, keypad on the right */
+@media (max-height: 430px) and (min-aspect-ratio: 1/1) {
+  .pz-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 0.8rem; }
+  .pz-body:empty { display: none; }
+  .pz-main { gap: 0.4rem; align-self: start; }
+  .mm-shop { padding: 0.35rem 0.6rem; } .mm-item { font-size: 0.88rem; } .mm-icon { font-size: 1.05rem; } .mm-msg { font-size: 0.88rem; }
+  .sd-board { --cell: min(calc((50vw - 2rem) / var(--n)), calc((100dvh - 96px) / var(--n)), 48px); }
+  .pz-pad button { min-height: 36px; }
+  /* R1.3: while a game is on (.pz-on), the board or question takes the whole left side, top to bottom, and the
+     top bar moves to the right, above the keypad. A 9 × 9 square grows from 25 px to 31 px at 568 × 320.
+     R1.1: when a Sudoku is solved, the end card takes the keypad's place on the right. */
+  #screen-puzzle.pz-on { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 0.8rem; row-gap: 0.4rem; align-items: start; }
+  #screen-puzzle.pz-on[data-game="sudoku"] { grid-template-columns: auto minmax(0, 1fr); }
+  #screen-puzzle.pz-on[hidden] { display: none; }
+  #screen-puzzle.pz-on .pz-body { display: contents; }
+  #screen-puzzle.pz-on .pz-main { grid-column: 1; grid-row: 1 / span 2; }
+  #screen-puzzle.pz-on .pz-hud { grid-column: 2; grid-row: 1; flex-wrap: wrap; justify-content: space-between; row-gap: 0.2rem; }
+  #screen-puzzle.pz-on .pz-title { order: -1; flex-basis: 100%; }
+  #screen-puzzle.pz-on .pz-pad, #screen-puzzle.pz-on #pzOver { grid-column: 2; grid-row: 2; align-self: end; }
+  #screen-puzzle.pz-on .sd-board { --cell: min(calc((100vw - 2.8rem - 230px) / var(--n)), calc((100dvh - 40px) / var(--n)), 48px); }
+  #screen-puzzle.pz-on #pzOver { margin: 0; padding: 0.6rem 0.7rem; }
+  #screen-puzzle.pz-on #pzOver .bl-over-title { font-size: 1.15rem; }
+  #screen-puzzle.pz-on #pzOver .bl-over-score { margin-top: 0.15rem; font-size: 1rem; }
+  #screen-puzzle.pz-on #pzOver .bl-over-best { margin: 0.15rem 0 0.2rem; font-size: 0.9rem; }
+  #screen-puzzle.pz-on #pzOver .btn { min-height: 44px; margin-top: 0.35rem; padding: 0.35rem 0.6rem; font-size: 0.95rem; }
+}
+@media print { #screen-puzzle { display: none; } }

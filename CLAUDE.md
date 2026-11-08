@@ -19,7 +19,7 @@ Maths and reasoning practice PWA (Years 1–12, Extension 1 and 2) for students,
 - Run all: `npm test`
 - Run against Test site: `npm test -- --site=https://test.student-practice.pages.dev`
 - `window.__testAnswers` exists on every host except Production, so `tests/flows.js` can answer a set correctly. Never rely on it in app code.
-- Every run ends within its time limits (unit 5 min, smoke 3 min, flows 4 min, any single browser step 20 s) and reports a failure instead of hanging.
+- Every run ends within its time limits (unit 5 min, smoke 3 min, flows 7 min, any single browser step 20 s) and reports a failure instead of hanging.
 
 ## Project rules (override the master rules)
 - Languages: English + Simplified Chinese. All interface text lives in `js/i18n.js`.

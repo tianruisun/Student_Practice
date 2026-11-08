@@ -5,6 +5,10 @@ Plain HTML/CSS/JS – no frameworks, no build step, relative paths only – so i
 
 ## Features
 - **Mini games (Games tab):** the bottom bar has a **Games** tab next to Students, with a list of mini games. The first is **Times-table balloons** (1×1 to 9×9): balloons with a gift hanging below rise from the bottom and fly away off the top, each with a question. Type the answer on the big number pad (or a keyboard) and tap 🏹 to shoot it for a point; a wrong answer locks the bow for 1.5 seconds with a warning. One minute a round; balloons start slow and one at a time and end fast with up to five at once. Each student's best score is kept on this device (`js/game-balloons.js`).
+  - **Maths Sudoku** (`js/game-sudoku.js`): Easy 4×4, Medium 6×6, Hard 9×9. Every puzzle has exactly one answer. Tap a square, then a number; clashes in a row, column or box show in red. The best finishing time is kept for each level.
+  - **Money Master** (`js/game-money.js`): work out the change in Australian dollars, five questions a round. Easy: one item in whole dollars paid with $10 or $20; Medium: one or two items to the 5 cents paid with $20 or $50; Hard: two or three items paid with $50 or $100. Notes show in their colours; there are no 1c or 2c coins, so every amount is a multiple of 5c. A right answer shows the change as notes and coins. The best time is kept for each level.
+  - **Broken Calculator** (`js/game-broken.js`): a calculator screen shows a sum with broken digits (■); type the missing digits and press =. Each sum has exactly one answer and they get harder as the score goes up. Three minutes; the best number right is kept.
+  The three share one screen and `js/game-kit.js` (clock, keypad).
 - **Guided tour (first visit):** the first time a browser opens the app, a short tour dims the page and highlights each part of Home in turn (students, language, parent lock, subjects, practice options when the subject has them, Start, Print, Progress, Settings) with one line on what it is for. Next / Back / Skip, arrow keys and Escape work; it is shown once (earlier users who already have data are not shown it), and the **?** button in the header replays it at any time (`js/tour.js`).
 - **Two subjects** (toggle on Home):
   - **Maths** – typed answers. Levels follow **China (人教版) and Singapore (MOE)** expectations for each year, which are noticeably harder than Australian/UK ones. 22 topics, including 简便计算 (clever calculation), 数论 (number theory), 找规律 (sequences), equations, simultaneous equations, quadratics, π = 3.14 circle/cylinder/cone work, and trigonometry.
@@ -74,6 +78,10 @@ On a phone, open the address and use **Add to Home Screen** / **Install app**. T
 | `js/ai.js` | Claude / DeepSeek question generation (maths and general ability) and validation |
 | `js/app.js` | Screens, state, parent mode, progress |
 | `js/game-balloons.js` | Mini game: times-table balloons (the rules, testable without a page, and the game itself) |
+| `js/game-kit.js` | Shared parts of the puzzle games: a clock that pauses while the page is hidden, m:ss, the keypad |
+| `js/game-sudoku.js` | Mini game: Sudoku (puzzle maker with a unique-answer check, and the board) |
+| `js/game-money.js` | Mini game: Money Master (change in Australian dollars) |
+| `js/game-broken.js` | Mini game: Broken Calculator (sums with missing digits, one answer each) |
 | `js/tour.js` | First-visit guided tour: highlight one part at a time with a short explanation |
 | `version.js` | App version (also names the offline cache) and the Production host names |
 | `js/test-badge.js` | TEST badge on every host that is not Production |

@@ -253,6 +253,8 @@ input.answer { font-size: 1.5rem; font-weight: 700; min-height: 62px; letter-spa
 
 /* ---------- question cards ---------- */
 .qlist { display: grid; gap: 0.9rem; }
+/* R6 (v1.10.0): a card may not grow to fit a long one-line formula; the formula scrolls inside its own box instead */
+.qlist > * { min-width: 0; }
 .qcard { background: var(--surface); border-radius: var(--radius); padding: 1rem 1.05rem 1.1rem; box-shadow: var(--shadow); border: 1.5px solid transparent; scroll-margin-top: 9rem; }
 .qcard.is-ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
 .qcard.is-bad { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }

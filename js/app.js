@@ -1264,10 +1264,13 @@
     const tip = el('span', 'tip', text); tip.id = id; tip.setAttribute('role', 'tooltip');
     const place = () => {
       tip.style.left = '';
+      // R5.1: clamp to the part of the page the phone shows. On a phone an open tip that sticks out widens the layout
+      // viewport (innerWidth grows with it), so innerWidth alone would clamp to the widened page, not to the screen.
+      const vv = window.visualViewport, x0 = vv ? vv.offsetLeft : 0, vw = vv ? Math.min(innerWidth, vv.width) : innerWidth;
       const r = tip.getBoundingClientRect(), pad = 8;
       let dx = 0;
-      if (r.right > innerWidth - pad) dx = innerWidth - pad - r.right;
-      if (r.left + dx < pad) dx = pad - r.left;
+      if (r.right > x0 + vw - pad) dx = x0 + vw - pad - r.right;
+      if (r.left + dx < x0 + pad) dx = x0 + pad - r.left;
       if (dx) tip.style.left = (parseFloat(getComputedStyle(tip).left) + dx) + 'px';
     };
     // open first, then place: a closed tip is not laid out (R4.1), so it can only be measured once shown

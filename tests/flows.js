@@ -1268,26 +1268,43 @@ async function run(site) {
     });
     // v1.10.0 R5: answers to the R4 findings
     // R4.1: hidden tips no longer widen Progress, so it cannot pan sideways (before or after a tip is opened)
-    for (const [W, H] of [[320, 568], [375, 812]]) await flow(`R4.1 Progress does not pan sideways ${W}×${H}`, async () => {
+    // R5.1: also in phone mode (isMobile + hasTouch), where an open tip that sticks out widens the layout viewport, so the
+    // screen is measured as visualViewport.width (what the phone shows), not innerWidth (which grows with the tip)
+    for (const [W, H, phone] of [[320, 568, false], [375, 812, false], [320, 568, true], [375, 812, true]]) await flow(`R4.1 Progress does not pan sideways ${W}×${H}${phone ? ' phone' : ''}`, async () => {
       const { context, page, errors } = await freshPage(browser, site, {
         [SETTINGS]: settings({ year: 4 }),
         'sp.badges.p1': JSON.stringify([{ date: Date.now(), kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }])
-      }, null, { context: { viewport: { width: W, height: H } } });
+      }, null, { context: { viewport: { width: W, height: H }, ...(phone ? { isMobile: true, hasTouch: true } : {}) } });
+      const tag = `${W}×${H}${phone ? ' phone' : ''}`;
       await page.click('[data-go="progress"]');
-      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-      check(`R4.1 ${W}×${H}: Progress is no wider than the screen`, (await wide()) <= 0, String(await wide()));
+      const screenW = () => page.evaluate(() => (window.visualViewport ? visualViewport.width : innerWidth));
+      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - Math.min(innerWidth, window.visualViewport ? visualViewport.width : innerWidth));
+      const inside = loc => loc.evaluate(e => { const r = e.getBoundingClientRect(), vw = window.visualViewport ? visualViewport.width : innerWidth; return { l: Math.round(r.left), r: Math.round(r.right), vw: Math.round(vw), ok: r.width > 0 && r.left >= 0 && r.right <= vw + 0.5 }; });
+      check(`R4.1 ${tag}: the screen is ${W} px wide`, Math.round(await screenW()) === W, String(await screenW()));
+      check(`R4.1 ${tag}: Progress is no wider than the screen`, (await wide()) <= 0, String(await wide()));
       for (let k = 0; k < 3; k++) {
         await page.locator('.badge-grid th.kind .info-btn').nth(k).click();
         const tip = page.locator('.badge-grid th.kind').nth(k).locator('.tip');
-        const box = await tip.evaluate(e => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; });
-        check(`R4.1 ${W}×${H}: tip ${k + 1} opens inside the screen`, (await tip.isVisible()) && box.l >= 0 && box.r <= W, JSON.stringify(box));
-        check(`R4.1 ${W}×${H}: still no sideways pan with tip ${k + 1} open`, (await wide()) <= 0, String(await wide()));
+        const box = await inside(tip);
+        check(`R4.1 ${tag}: tip ${k + 1} opens inside the screen`, (await tip.isVisible()) && box.ok, JSON.stringify(box));
+        check(`R4.1 ${tag}: still no sideways pan with tip ${k + 1} open`, (await wide()) <= 0, String(await wide()));
       }
-      await page.locator('.badge-head .info-btn').hover();
-      check(`R4.1 ${W}×${H}: the badge-section tip opens on hover inside the screen`, await page.locator('.badge-head .tip').evaluate(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth; }));
-      await page.mouse.move(1, 1); await page.click('#progH');
-      check(`R4.1 ${W}×${H}: no sideways pan after the tips close`, (await wide()) <= 0, String(await wide()));
-      check(`R4.1 ${W}×${H}: no page errors`, errors.length === 0, errors.join(' | '));
+      if (phone) await page.locator('.badge-head .info-btn').click(); else await page.locator('.badge-head .info-btn').hover();
+      const sec = await inside(page.locator('.badge-head .tip'));
+      check(`R4.1 ${tag}: the badge-section tip opens inside the screen`, sec.ok, JSON.stringify(sec));
+      check(`R4.1 ${tag}: no sideways pan with the badge-section tip open`, (await wide()) <= 0, String(await wide()));
+      if (!phone) await page.mouse.move(1, 1);
+      await page.click('#progH');
+      check(`R4.1 ${tag}: no sideways pan after the tips close`, (await wide()) <= 0, String(await wide()));
+      if (phone) {
+        // the v1.7 answer hint in a practice set: the same tip, on a phone
+        await page.click('[data-go="home"]'); await page.click('#startBtn');
+        await page.locator('#qList .info-btn').first().click();
+        const hint = await inside(page.locator('#qList .tip').first());
+        check(`R5.1 ${tag}: the answer hint opens inside the screen`, hint.ok, JSON.stringify(hint));
+        check(`R5.1 ${tag}: no sideways pan with the answer hint open`, (await wide()) <= 0, String(await wide()));
+      }
+      check(`R4.1 ${tag}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();
     });
     // R4.2: in a long round the HUD, the chosen row, the cards, ⌫ and Check stay on screen, and the end card fits

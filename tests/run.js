@@ -771,5 +771,18 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   });
 }
 
+/* v1.10.0 R6: answer to R5.1 */
+{
+  const fs = require('fs'), path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8'), css = fs.readFileSync(path.join(__dirname, '../css/style.css'), 'utf8');
+  t('R5.1: an open tip is kept inside the part of the page the phone shows (visualViewport), not the widened page', () => {
+    assert.ok(/vw = vv \? Math\.min\(innerWidth, vv\.width\) : innerWidth/.test(app));
+    assert.ok(/if \(r\.right > x0 \+ vw - pad\)/.test(app));
+  });
+  t('R6: a question card cannot grow wider than the list for a long one-line formula', () => {
+    assert.ok(/\.qlist > \* \{ min-width: 0; \}/.test(css));
+  });
+}
+
 console.log(`${pass} passed, ${fail} failed (${gen} generated questions checked)`);
 process.exit(fail ? 1 : 0);

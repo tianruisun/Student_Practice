@@ -41,7 +41,6 @@
     if (!m) return null;
     return Number(m[1]) * 100 + Number(((m[2] || '') + '00').slice(0, 2));
   }
-  const fmt = cents => (cents < 100 && cents % 100 ? cents + 'c' : '$' + (cents / 100).toFixed(2));
   const price = cents => '$' + (cents / 100).toFixed(2);
 
   /* the fewest notes and coins that make an amount: [[value, count], ...] */
@@ -52,7 +51,7 @@
   }
   const denomText = d => (d >= 100 ? '$' + d / 100 : d + 'c');
 
-  const R = { ROUNDS, ITEMS, ICONS, LEVELS, DENOMS, NOTE_COLOURS, question, parse, fmt, price, breakdown, denomText };
+  const R = { ROUNDS, ITEMS, ICONS, LEVELS, DENOMS, NOTE_COLOURS, question, parse, price, breakdown, denomText };
 
   /* ---------- the round in the page ---------- */
   function create(body, ui, opts) {

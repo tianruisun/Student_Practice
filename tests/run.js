@@ -670,5 +670,29 @@ t('i18n: no key defined twice in a language', () => {
   });
 }
 
+/* v1.10.0 R2: answers to the R1 findings */
+{
+  const fs = require('fs'), path = require('path'), vm = require('vm');
+  const app = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+  const MM = require('../js/game-money.js');
+  const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} };
+  box.window = box;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../js/i18n.js'), 'utf8'), box);
+  const I18N = box.I18N;
+  t('R1.6: one m:ss for the games (app.js uses GameKit.fmt); MoneyRules has no unused fmt', () => {
+    assert.ok(/const fmtMs = ms => \(window\.GameKit \? window\.GameKit\.fmt\(ms\)/.test(app));
+    assert.ok(!/padStart\(2, '0'\); };\s*\n\s*const gameRec/.test(app), 'a second m:ss copy is back in app.js');
+    assert.strictEqual(MM.fmt, undefined);
+  });
+  t('R1.2 / R1.5: the new words exist in English and Chinese', () => {
+    for (const k of ['broken.short', 'pz.timeShort', 'pz.leftShort', 'pz.questionShort', 'pz.pointsShort']) {
+      for (const lang of ['en', 'zh']) {
+        assert.ok(I18N.STRINGS[lang][k], lang + ' ' + k);
+      }
+    }
+    assert.strictEqual(I18N.STRINGS.en['broken.short'].replace('{n}', 2), 'Digits still to type: 2');
+  });
+}
+
 console.log(`${pass} passed, ${fail} failed (${gen} generated questions checked)`);
 process.exit(fail ? 1 : 0);

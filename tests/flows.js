@@ -981,6 +981,19 @@ async function run(site) {
       let a = await answer();
       check('broken: the screen shows a sum with broken digits', /\?/.test(a.masked) && (await page.locator('.bc-hole').count()) === a.masked.split('?').length - 1, a.masked);
       check('broken: the broken digits have exactly one answer', a.ways.length === 1, JSON.stringify(a));
+      // R1.2: = before every broken digit is typed says how many are still to type (it used to do nothing)
+      await press(['ok']);
+      const holes = a.ways[0].length;
+      check('R1.2: = with no digits typed says how many are still to type', (await page.textContent('.bc-msg')) === 'Digits still to type: ' + holes &&
+        (await page.textContent('#pzStatus')) === 'Digits still to type: ' + holes && (await page.locator('.bc-msg.warn').count()) === 1, await page.textContent('.bc-msg'));
+      check('R1.2: and keeps the same sum and score', (await answer()).masked === a.masked && (await page.textContent('#pzScore')) === '0');
+      if (holes > 1) {
+        await press([a.ways[0][0], 'ok']);
+        check('R1.2: with one digit typed it counts one fewer', (await page.textContent('.bc-msg')) === 'Digits still to type: ' + (holes - 1), await page.textContent('.bc-msg'));
+        await press(['back']);
+      }
+      await press(['back']);
+      check('R1.2: typing again brings back the normal message', (await page.textContent('.bc-msg')) === 'Missing digits to find: ' + holes && (await page.locator('.bc-msg.warn').count()) === 0, await page.textContent('.bc-msg'));
       await press(a.ways[0].split(''));
       check('broken: typed digits fill the broken places', (await page.locator('.bc-hole.filled').count()) === a.ways[0].length);
       await press(['ok']);
@@ -1021,8 +1034,41 @@ async function run(site) {
         await run(500);
         const m = await pzSize(page);
         check(`games ${W}×${H}: ${id} ${lv} fits`, Object.values(m).every(Boolean), JSON.stringify(m));
+        // R1.4: the title breaks between words only; R1.5: each number in the top bar has a visible word
+        const hud = await page.evaluate(() => {
+          const h = document.querySelector('#pzH'), node = h.firstChild, split = [];
+          let at = 0;
+          for (const word of h.textContent.split(' ')) {
+            const r = document.createRange(); r.setStart(node, at); r.setEnd(node, at + word.length);
+            if (new Set([...r.getClientRects()].map(x => Math.round(x.top))).size > 1) split.push(word);
+            at += word.length + 1;
+          }
+          const words = [...document.querySelectorAll('.pz-hud .pz-stat-l')].map(s => { const b = s.getBoundingClientRect(); return b.width > 0 && b.height >= 8 ? s.textContent : ''; });
+          return { split, words, cut: h.scrollWidth > h.clientWidth + 0.5 };
+        });
+        check(`R1.4 ${W}×${H}: ${id} title breaks between words only`, !hud.split.length && !hud.cut, JSON.stringify(hud));
+        const want = { sudoku: 'left', money: 'question', broken: 'points' }[id];
+        check(`R1.5 ${W}×${H}: ${id} top bar reads "time" and "${want}"`, JSON.stringify(hud.words) === JSON.stringify(['time', want]), JSON.stringify(hud.words));
+        if (id === 'sudoku' && lv === 'hard' && W > H) {
+          const cell = await page.evaluate(() => document.querySelector('.sd-cell').getBoundingClientRect().width);
+          check(`R1.3 ${W}×${H}: a 9 × 9 square is at least 30 px sideways (was 25)`, cell >= 30, String(cell));
+        }
         await page.click('#pzQuit');
       }
+      // R1.1: a solved hard Sudoku and its end card fit together, with no page scroll and the top bar still on screen
+      await page.click('#navGames'); await page.click('#play-sudoku'); await page.click('#pzGo-hard');
+      const g = await page.evaluate(() => [...document.querySelectorAll('.sd-cell')].map(c => Number(c.textContent) || 0));
+      const ans = await page.evaluate(gr => SudokuRules.solve(gr, SudokuRules.LEVELS.hard), g);
+      for (let i = 0; i < g.length; i++) if (!g[i]) { await page.locator('.sd-cell').nth(i).click(); await page.keyboard.press(String(ans[i])); }
+      const end = await page.evaluate(() => {
+        const d = document.documentElement, o = document.querySelector('#pzOver').getBoundingClientRect(), hud = document.querySelector('.pz-hud').getBoundingClientRect();
+        return { over: !document.querySelector('#pzOver').hidden, scroll: d.scrollHeight - innerHeight, y: scrollY, cardIn: o.bottom <= innerHeight + 0.5, hudIn: hud.top >= -0.5,
+          grid: document.querySelectorAll('.sd-cell').length, pad: !!document.querySelector('#pzBody .pz-pad') && document.querySelector('#pzBody .pz-pad').getBoundingClientRect().height > 0 };
+      });
+      check(`R1.1 ${W}×${H}: solved hard grid and end card fit with no page scroll`, end.over && end.scroll <= 1 && end.y === 0 && end.cardIn && end.hudIn && end.grid === 81 && !end.pad, JSON.stringify(end));
+      await page.click('#pzAgain');
+      check(`R1.1 ${W}×${H}: play again brings the keypad back`, await page.evaluate(() => document.querySelector('#pzBody .pz-pad').getBoundingClientRect().height > 0 && !document.querySelector('#screen-puzzle').classList.contains('pz-ended')));
+      await page.click('#pzQuit');
       if (H <= 520) {
         await page.click('#navGames'); await page.click('#play-balloons'); await page.click('#gameGo'); await run(3000);
         const b = await page.evaluate(() => { const f = document.querySelector('#gameField').getBoundingClientRect(), p = document.querySelector('#gamePad').getBoundingClientRect(); return { field: Math.round(f.height), pad: p.bottom <= innerHeight + 0.5 }; });

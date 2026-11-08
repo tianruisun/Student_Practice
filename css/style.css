@@ -752,8 +752,14 @@ body.in-game .top { display: none; }
 #screen-puzzle { display: flex; flex-direction: column; gap: 0.6rem; }
 #screen-puzzle[hidden] { display: none; }
 .pz-hud { gap: 0.45rem; }
-.pz-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.98rem; line-height: 1.15; text-align: center; overflow-wrap: anywhere; }
+/* R1.4: the title breaks between words only ("Broken / Calculator", never "Calcula / tor") */
+.pz-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.98rem; line-height: 1.15; text-align: center; overflow-wrap: normal; word-break: normal; }
 .pz-hud .bl-stat { padding: 0.35rem 0.65rem; }
+/* R1.5: each number has a short visible word under it */
+.pz-stat { flex-direction: column; gap: 0; padding: 0.2rem 0.6rem; line-height: 1.1; }
+.pz-stat-v { display: inline-flex; align-items: center; gap: 0.3rem; }
+.pz-stat-l { font-size: 0.68rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+@media (max-width: 340px) { .pz-title { font-size: 0.9rem; } .pz-hud .bl-stat { padding: 0.2rem 0.45rem; } .pz-hud { gap: 0.3rem; } }
 .pz-hud .round-btn { margin-left: 0; }
 .pz-card { text-align: center; }
 .pz-card[hidden] { display: none; }
@@ -789,6 +795,9 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .sd-pad-4 { grid-template-columns: repeat(5, 1fr); }
 .sd-pad-6 { grid-template-columns: repeat(7, 1fr); }
 .sd-pad-9 { grid-template-columns: repeat(5, 1fr); }
+/* R1.1: a finished grid stays above the end card; the keypad goes and the grid shrinks so both fit with no page scroll */
+#screen-puzzle.pz-ended .pz-pad { display: none; }
+#screen-puzzle.pz-ended .sd-board { --cell: min(calc((100vw - 2rem - 6px) / var(--n)), calc((100dvh - 320px) / var(--n)), 64px); }
 
 /* Money Master: the shop list, the note handed over, the change typed */
 .mm-shop { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 0.7rem 0.9rem; }
@@ -820,6 +829,7 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .bc-hole.cur { border-bottom-color: #1d4ed8; animation: bc-blink 1s steps(2) infinite; }
 @keyframes bc-blink { 50% { border-bottom-color: transparent; } }
 .bc-msg { margin: 0; text-align: center; color: var(--muted); font-weight: 600; }
+.bc-msg.warn { color: var(--bad); }   /* R1.2: = pressed before every digit is typed */
 @media (prefers-reduced-motion: reduce) { .bc-hole.cur { animation: none; } }
 
 @media (max-height: 640px) {
@@ -836,5 +846,22 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
   .mm-shop { padding: 0.35rem 0.6rem; } .mm-item { font-size: 0.88rem; } .mm-icon { font-size: 1.05rem; } .mm-msg { font-size: 0.88rem; }
   .sd-board { --cell: min(calc((50vw - 2rem) / var(--n)), calc((100dvh - 96px) / var(--n)), 48px); }
   .pz-pad button { min-height: 36px; }
+  /* R1.3: while a game is on (.pz-on), the board or question takes the whole left side, top to bottom, and the
+     top bar moves to the right, above the keypad. A 9 × 9 square grows from 25 px to 31 px at 568 × 320.
+     R1.1: when a Sudoku is solved, the end card takes the keypad's place on the right. */
+  #screen-puzzle.pz-on { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 0.8rem; row-gap: 0.4rem; align-items: start; }
+  #screen-puzzle.pz-on[data-game="sudoku"] { grid-template-columns: auto minmax(0, 1fr); }
+  #screen-puzzle.pz-on[hidden] { display: none; }
+  #screen-puzzle.pz-on .pz-body { display: contents; }
+  #screen-puzzle.pz-on .pz-main { grid-column: 1; grid-row: 1 / span 2; }
+  #screen-puzzle.pz-on .pz-hud { grid-column: 2; grid-row: 1; flex-wrap: wrap; justify-content: space-between; row-gap: 0.2rem; }
+  #screen-puzzle.pz-on .pz-title { order: -1; flex-basis: 100%; }
+  #screen-puzzle.pz-on .pz-pad, #screen-puzzle.pz-on #pzOver { grid-column: 2; grid-row: 2; align-self: end; }
+  #screen-puzzle.pz-on .sd-board { --cell: min(calc((100vw - 2.8rem - 230px) / var(--n)), calc((100dvh - 40px) / var(--n)), 48px); }
+  #screen-puzzle.pz-on #pzOver { margin: 0; padding: 0.6rem 0.7rem; }
+  #screen-puzzle.pz-on #pzOver .bl-over-title { font-size: 1.15rem; }
+  #screen-puzzle.pz-on #pzOver .bl-over-score { margin-top: 0.15rem; font-size: 1rem; }
+  #screen-puzzle.pz-on #pzOver .bl-over-best { margin: 0.15rem 0 0.2rem; font-size: 0.9rem; }
+  #screen-puzzle.pz-on #pzOver .btn { min-height: 44px; margin-top: 0.35rem; padding: 0.35rem 0.6rem; font-size: 0.95rem; }
 }
 @media print { #screen-puzzle { display: none; } }

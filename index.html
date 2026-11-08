@@ -251,9 +251,9 @@
     <!-- PUZZLE GAMES (v1.10.0): Sudoku, Money Master, Broken Calculator share this screen -->
     <section id="screen-puzzle" class="screen" hidden aria-labelledby="pzH">
       <div class="bl-hud pz-hud">
-        <span class="bl-stat"><span aria-hidden="true">⏱</span> <span class="sr-only" id="pzClockLabel" data-i18n="pz.time">Time</span> <b id="pzClock">0:00</b></span>
+        <span class="bl-stat pz-stat"><span class="pz-stat-v"><span aria-hidden="true">⏱</span> <span class="sr-only" id="pzClockLabel" data-i18n="pz.time">Time</span> <b id="pzClock">0:00</b></span><span class="pz-stat-l" aria-hidden="true" data-i18n="pz.timeShort">time</span></span>
         <h2 id="pzH" class="pz-title">Sudoku</h2>
-        <span class="bl-stat"><span aria-hidden="true" id="pzScoreIcon">⭐</span> <span class="sr-only" id="pzScoreLabel"></span> <b id="pzScore">0</b></span>
+        <span class="bl-stat pz-stat"><span class="pz-stat-v"><span aria-hidden="true" id="pzScoreIcon">⭐</span> <span class="sr-only" id="pzScoreLabel"></span> <b id="pzScore">0</b></span><span class="pz-stat-l" aria-hidden="true" id="pzScoreShort"></span></span>
         <button type="button" id="pzQuit" class="round-btn" data-i18n-aria="game.quit"><span aria-hidden="true">✕</span></button>
       </div>
       <div id="pzBody" class="pz-body"></div>

@@ -943,11 +943,11 @@
   /* kind 'score': most points in a timed round is best. kind 'time': fastest finish, kept per level */
   const GAMES = [
     { id: 'balloons', icon: '🎈', title: 'game.balloons', sub: 'game.balloonsSub', kind: 'score' },
-    { id: 'sudoku', icon: '🔢', title: 'sudoku.title', sub: 'sudoku.sub', kind: 'time', make: 'SudokuGame', scoreIcon: '✏️', scoreLabel: 'sudoku.left' },
-    { id: 'money', icon: '💵', title: 'money.title', sub: 'money.sub', kind: 'time', make: 'MoneyGame', scoreIcon: '🧾', scoreLabel: 'money.question' },
-    { id: 'broken', icon: '🧮', title: 'broken.title', sub: 'broken.sub', kind: 'score', make: 'BrokenGame', scoreIcon: '⭐', scoreLabel: 'game.points' }
+    { id: 'sudoku', icon: '🔢', title: 'sudoku.title', sub: 'sudoku.sub', kind: 'time', make: 'SudokuGame', scoreIcon: '✏️', scoreLabel: 'sudoku.left', scoreShort: 'pz.leftShort' },
+    { id: 'money', icon: '💵', title: 'money.title', sub: 'money.sub', kind: 'time', make: 'MoneyGame', scoreIcon: '🧾', scoreLabel: 'money.question', scoreShort: 'pz.questionShort' },
+    { id: 'broken', icon: '🧮', title: 'broken.title', sub: 'broken.sub', kind: 'score', make: 'BrokenGame', scoreIcon: '⭐', scoreLabel: 'game.points', scoreShort: 'pz.pointsShort' }
   ];
-  const fmtMs = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const fmtMs = ms => (window.GameKit ? window.GameKit.fmt(ms) : '');   // R1.6: one m:ss for the games (js/game-kit.js)
   const gameRec = id => (store.get(Profiles.gameKey(), {}) || {})[id] || {};
   const gameBest = id => gameRec(id).best || 0;
   const levelBest = (id, lv) => (gameRec(id)[lv] || {}).best || 0;   // fastest finish in ms; 0 = not finished yet
@@ -1031,9 +1031,12 @@
     $('#pzH').textContent = t(g.title);
     $('#pzScoreIcon').textContent = g.scoreIcon;
     $('#pzScoreLabel').textContent = t(g.scoreLabel);
+    $('#pzScoreShort').textContent = t(g.scoreShort);   // R1.5: a visible word under each number; the full label stays for screen readers
     $('#pzClock').textContent = fmtMs(g.id === 'broken' && window.BrokenRules ? window.BrokenRules.SECONDS * 1000 : 0);
     $('#pzScore').textContent = g.id === 'money' && window.MoneyRules ? '1/' + window.MoneyRules.ROUNDS : g.id === 'sudoku' ? '–' : '0';
     $('#pzBody').innerHTML = '';
+    $('#screen-puzzle').classList.remove('pz-ended', 'pz-on');
+    $('#screen-puzzle').dataset.game = g.id;
     $('#pzOver').hidden = true; $('#pzIntro').hidden = false;
     $('#pzHow').textContent = t(g.id + '.how');
     const box = $('#pzLevels'); box.innerHTML = '';
@@ -1054,6 +1057,8 @@
     if (!puzzle) return;
     puzzleLevel = lv;
     $('#pzIntro').hidden = true; $('#pzOver').hidden = true;
+    $('#screen-puzzle').classList.remove('pz-ended');
+    $('#screen-puzzle').classList.add('pz-on');   // a round is on screen (the sideways layout uses it, R1.3)
     $('#pzStatus').textContent = '';
     puzzle.start(lv);
   }
@@ -1075,7 +1080,10 @@
       $('#pzBest').textContent = isBest ? t('pz.newBestTime') : t('game.bestTime', { v: fmtMs(old.best) });
     }
     store.set(Profiles.gameKey(), all);
-    if (id !== 'sudoku') $('#pzBody').innerHTML = '';   // the finished Sudoku grid stays above the card; the others clear
+    // the finished Sudoku grid stays beside or above the card; the others clear
+    if (id !== 'sudoku') { $('#pzBody').innerHTML = ''; $('#screen-puzzle').classList.remove('pz-on'); }
+    // R1.1: with the card shown the keypad goes and the grid shrinks, so grid + card fit the screen with no page scroll
+    $('#screen-puzzle').classList.add('pz-ended');
     $('#pzOver').hidden = false;
     $('#pzAgain').focus();
   }

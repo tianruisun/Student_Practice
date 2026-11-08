@@ -99,12 +99,20 @@
       q = make(score, rand);
       typed = ''; waiting = false;
       nodes.lcd.className = 'bc-lcd';
+      nodes.msg.classList.remove('warn');
       nodes.msg.textContent = t('broken.find', { n: q.holes.length });
       paint(false);
     }
 
     function submit() {
-      if (!running || waiting || typed.length < q.holes.length) return;
+      if (!running || waiting) return;
+      if (typed.length < q.holes.length) {   // R1.2: = pressed too early says what is still missing, instead of nothing
+        const left = q.holes.length - typed.length;
+        nodes.msg.textContent = t('broken.short', { n: left });
+        nodes.msg.classList.add('warn');
+        say(t('broken.short', { n: left }));
+        return;
+      }
       waiting = true;
       if (typed === q.answer) {
         score++; ui.score.textContent = score;
@@ -126,6 +134,7 @@
       if (/^\d$/.test(k)) { if (typed.length < q.holes.length) typed += k; }
       else if (k === 'back') typed = typed.slice(0, -1);
       else if (k === 'ok') return submit();
+      if (nodes.msg.classList.contains('warn')) { nodes.msg.classList.remove('warn'); nodes.msg.textContent = t('broken.find', { n: q.holes.length }); }
       paint(false);
     }
 

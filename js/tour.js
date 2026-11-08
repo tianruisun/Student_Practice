@@ -1,5 +1,6 @@
 /* Guided tour (v1.8.0): dims the page, highlights one part at a time and says what it is for.
-   Tour.run(steps, { t, onEnd }) where steps = [{ target: CSS selector or null, title: i18n key, text: i18n key }].
+   Tour.run(steps, { t, onEnd }) where steps = [{ target: CSS selector or null, title: i18n key, text: i18n key,
+   vars: optional placeholders for the text }]. Returns false (and shows nothing) if it cannot open.
    A step whose target is missing or hidden is shown in the middle of the screen with nothing highlighted.
    onEnd(finished) runs once: true after the last step, false after Skip or Escape.
    It is a modal <dialog>, so the page behind cannot be tapped or tabbed to while the tour is open. */
@@ -60,7 +61,7 @@
       target = step.target ? document.querySelector(step.target) : null;
       count.textContent = t('tour.step', { n: i + 1, total: steps.length });
       title.textContent = t(step.title);
-      text.textContent = t(step.text);
+      text.textContent = t(step.text, step.vars);
       skip.textContent = t('tour.skip'); skip.hidden = last;
       back.textContent = t('tour.back'); back.hidden = i === 0;
       next.textContent = t(last ? 'tour.done' : 'tour.next');
@@ -95,7 +96,15 @@
     dlg.addEventListener('keydown', e => {
       if (e.key === 'ArrowRight') { e.preventDefault(); next.click(); }
       else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); back.click(); }
+      else if (e.key === 'Tab') {
+        // keep focus on the tour's own buttons (the browser would otherwise pass through <body> once per loop)
+        const bs = [skip, back, next].filter(b => !b.hidden), k = bs.indexOf(document.activeElement);
+        e.preventDefault();
+        bs[k < 0 ? 0 : (k + (e.shiftKey ? bs.length - 1 : 1)) % bs.length].focus();
+      }
     });
+    // a browser without modal dialogs (Safari before 15.4) gets no tour, and nothing is left behind
+    try { dlg.showModal(); } catch (e) { dlg.remove(); return false; }
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     // fonts and late layout move things after the first placement
@@ -103,7 +112,6 @@
     if (ro) ro.observe(document.body);
 
     open = { finish };
-    dlg.showModal();
     show(0);
     return true;
   }

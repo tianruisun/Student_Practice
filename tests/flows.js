@@ -13,6 +13,7 @@ async function freshPage(browser, site, seed, initScript, options = {}) {
   context.setDefaultTimeout(20000);   // no single step may wait longer than 20 s
   if (!options.tour) await context.addInitScript(() => { try { if (localStorage.getItem('sp.tour') === null) localStorage.setItem('sp.tour', '"done"'); } catch (e) { /* blocked */ } });
   if (initScript) await context.addInitScript(initScript);
+  if (options.route) await context.route('**/*', options.route);   // e.g. answer one file with 404
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -581,6 +582,83 @@ async function run(site) {
       check('tour: Forgot PIN reset keeps the tour as seen', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"' && !(await tourOpen()));
       check('tour: earlier user, no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
+    });
+
+    // v1.8.0 R1 findings: the steps follow the chosen subject (R1.1), a user from before profiles is an earlier user
+    // (R1.2), a missing tour.js or showModal breaks nothing (R1.3), Tab stays on the tour's buttons (R1.4)
+    await flow('v1.8.0 tour R1 fixes', async () => {
+      const tourOpen = page => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
+      // walk the whole tour from ? and return each step's count, title and text
+      const walk = async page => {
+        await page.click('#tourBtn');
+        const out = [];
+        for (let k = 0; k < 12 && (await tourOpen(page)); k++) {
+          out.push({ step: await page.textContent('#tourStep'), title: await page.textContent('#tourTitle'), text: await page.textContent('#tourText'),
+            hole: await page.evaluate(() => { const h = document.querySelector('.tour-hole'); return h.classList.contains('none') ? 0 : h.getBoundingClientRect().width; }) });
+          await page.click('#tourNext');
+        }
+        return out;
+      };
+      for (const [subject, btn, total] of [['maths', 'Start practice', 11], ['sel', 'Start test', 10], ['comp', 'Start paper', 10]]) {
+        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ subject }) });
+        const steps = await walk(page);
+        const start = steps.find(s => s.title === 'Start') || {};
+        check(`R1.1 ${subject}: ${total} steps`, steps.length === total && steps[0].step === `Step 1 of ${total}`, steps.length + ' / ' + (steps[0] || {}).step);
+        check(`R1.1 ${subject}: practice options step only when shown`, steps.some(s => s.title === 'Set up your practice') === (subject === 'maths'));
+        check(`R1.1 ${subject}: Start step names the button "${btn}"`, (start.text || '').startsWith(`Tap ${btn} to begin`) && (await page.textContent('#startBtn')) === btn, start.text);
+        check(`R1.1 ${subject}: every step but the first highlights something`, steps.slice(1).every(s => s.hole > 0), steps.map(s => s.hole).join(','));
+        if (subject === 'sel') {
+          await page.click('#langBtn');
+          const zh = (await walk(page)).find(s => s.title === '开始') || {};
+          check('R1.1 sel: Chinese Start step names 开始考试', (zh.text || '').startsWith('点“开始考试”'), zh.text);
+        }
+        check(`R1.1 ${subject}: no page errors`, errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+
+      // R1.2: data from before student profiles (no sp.profiles) means an earlier user
+      {
+        const { context, page, errors } = await freshPage(browser, site, { 'sp.history': '[]', 'sp.settings': settings() }, null, { tour: true });
+        await page.waitForTimeout(300);
+        check('R1.2 user from before profiles: no tour', !(await page.evaluate(() => !!document.querySelector('#tourDlg'))));
+        check('R1.2 user from before profiles: stored as seen', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"');
+        check('R1.2 no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+
+      // R1.4: Tab and Shift+Tab move round the tour's own buttons only
+      {
+        const { context, page, errors } = await freshPage(browser, site, null, null, { tour: true });
+        await page.waitForTimeout(300);
+        await page.click('#tourNext');   // step 2: Skip, Back and Next are all shown; focus is on Next
+        const seq = [];
+        for (let k = 0; k < 4; k++) { await page.keyboard.press('Tab'); seq.push(await page.evaluate(() => document.activeElement.id || document.activeElement.tagName)); }
+        check('R1.4 Tab goes Skip, Back, Next, Skip', seq.join(',') === 'tourSkip,tourBack,tourNext,tourSkip', seq.join(','));
+        await page.keyboard.press('Shift+Tab');
+        check('R1.4 Shift+Tab from Skip goes to Next', (await page.evaluate(() => document.activeElement.id)) === 'tourNext');
+        check('R1.4 no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+
+      // R1.3: tour.js missing (a partial deploy), and a browser without showModal: Home works, ? does nothing, no errors
+      {
+        const { context, page, errors } = await freshPage(browser, site, null, null, {
+          tour: true, route: r => (r.request().url().endsWith('/js/tour.js') ? r.fulfill({ status: 404, body: '' }) : r.continue()) });
+        await page.waitForTimeout(300);
+        await page.click('#tourBtn');
+        check('R1.3 no tour.js: Home still works', await visible(page, '#startBtn'));
+        check('R1.3 no tour.js: no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+      {
+        const { context, page, errors } = await freshPage(browser, site, null, () => { delete HTMLDialogElement.prototype.showModal; }, { tour: true });
+        await page.waitForTimeout(300);
+        await page.click('#tourBtn');
+        check('R1.3 no showModal: no tour dialog left behind', (await page.locator('#tourDlg').count()) === 0);
+        check('R1.3 no showModal: Home still works', await visible(page, '#startBtn'));
+        check('R1.3 no showModal: no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
     });
   } finally {
     await browser.close();

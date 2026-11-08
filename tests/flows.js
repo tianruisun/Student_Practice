@@ -660,6 +660,66 @@ async function run(site) {
         await context.close();
       }
     });
+
+    // v1.8.0 R2 findings: the tour goes back to the screen it was opened from, so Results is not lost (R2.1); the keys
+    // that are not a student's data are one list, kept by a Forgot-PIN erase and ignored by the first-visit rule (R2.2)
+    await flow('v1.8.0 tour R2 fixes', async () => {
+      const tourOpen = page => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
+      {
+        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
+        await page.click('#startBtn');
+        await page.click('#finishBtn');
+        const score = await page.textContent('#resScore');
+        await page.click('#tourBtn');
+        check('R2.1 ? on Results: the tour shows Home', (await tourOpen(page)) && (await visible(page, '#screen-home')));
+        await page.keyboard.press('Escape');
+        check('R2.1 Escape: back on Results', (await visible(page, '#screen-results')) && !(await visible(page, '#screen-home')));
+        check('R2.1 Escape: same score and review', (await page.textContent('#resScore')) === score && (await page.locator('#resList > li').count()) === 5, score);
+        await page.click('#tourBtn');
+        for (let k = 0; k < 12 && (await tourOpen(page)); k++) await page.click('#tourNext');
+        check('R2.1 Done: back on Results', (await visible(page, '#screen-results')) && (await page.textContent('#resScore')) === score);
+        check('R2.1 Results: no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+      {
+        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
+        await page.click('.tab[data-go="progress"]');
+        await page.click('#tourBtn');
+        await page.click('#tourSkip');
+        check('R2.1 ? on Progress: Skip goes back to Progress', await visible(page, '#screen-progress'));
+        await page.click('.tab[data-go="home"]');
+        await page.click('#tourBtn');
+        await page.click('#tourSkip');
+        check('R2.1 ? on Home: stays on Home', await visible(page, '#screen-home'));
+        check('R2.1 Progress: no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+      {
+        // only the keys every first visit writes: still a first visit
+        const { context, page, errors } = await freshPage(browser, site, { 'sp.lang': '"en"', 'sp.moved': '1' }, null, { tour: true });
+        await page.waitForTimeout(300);
+        check('R2.2 only sp.lang and sp.moved: tour opens', await tourOpen(page));
+        check('R2.2 first visit: no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+      {
+        // a Forgot-PIN erase removes the student's data and keeps the same three keys, and another app's keys
+        const { context, page, errors } = await freshPage(browser, site, {
+          'sp.profiles': JSON.stringify({ list: [{ id: 'p1', name: 'Ann' }], active: 'p1' }), [SETTINGS]: settings(),
+          'sp.pin': JSON.stringify({ salt: 'x', hash: 'y' }), 'sp.lang': '"en"', 'chords-x': '1'
+        }, null, { tour: true });
+        await page.waitForTimeout(300);
+        await page.click('#parentBtn');
+        await Promise.all([page.waitForEvent('load'), page.click('#pinForgot')]);
+        await page.waitForTimeout(300);
+        const ls = await page.evaluate(() => Object.fromEntries(['sp.lang', 'sp.moved', 'sp.tour', 'sp.pin', 'sp.settings.p1', 'chords-x'].map(k => [k, localStorage.getItem(k)])));
+        check('R2.2 erase keeps sp.lang, sp.moved, sp.tour', ls['sp.lang'] === '"en"' && ls['sp.moved'] === '1' && ls['sp.tour'] === '"done"', JSON.stringify(ls));
+        check('R2.2 erase removes the PIN and settings', ls['sp.pin'] === null && ls['sp.settings.p1'] === null, JSON.stringify(ls));
+        check('R2.2 erase leaves another app\'s key', ls['chords-x'] === '1');
+        check('R2.2 erase: no page errors', errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+    });
   } finally {
     await browser.close();
   }

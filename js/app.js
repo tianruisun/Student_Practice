@@ -43,13 +43,17 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
   const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour' };
+  /* This app's keys that are not a student's data: the language, the "moved" flag and the tour flag. They do not make a
+     browser look used (below), and a Forgot-PIN erase keeps them (eraseAll). One list, so the two cannot drift apart. */
+  const NOT_USER_DATA = ['sp.lang', 'sp.moved', K.tour];
+  const isUserData = k => k.startsWith('sp.') && !NOT_USER_DATA.includes(k);
   /* Guided tour (v1.8.0): "new" from a browser's first visit until the tour is finished or skipped, then "done".
      Read before the student profiles are created: a browser that already holds any of this app's data (profiles, or
      progress, settings or a PIN from before profiles existed) is not a first visit, so people who used an earlier
      version are not shown it (they can open it with the ? button). sp.lang and sp.moved are written on every first
      visit, so they do not count. */
   const usedBefore = (() => {
-    try { return Object.keys(localStorage).some(k => k.startsWith('sp.') && k !== 'sp.lang' && k !== 'sp.moved' && k !== K.tour); }
+    try { return Object.keys(localStorage).some(isUserData); }
     catch (e) { return false; }
   })();
   const tourState = store.get(K.tour, null) || (usedBefore ? 'done' : 'new');
@@ -1132,7 +1136,7 @@
   function eraseAll() {
     try {
       for (const k of Object.keys(localStorage)) {
-        if ((k.startsWith('sp.') && k !== 'sp.lang' && k !== 'sp.moved' && k !== K.tour) || OLD_KEY.test(k)) localStorage.removeItem(k);
+        if (isUserData(k) || OLD_KEY.test(k)) localStorage.removeItem(k);
       }
     } catch (e) { /* storage blocked: nothing stored */ }
   }
@@ -1330,12 +1334,15 @@
   function startTour() {
     if (!window.Tour || S.screen === 'quiz' || S.screen === 'loading' || window.Tour.running) return;   // tour.js failed to load: no tour
     document.querySelectorAll('dialog[open]').forEach(d => d.close());   // a student dialog left open would sit on top
-    if (S.screen !== 'home') go('home');
+    // the tour shows Home; afterwards go back to where the user was (Results cannot be reopened any other way)
+    const from = S.screen;
+    if (from !== 'home') go('home');
+    const back = () => { if (from !== 'home' && S.screen === 'home') go(from); else window.scrollTo(0, 0); };
     /* the steps describe the Home screen as it is now: a Selective Test or Competition paper has no practice options,
        and its Start button has its own name */
     const steps = TOUR.filter(s => !(s.target === '#practiceOptions' && $('#practiceOptions').hidden))
       .map(s => (s.target === '#startBtn' ? Object.assign({}, s, { vars: { btn: $('#startBtn').textContent } }) : s));
-    window.Tour.run(steps, { t, onEnd: () => { store.set(K.tour, 'done'); window.scrollTo(0, 0); } });
+    if (!window.Tour.run(steps, { t, onEnd: () => { store.set(K.tour, 'done'); back(); } })) back();
   }
 
   /* ---------- wire up ---------- */

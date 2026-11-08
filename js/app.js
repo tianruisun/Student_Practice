@@ -348,7 +348,9 @@
   const view = () => (S.settings.view === 'pages' ? 'pages' : 'single');
   const range = (a, b) => Array.from({ length: Math.max(0, b - a) }, (_, k) => a + k);
   const qText = q => q.q[lang()] || q.q.en;
-  const doneCount = Q => (Q.exam ? Q.answers.filter(a => a !== null).length : Q.st.filter(x => x.status === 'done').length);
+  /* R4 (v1.10.0): in practice a question counts as answered once something is chosen or typed, checked or not */
+  const hasAnswer = (Q, i) => { const st = Q.st[i]; return st.status === 'done' || (Q.questions[i].type === 'mc' ? st.sel !== null && st.sel !== undefined : !!String(st.draft || '').trim()); };
+  const doneCount = Q => (Q.exam ? Q.answers.filter(a => a !== null).length : Q.st.filter((x, i) => hasAnswer(Q, i)).length);
 
   function focusCardInput(i) {
     setTimeout(() => { const inp = document.querySelector(`#qc${i} input.answer`); if (inp && !inp.disabled) inp.focus({ preventScroll: true }); }, 60);
@@ -390,7 +392,7 @@
       const pal = $('#palette'); pal.innerHTML = '';
       const onScreen = v === 'single' ? [Q.i] : range(Q.page * PAGE, (Q.page + 1) * PAGE);
       Q.questions.forEach((_, k) => {
-        const state = Q.exam ? (Q.answers[k] !== null ? ' done' : '') : Q.st[k].status === 'done' ? (Q.results[k] && Q.results[k].ok ? ' done good' : ' done wrong') : '';
+        const state = Q.exam ? (Q.answers[k] !== null ? ' done' : '') : Q.st[k].status === 'done' ? (Q.results[k] && Q.results[k].ok ? ' done good' : ' done wrong') : hasAnswer(Q, k) ? ' done' : '';
         const b = el('button', 'pal' + state + (onScreen.includes(k) ? ' current' : ''), String(k + 1));
         b.type = 'button';
         if (k === Q.i && v === 'single') b.setAttribute('aria-current', 'true');
@@ -477,7 +479,7 @@
       });
       inp.setAttribute('autocorrect', 'off'); inp.setAttribute('autocapitalize', 'off'); inp.setAttribute('enterkeyhint', Q.exam ? 'next' : 'done');
       inp.addEventListener('input', () => {
-        if (!Q.exam) { st.draft = inp.value; return; }
+        if (!Q.exam) { const had = hasAnswer(Q, i); st.draft = inp.value; if (had !== hasAnswer(Q, i)) renderChrome(); return; }
         if (Q.finished) return;
         Q.answers[i] = inp.value.trim() ? inp.value.trim() : null;   // exam: saved as typed, marked when the paper is finished
         renderChrome();
@@ -551,13 +553,30 @@
     }
     finishPractice(true);
   }
-  /* finish a practice set at any time; unanswered questions count as wrong */
+  /* finish a practice set at any time. R4 (v1.10.0): answers chosen or typed but not checked are marked now, as a first try
+     (or as the second try after one wrong Check), so a student can answer everything and submit it in one go.
+     Only questions with nothing chosen or typed are "unanswered": a reminder names them and Cancel goes to the first one. */
   function finishPractice(confirmed) {
     const Q = S.quiz; if (!Q || Q.exam) return;
-    const left = Q.st.filter(x => x.status !== 'done').length;
-    if (left && !confirmed && !confirm(t('quiz.finishConfirm', { n: left }))) return;
-    Q.st.forEach((x, i) => { if (x.status !== 'done') Q.results[i] = { given: x.given, ok: false, tries: x.tries }; });
+    const blank = Q.questions.map((_, i) => i).filter(i => !hasAnswer(Q, i));
+    if (blank.length && !confirmed && !confirm(t('quiz.finishConfirm', { n: blank.length }))) {
+      goToQuestion(blank[0]); focusCardInput(blank[0]);
+      return;
+    }
+    Q.st.forEach((x, i) => { if (x.status !== 'done') Q.results[i] = markUnchecked(Q.questions[i], x); });
     saveSession(); go('results');
+  }
+  function markUnchecked(q, st) {
+    st.status = 'done';
+    if (q.type === 'mc') {
+      if (st.sel === null || st.sel === undefined) return { given: [], ok: false, tries: 0 };
+      return { given: [st.sel], ok: st.sel === q.correct, tries: 1 };
+    }
+    const input = String(st.draft || '').trim();
+    if (!input) return { given: st.given, ok: false, tries: st.tries };
+    // R4.4: after a wrong Check left unchanged, the same answer is not stored twice ("777 → 777")
+    const last = st.given[st.given.length - 1];
+    return { given: last === input ? st.given : st.given.concat(input), ok: !!Checker.check(q, input).ok, tries: st.tries + 1 };
   }
 
   function setView(v) {
@@ -945,7 +964,8 @@
     { id: 'balloons', icon: '🎈', title: 'game.balloons', sub: 'game.balloonsSub', kind: 'score' },
     { id: 'sudoku', icon: '🔢', title: 'sudoku.title', sub: 'sudoku.sub', kind: 'time', make: 'SudokuGame', scoreIcon: '✏️', scoreLabel: 'sudoku.left', scoreShort: 'pz.leftShort' },
     { id: 'money', icon: '💵', title: 'money.title', sub: 'money.sub', kind: 'time', make: 'MoneyGame', scoreIcon: '🧾', scoreLabel: 'money.question', scoreShort: 'pz.questionShort' },
-    { id: 'broken', icon: '🧮', title: 'broken.title', sub: 'broken.sub', kind: 'score', make: 'BrokenGame', scoreIcon: '⭐', scoreLabel: 'game.points', scoreShort: 'pz.pointsShort' }
+    { id: 'broken', icon: '🧮', title: 'broken.title', sub: 'broken.sub', kind: 'score', make: 'BrokenGame', scoreIcon: '⭐', scoreLabel: 'game.points', scoreShort: 'pz.pointsShort' },
+    { id: 'numbers', icon: '🃏', title: 'numbers.title', sub: 'numbers.sub', kind: 'score', make: 'NumbersGame', scoreIcon: '🃏', scoreLabel: 'numbers.round', scoreShort: 'pz.roundShort', bestKey: 'numbers.best' }
   ];
   const fmtMs = ms => (window.GameKit ? window.GameKit.fmt(ms) : '');   // R1.6: one m:ss for the games (js/game-kit.js)
   const gameRec = id => (store.get(Profiles.gameKey(), {}) || {})[id] || {};
@@ -965,7 +985,7 @@
         if (times.length) text.append(el('p', 'small game-best', t('game.bestTimes', { list: times.join(' · ') })));
       } else {
         const best = gameBest(g.id);
-        if (best) text.append(el('p', 'small game-best', t('game.best', { n: best })));
+        if (best) text.append(el('p', 'small game-best', t(g.bestKey || 'game.best', { n: best })));
       }
       const play = el('button', 'btn primary', t('game.play')); play.type = 'button'; play.id = 'play-' + g.id;
       play.setAttribute('aria-label', t('game.play') + ' – ' + t(g.title));
@@ -1014,7 +1034,7 @@
     $('#gameAgain').focus();
   }
 
-  /* v1.10.0: Sudoku, Money Master and Broken Calculator share the puzzle screen */
+  /* v1.10.0: Sudoku, Money Master, Broken Calculator and Use all the numbers share the puzzle screen */
   function openPuzzle(id) {
     const g = GAMES.find(x => x.id === id);
     if (!g || !window[g.make] || !window.GameKit) return toast(t('game.missing'));
@@ -1033,7 +1053,7 @@
     $('#pzScoreLabel').textContent = t(g.scoreLabel);
     $('#pzScoreShort').textContent = t(g.scoreShort);   // R1.5: a visible word under each number; the full label stays for screen readers
     $('#pzClock').textContent = fmtMs(g.id === 'broken' && window.BrokenRules ? window.BrokenRules.SECONDS * 1000 : 0);
-    $('#pzScore').textContent = g.id === 'money' && window.MoneyRules ? '1/' + window.MoneyRules.ROUNDS : g.id === 'sudoku' ? '–' : '0';
+    $('#pzScore').textContent = g.id === 'money' && window.MoneyRules ? '1/' + window.MoneyRules.ROUNDS : g.id === 'sudoku' ? '–' : g.id === 'numbers' ? '1' : '0';
     $('#pzBody').innerHTML = '';
     $('#screen-puzzle').classList.remove('pz-ended', 'pz-on');
     $('#screen-puzzle').dataset.game = g.id;
@@ -1046,7 +1066,10 @@
       if (lv) {
         const best = levelBest(g.id, lv);
         b.append(el('span', 'pz-lvbest', best ? t('game.bestTime', { v: fmtMs(best) }) : t('game.noTime')));
-      } else b.classList.add('big');
+      } else {
+        b.classList.add('big');
+        if (g.id === 'numbers') { const best = gameBest(g.id); b.append(el('span', 'pz-lvbest', best ? t('numbers.best', { n: best }) : t('numbers.noBest'))); }
+      }
       b.addEventListener('click', () => playPuzzle(lv));
       box.append(b);
     }
@@ -1065,12 +1088,13 @@
 
   function endPuzzle(id, res) {
     const all = store.get(Profiles.gameKey(), {}) || {};
-    if (id === 'broken') {
+    if (id === 'broken' || id === 'numbers') {
       const g = all[id] || { best: 0, plays: 0 }, isBest = res.score > (g.best || 0);
       all[id] = { best: Math.max(g.best || 0, res.score), plays: (g.plays || 0) + 1, last: res.score, date: Date.now() };
-      $('#pzDone').textContent = t('game.timeUp');
-      $('#pzFinal').textContent = t('broken.final', { n: res.score });
-      $('#pzBest').textContent = isBest && res.score > 0 ? t('game.newBest') : t('game.best', { n: all[id].best });
+      $('#pzDone').textContent = id === 'broken' ? t('game.timeUp') : t(res.all ? 'numbers.doneAll' : 'numbers.done');
+      $('#pzFinal').textContent = t(id + '.final', { n: res.score });
+      // R4.5: no "Best: round 0" when no round has ever been passed
+      $('#pzBest').textContent = isBest && res.score > 0 ? t('game.newBest') : id === 'numbers' && !all[id].best ? t('numbers.noBest') : t(id === 'numbers' ? 'numbers.best' : 'game.best', { n: all[id].best });
     } else {
       const r = all[id] || {}, old = r[res.level] || {}, ms = Math.round(res.ms), isBest = !old.best || ms < old.best;
       r[res.level] = { best: isBest ? ms : old.best, plays: (old.plays || 0) + 1, last: ms, date: Date.now() };
@@ -1080,8 +1104,8 @@
       $('#pzBest').textContent = isBest ? t('pz.newBestTime') : t('game.bestTime', { v: fmtMs(old.best) });
     }
     store.set(Profiles.gameKey(), all);
-    // the finished Sudoku grid stays beside or above the card; the others clear
-    if (id !== 'sudoku') { $('#pzBody').innerHTML = ''; $('#screen-puzzle').classList.remove('pz-on'); }
+    // the finished Sudoku grid, and the last Use all the numbers rows (with the right ones marked), stay above the card; the others clear
+    if (id !== 'sudoku' && id !== 'numbers') { $('#pzBody').innerHTML = ''; $('#screen-puzzle').classList.remove('pz-on'); }
     // R1.1: with the card shown the keypad goes and the grid shrinks, so grid + card fit the screen with no page scroll
     $('#screen-puzzle').classList.add('pz-ended');
     $('#pzOver').hidden = false;
@@ -1137,16 +1161,42 @@
   function progressReview(box, h) {
     box.append(el('h3', '', t('prog.review')));
     // only questions the review can show (text in English at least)
-    const shown = w => w && w.q && typeof w.q.en === 'string' && (w.type !== 'mc' || Array.isArray(w.choices));
-    const wrong = h.flatMap(x => (Array.isArray(x.wrong) ? x.wrong : []).filter(shown).map(w => ({ q: w, fb: { subject: x.subject, year: x.year, diff: x.diff } }))).slice(-15).reverse();
+    // R4 (v1.10.0): a question the student has removed (reviewed: true) is not shown again
+    const shown = w => w && w.q && typeof w.q.en === 'string' && (w.type !== 'mc' || Array.isArray(w.choices)) && w.reviewed !== true;
+    const wrong = h.flatMap((x, hi) => (Array.isArray(x.wrong) ? x.wrong : []).map((w, wi) => ({ w, wi })).filter(o => shown(o.w))
+      .map(({ w, wi }) => ({ q: w, fb: { subject: x.subject, year: x.year, diff: x.diff }, at: [x.date, wi] }))).slice(-15).reverse();
     if (!wrong.length) box.append(el('p', 'muted', t('prog.reviewNone')));
     else {
       box.append(el('p', 'muted small', t('rev.tip')));
       const ol = el('ol', 'review'), host = el('div');
       const picker = makePicker(host, wrong);
-      wrong.forEach((w, i) => ol.append(reviewItem(w.q, w.q.given, false, 0, '', picker, i)));
+      wrong.forEach((w, i) => {
+        const li = reviewItem(w.q, w.q.given, false, 0, '', picker, i);
+        const foot = el('div', 'rv-foot'); foot.append(reviewRemoveBtn(w)); li.append(foot);   // after the method: done reviewing
+        ol.append(li);
+      });
       box.append(ol, host);
     }
+  }
+
+  /* R4 (v1.10.0): "Remove" takes a reviewed question off the list (kept in the history, marked reviewed); Undo puts it back */
+  function setReviewed(at, q, on) {
+    const h = store.get(histKey(), []) || [];
+    const s = h.find(x => x && x.date === at[0]), w = s && Array.isArray(s.wrong) && s.wrong[at[1]];
+    if (!w || !w.q || w.q.en !== q.q.en) return false;   // the record changed meanwhile: do nothing
+    if (on) w.reviewed = true; else delete w.reviewed;
+    store.set(histKey(), h);
+    return true;
+  }
+  function reviewRemoveBtn(item) {
+    const b = el('button', 'btn secondary rv-remove', '✓ ' + t('rev.remove')); b.type = 'button';
+    b.setAttribute('aria-label', t('rev.removeLabel'));
+    b.addEventListener('click', () => {
+      if (!setReviewed(item.at, item.q, true)) return;
+      renderProgress();
+      toast(t('rev.removed'), 6000, { label: t('rev.undo'), run: () => { setReviewed(item.at, item.q, false); $('#toast').hidden = true; if (S.screen === 'progress') renderProgress(); } });
+    });
+    return b;
   }
 
   /* Clear progress: visible whenever there is progress, protected by the parent PIN */
@@ -1162,6 +1212,7 @@
     box.append(wrap);
   }
 
+  const badgeHow = k => t('badge.how.' + k, { n: Records.MIN_QUESTIONS, s1: Records.SPEED_SECONDS[1], s2: Records.SPEED_SECONDS[2], s3: Records.SPEED_SECONDS[3], s4: Records.SPEED_SECONDS[4] });
   /* Badges: a grid for the year being practised (difficulty × kind), then every other level collected. */
   function renderBadges(box) {
     const list = store.get(Profiles.badgeKey(), []) || [], col = Records.collection(list);
@@ -1174,7 +1225,8 @@
     const table = el('table', 'badge-grid');
     table.append(el('caption', '', t('subject.' + subject) + ' · ' + yearLabel(year)));
     const hr = el('tr'); hr.append(el('th', 'corner'));
-    Records.KINDS.forEach(k => { const th = el('th', '', KIND_ICON[k]); th.scope = 'col'; th.title = t('badge.kind.' + k); th.setAttribute('aria-label', t('badge.kind.' + k)); hr.append(th); });
+    // R4 (v1.10.0): each kind's icon tells how to earn it, on hover, keyboard focus or a tap
+    Records.KINDS.forEach(k => { const th = el('th', 'kind'); th.scope = 'col'; th.append(infoTip(badgeHow(k), t('badge.kind.' + k) + ' – ' + t('badge.howLabel'), KIND_ICON[k])); hr.append(th); });
     table.append(hr);
     const shown = new Set();
     [1, 2, 3, 4].forEach(d => {
@@ -1184,6 +1236,7 @@
       Records.KINDS.forEach(k => {
         const n = got[k] || 0, td = el('td', n ? 'got' : 'empty', n ? KIND_ICON[k] + (n > 1 ? '×' + n : '') : KIND_ICON[k]);
         td.setAttribute('aria-label', t('badge.kind.' + k) + ': ' + n);
+        td.title = badgeHow(k);
         tr.append(td);
       });
       table.append(tr);
@@ -1201,21 +1254,27 @@
 
   /* An info icon whose text shows on hover, on keyboard focus, or when tapped (phones have no hover). */
   let tipSeq = 0;
-  function infoTip(text, label) {
-    const wrap = el('span', 'info'), id = 'tip' + (++tipSeq);
+  /* face: text shown on the button instead of the (i) icon, e.g. a badge's 🏅 (R4, v1.10.0) */
+  function infoTip(text, label, face) {
+    const wrap = el('span', 'info' + (face ? ' info-face' : '')), id = 'tip' + (++tipSeq);
     const btn = el('button', 'info-btn'); btn.type = 'button';
     btn.setAttribute('aria-label', label); btn.setAttribute('aria-describedby', id); btn.setAttribute('aria-expanded', 'false');
-    btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 10.8v6.2M12 7.3v.2"/></svg>';
+    if (face) btn.textContent = face;
+    else btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 10.8v6.2M12 7.3v.2"/></svg>';
     const tip = el('span', 'tip', text); tip.id = id; tip.setAttribute('role', 'tooltip');
     const place = () => {
       tip.style.left = '';
+      // R5.1: clamp to the part of the page the phone shows. On a phone an open tip that sticks out widens the layout
+      // viewport (innerWidth grows with it), so innerWidth alone would clamp to the widened page, not to the screen.
+      const vv = window.visualViewport, x0 = vv ? vv.offsetLeft : 0, vw = vv ? Math.min(innerWidth, vv.width) : innerWidth;
       const r = tip.getBoundingClientRect(), pad = 8;
       let dx = 0;
-      if (r.right > innerWidth - pad) dx = innerWidth - pad - r.right;
-      if (r.left + dx < pad) dx = pad - r.left;
+      if (r.right > x0 + vw - pad) dx = x0 + vw - pad - r.right;
+      if (r.left + dx < x0 + pad) dx = x0 + pad - r.left;
       if (dx) tip.style.left = (parseFloat(getComputedStyle(tip).left) + dx) + 'px';
     };
-    const show = on => { if (on) place(); wrap.classList.toggle('open', on); btn.setAttribute('aria-expanded', String(on)); };
+    // open first, then place: a closed tip is not laid out (R4.1), so it can only be measured once shown
+    const show = on => { wrap.classList.toggle('open', on); if (on) place(); btn.setAttribute('aria-expanded', String(on)); };
     wrap.addEventListener('mouseenter', place);
     btn.addEventListener('focus', place);
     // inside a <label>, a click would also move focus to the input: keep the click to the icon

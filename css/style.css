@@ -253,6 +253,8 @@ input.answer { font-size: 1.5rem; font-weight: 700; min-height: 62px; letter-spa
 
 /* ---------- question cards ---------- */
 .qlist { display: grid; gap: 0.9rem; }
+/* R6 (v1.10.0): a card may not grow to fit a long one-line formula; the formula scrolls inside its own box instead */
+.qlist > * { min-width: 0; }
 .qcard { background: var(--surface); border-radius: var(--radius); padding: 1rem 1.05rem 1.1rem; box-shadow: var(--shadow); border: 1.5px solid transparent; scroll-margin-top: 9rem; }
 .qcard.is-ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
 .qcard.is-bad { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
@@ -461,7 +463,10 @@ select.combo:focus { border-color: var(--pri); }
 .mixed { white-space: nowrap; }
 sup { font-size: 0.7em; line-height: 0; }
 .formula { display: block; margin: 0.55rem 0 0.35rem; padding: 0.7rem 0.9rem; text-align: center; font-size: 1.3em; font-weight: 700; letter-spacing: 0.02em;
-  background: var(--surface-2); border: 1.5px solid var(--hair); border-radius: var(--radius-sm); overflow-x: auto; white-space: nowrap; }
+  background: var(--surface-2); border: 1.5px solid var(--hair); border-radius: var(--radius-sm); overflow-x: auto;
+  /* R6.1 (v1.10.0): a formula too long for the card wraps between its terms instead of being cut off at the card edge
+     (one that fits stays on one line); a single unbreakable token still scrolls inside the box as a last resort */
+  white-space: normal; overflow-wrap: break-word; }
 .lead { display: block; }
 .tail { display: block; font-size: 0.85em; font-weight: 600; color: var(--muted); }
 @media print { .formula { background: none; border: 0; text-align: left; padding: 1mm 0 1mm 4mm; font-size: 1.15em; white-space: normal; } .tail { color: #000; } }
@@ -504,6 +509,8 @@ legend.sec-title { padding: 0; }
 .review li { border-left: 0; border-radius: 20px; padding: 0.9rem 1rem 0.8rem; position: relative; box-shadow: var(--shadow); border: 2px solid transparent; }
 .review li.picked { border-color: var(--pri); }
 .rv-top { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.35rem; flex-wrap: wrap; }
+.rv-foot { display: flex; justify-content: flex-end; margin-top: 0.5rem; }   /* R4 (v1.10.0): Done – remove */
+.rv-foot .rv-remove { width: auto; min-height: 44px; padding: 0.3rem 0.9rem; font-size: 0.9rem; }
 .rv-mark { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; flex: none; }
 .rv-mark.ok { background: var(--ok-soft); color: var(--ok); }
 .rv-mark.bad { background: var(--bad-soft); color: var(--bad); }
@@ -602,8 +609,9 @@ legend.sec-title { padding: 0; }
 .info-btn:hover, .info.open .info-btn { color: var(--pri); }
 .tip { position: absolute; left: -6px; top: calc(100% + 6px); z-index: 40; width: max-content; max-width: min(280px, 80vw); padding: 0.5rem 0.65rem; border-radius: 10px;
   background: var(--ink); color: var(--bg); font-size: 0.86rem; font-weight: 500; line-height: 1.35; letter-spacing: 0; text-transform: none; white-space: normal;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .25); visibility: hidden; pointer-events: none; }
-.info:hover .tip, .info-btn:focus-visible + .tip, .info.open .tip { visibility: visible; }
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25); display: none; pointer-events: none; }
+/* R4.1 (v1.10.0): a hidden tip takes no room (display: none, not just invisible), so it cannot widen the page and let it pan sideways */
+.info:hover .tip, .info-btn:focus-visible + .tip, .info.open .tip { display: block; }
 
 .badge-head { display: flex; align-items: center; gap: 0.2rem; }
 .badge-head h3 { margin: 0; }
@@ -612,6 +620,11 @@ legend.sec-title { padding: 0; }
 .badge-grid th.corner { background: none; }
 .badge-grid th { font-weight: 600; font-size: 0.85rem; color: var(--muted); text-align: left; }
 .badge-grid th[scope="col"] { text-align: center; font-size: 1.15rem; }
+/* R4 (v1.10.0): the kind icons open how to earn that badge */
+.info-face { margin: 0; }
+.info-face .info-btn { margin: 0; width: 44px; height: 44px; font-size: 1.2rem; color: inherit; border-radius: 12px; text-decoration: underline dotted var(--muted); text-underline-offset: 6px; }
+.info-face .info-btn:hover, .info-face.open .info-btn { background: var(--pri-soft); }
+.badge-grid th.kind .tip { text-align: left; }
 .badge-grid td { text-align: center; height: 44px; border-radius: 12px; background: var(--surface-2); font-size: 1.15rem; font-weight: 700; }
 .badge-grid td.got { background: #fef3c7; color: #7c4a03; }
 .badge-grid td.empty { filter: grayscale(1); opacity: .35; }
@@ -863,5 +876,47 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
   #screen-puzzle.pz-on #pzOver .bl-over-score { margin-top: 0.15rem; font-size: 1rem; }
   #screen-puzzle.pz-on #pzOver .bl-over-best { margin: 0.15rem 0 0.2rem; font-size: 0.9rem; }
   #screen-puzzle.pz-on #pzOver .btn { min-height: 44px; margin-top: 0.35rem; padding: 0.35rem 0.6rem; font-size: 0.95rem; }
+}
+/* Use all the numbers (v1.10.0 R4): equation rows above, the cards still to place below */
+.un-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.un-row { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; min-height: 52px; padding: 0.3rem 0.4rem; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); border: 2px solid transparent; cursor: pointer; }
+.un-row.sel { border-color: var(--accent); background: var(--pri-soft); }
+.un-row.ok { border-color: var(--ok); }
+.un-row.no { border-color: var(--bad); background: var(--bad-soft); }
+.un-pick { flex: 0 0 auto; width: 36px; height: 44px; border: 0; border-radius: 8px; background: var(--surface-2); color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+.un-row.sel .un-pick { background: var(--head); color: #fff; }
+.un-slot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem; min-width: 0; flex: 1 1 auto; }
+.un-hint { color: var(--muted); font-size: 0.9rem; }
+.un-card {
+  min-width: 30px; height: 44px; padding: 0 0.25rem; border: 1.5px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 1.2rem; font-weight: 800; font-variant-numeric: tabular-nums; cursor: pointer; touch-action: manipulation; box-shadow: var(--shadow);
+}
+.un-card.op { color: var(--pri); }
+.un-card:disabled { cursor: default; opacity: 0.85; }
+.un-pad { display: grid; gap: 0.4rem; }
+.un-tray { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem; min-height: 44px; align-items: center; }
+.un-left { margin: 0; text-align: center; font-weight: 700; color: var(--muted); font-size: 0.9rem; }
+.un-acts { display: grid; grid-template-columns: 1fr 2fr; gap: 0.45rem; }
+.un-acts button { min-height: 48px; border: 0; border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer; touch-action: manipulation; }
+.un-acts .bl-fire { background: var(--head); color: #fff; }
+.un-msg { flex: 0 0 auto; margin: 0; min-height: 1.4em; text-align: center; font-weight: 700; line-height: 1.3; }
+.un-msg.ok { color: var(--ok); } .un-msg.no { color: var(--bad); }
+/* R4.2: the game fills the screen; the rows scroll inside their own box and the tray inside its own, so the HUD, the chosen
+   row, the cards, ⌫ and Check stay on screen in long rounds, and the end card fits with no page scroll */
+#screen-puzzle.pz-on[data-game="numbers"] { height: calc(100dvh - 1.4rem); min-height: 0; }
+#screen-puzzle.pz-on[data-game="numbers"] .pz-body, #screen-puzzle.pz-on[data-game="numbers"] .pz-main { flex: 1 1 auto; min-height: 0; }
+#screen-puzzle.pz-on[data-game="numbers"] .un-pad, #screen-puzzle.pz-on[data-game="numbers"] #pzOver { flex: 0 0 auto; }
+.un-rows { position: relative; flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+#screen-puzzle.pz-on[data-game="numbers"] .un-msg { font-size: 0.9rem; }
+#screen-puzzle.pz-on[data-game="numbers"] .un-rows { min-height: 56px; }
+.un-tray { max-height: 30dvh; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+@media (max-height: 640px) { .un-row { min-height: 48px; padding: 0.2rem 0.35rem; } .un-acts button { min-height: 44px; } }
+@media (max-height: 430px) and (min-aspect-ratio: 1/1) {
+  .un-card { height: 40px; min-width: 28px; font-size: 1.1rem; } .un-row { min-height: 44px; padding: 0.15rem 0.3rem; } .un-pick { height: 40px; width: 30px; }
+  .un-rows { gap: 0.3rem; } .un-msg { font-size: 0.85rem; } .un-pad { gap: 0.3rem; }
+  #screen-puzzle.pz-on[data-game="numbers"] .pz-main { align-self: stretch; min-height: 0; }
+  #screen-puzzle.pz-on[data-game="numbers"] .un-pad { min-height: 0; }
+  .un-tray { max-height: calc(100dvh - 200px); }
+  #screen-puzzle.pz-on[data-game="numbers"] .un-msg { font-size: 0.8rem; }
 }
 @media print { #screen-puzzle { display: none; } }

@@ -703,5 +703,98 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   });
 }
 
+/* v1.10.0 R4: Use all the numbers, submit in one go, badge tips, remove from review */
+{
+  const fs = require('fs'), path = require('path'), vm = require('vm');
+  const N = require('../js/game-numbers.js'), Rec = require('../js/records.js');
+  const app = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+  const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} };
+  box.window = box;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../js/i18n.js'), 'utf8'), box);
+  const I18N = box.I18N;
+  const ok = s => N.check([...s]);
+  t('numbers: 15 kinds of card (0-9 + - × ÷ =), ten rounds', () => {
+    assert.deepStrictEqual(N.CARDS, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-', '×', '÷', '=']);
+    assert.strictEqual(N.MAX_ROUNDS, 10);
+  });
+  t('numbers: a true equation passes, in any order of sides, with × and ÷ before + and −', () => {
+    for (const s of ['4+5=9', '9=4+5', '12÷3=4', '2+3×4=14', '7÷2×2=7', '0+0=0', '10-10=0', '12=3×4', '1+2+3=6', '8-2-1=5']) assert.ok(ok(s).ok, s);
+  });
+  t('numbers: wrong or broken rows fail with a reason', () => {
+    const want = { '': 'empty', '4+5': 'noEquals', '4+5=9=9': 'twoEquals', '4+=9': 'shape', '+4=4': 'shape', '4=4+': 'shape', '4++5=9': 'shape',
+      '05+1=6': 'lead', '3÷0=0': 'zero', '1+1=3': 'false', '7÷2=3': 'false' };
+    for (const [s, r] of Object.entries(want)) assert.deepStrictEqual(ok(s), { ok: false, reason: r }, s);
+  });
+  t('numbers: digits side by side are one number (1 then 2 is 12)', () => {
+    assert.ok(ok('12+3=15').ok);
+    assert.ok(!ok('1+2+3=15').ok);
+  });
+  t('numbers: round n deals the cards of n true equations, shuffled, using only the 15 kinds', () => {
+    for (let r = 1; r <= N.MAX_ROUNDS; r++) for (let i = 0; i < 300; i++) {
+      const d = N.deal(r, Math.random);
+      assert.strictEqual(d.solution.length, r);
+      assert.ok(d.solution.every(s => ok(s).ok), JSON.stringify(d.solution));
+      assert.deepStrictEqual(d.cards.slice().sort(), [...d.solution.join('')].sort());
+      assert.ok(d.cards.every(c => N.CARDS.includes(c)));
+      assert.strictEqual(d.cards.filter(c => c === '=').length, r);
+    }
+  });
+  t('numbers: rounds start with + only, then add −, × and ÷', () => {
+    assert.deepStrictEqual(N.stage(1).ops, ['+']);
+    assert.deepStrictEqual(N.stage(2).ops, ['+', '-']);
+    assert.ok(N.stage(3).ops.includes('×') && !N.stage(3).ops.includes('÷'));
+    assert.deepStrictEqual(N.stage(4).ops, ['+', '-', '×', '÷']);
+    for (let i = 0; i < 2000; i++) assert.ok(/^\d+\+\d+=\d+$/.test(N.equation(1, Math.random)));
+  });
+  t('numbers: a round passes only when every card is used and every row is true', () => {
+    assert.ok(N.checkRound([['4', '+', '5', '=', '9']], 0).ok);
+    assert.ok(!N.checkRound([['4', '+', '5', '=', '9']], 1).ok, 'a card left over fails the round');
+    assert.ok(!N.checkRound([['4', '+', '5', '=', '9'], ['1', '=', '2']], 0).ok);
+    assert.ok(!N.checkRound([['4', '+', '5', '=', '9'], []], 0).ok, 'an empty row fails');
+  });
+  t('R4: the new words exist in English and Chinese', () => {
+    const keys = Object.keys(I18N.STRINGS.en).filter(k => /^(numbers\.|badge\.how\.|rev\.(remove|removeLabel|removed|undo)$|pz\.roundShort$)/.test(k));
+    assert.ok(keys.length >= 40, String(keys.length));
+    for (const k of keys) assert.ok(I18N.STRINGS.zh[k], 'zh ' + k);
+    for (const k of ['badge.how.perfect', 'badge.how.firstTry', 'badge.how.speed']) assert.ok(I18N.STRINGS.en[k] && I18N.STRINGS.zh[k], k);
+  });
+  t('R4: See results marks typed but unchecked answers (first try, or the second after one wrong Check)', () => {
+    assert.ok(/function markUnchecked\(q, st\)/.test(app));
+    assert.ok(/tries: st\.tries \+ 1/.test(app));
+    assert.ok(/filter\(i => !hasAnswer\(Q, i\)\)/.test(app), 'the reminder counts only questions with nothing chosen or typed');
+  });
+  t('R4: a question removed from the review list stays removed through a CSV export and import', () => {
+    const w = { q: { en: '1 + 1 = ?' }, topic: 'add', type: 'num', answer: '2', given: ['3'] };
+    const h = [{ date: 1700000000000, subject: 'maths', year: 4, topic: 'mixed', diff: 2, n: 5, correct: 3, wrong: [Object.assign({ reviewed: true }, w), w] }];
+    const back = Rec.fromCSV(Rec.toCSV({ name: 'A' }, h, []));
+    assert.deepStrictEqual(back.history[0].wrong.map(x => x.reviewed === true), [true, false]);
+  });
+}
+
+/* v1.10.0 R6: answer to R5.1 */
+{
+  const fs = require('fs'), path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8'), css = fs.readFileSync(path.join(__dirname, '../css/style.css'), 'utf8');
+  t('R5.1: an open tip is kept inside the part of the page the phone shows (visualViewport), not the widened page', () => {
+    assert.ok(/vw = vv \? Math\.min\(innerWidth, vv\.width\) : innerWidth/.test(app));
+    assert.ok(/if \(r\.right > x0 \+ vw - pad\)/.test(app));
+  });
+  t('R6: a question card cannot grow wider than the list for a long one-line formula', () => {
+    assert.ok(/\.qlist > \* \{ min-width: 0; \}/.test(css));
+  });
+}
+
+/* v1.10.0 R7: answer to R6.1 */
+{
+  const fs = require('fs'), path = require('path');
+  const css = fs.readFileSync(path.join(__dirname, '../css/style.css'), 'utf8');
+  t('R6.1: a long formula wraps inside its card instead of staying on one cut-off line', () => {
+    const rule = (css.match(/\n\.formula \{[^}]*\}/) || [""])[0];
+    assert.ok(/white-space: normal;/.test(rule), rule);
+    assert.ok(!/nowrap/.test(rule), rule);
+    assert.ok(/overflow-wrap: break-word;/.test(rule), rule);
+  });
+}
+
 console.log(`${pass} passed, ${fail} failed (${gen} generated questions checked)`);
 process.exit(fail ? 1 : 0);

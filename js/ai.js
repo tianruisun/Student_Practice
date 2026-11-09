@@ -114,10 +114,11 @@
     const topics = topic === 'mixed'
       ? `Mix these topics: ${topicNames.filter(([k]) => k !== 'olymp').map(([k, name]) => `${k} (${name})`).join(', ')}.`
       : `Topic: ${topic} (${(topicNames.find(([k]) => k === topic) || [])[1] || topic}).`;
+    const tiny = subject === 'maths' && year === 0;   // Kindergarten (R9.2)
     const vars = {
       count: n, student: yearText(year), topics, difficulty: DIFF_WORDS[diff],
-      levelNote: diff >= 3 ? `The difficulty must be obviously higher than ordinary school work for ${yearText(year)}${diff === 4 ? ' – think competition finalists' : ''}.` : (subject === 'maths' ? 'Use the level of the same grade in mainland China (人教版) and Singapore (MOE), which is harder than Australian/UK expectations.' : ''),
-      wordProblems: subject !== 'maths' ? '' : topic === 'mixed' || topic === 'word'
+      levelNote: tiny ? 'Kindergarten level: counting, comparing and simple adding and taking away within 20, one step, short sentences, no algebra.' : diff >= 3 ? `The difficulty must be obviously higher than ordinary school work for ${yearText(year)}${diff === 4 ? ' – think competition finalists' : ''}.` : (subject === 'maths' ? 'Use the level of the same grade in mainland China (人教版) and Singapore (MOE), which is harder than Australian/UK expectations.' : ''),
+      wordProblems: subject !== 'maths' || tiny ? '' : topic === 'mixed' || topic === 'word'
         ? (year >= 11 ? 'Include some applied (word) problems that need a model or equation.' : `At least ${topic === 'word' ? 'all' : 'a third'} of the questions must be word problems (应用题): a situation the student must turn into a calculation or an equation (方程) and solve.`)
         : 'Include some word problems where they fit the topic.'
     };

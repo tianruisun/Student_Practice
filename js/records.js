@@ -36,14 +36,15 @@
   /* ---------- suggested year ----------
      School year entered by the parent moves up by itself each new calendar year (NSW school years follow the calendar).
      Otherwise from the birth month: NSW children start Kindergarten in the year they turn 5 if born January–July,
-     else the year after. Year 1 follows Kindergarten. Result 1–12, or null when nothing is known. */
+     else the year after. Year 1 follows Kindergarten. Result 0 (Kindergarten, also for a child not at school yet) to 12,
+     or null when nothing is known. */
   function suggestYear(profile, now) {
     const year = now.getFullYear();
     let y = null;
-    if (profile && profile.schoolYear) y = profile.schoolYear + (year - (profile.schoolYearSet || year));
+    if (profile && profile.schoolYear != null) y = profile.schoolYear + (year - (profile.schoolYearSet || year));
     else if (profile) y = yearByAge(profile.dob, now);
     if (y === null || !Number.isFinite(y)) return null;
-    return Math.max(1, Math.min(12, y));
+    return Math.max(0, Math.min(12, y));
   }
   /* The school year a birth month gives this calendar year, NOT clamped: 0 is Kindergarten, below that not at school
      yet, above 12 left school. null without a valid birth month. */
@@ -71,8 +72,8 @@
 
   function toCSV(student, history, badges) {
     const rows = [COLUMNS];
-    rows.push(['student', '', student.name || '', student.schoolYear || '', student.dob || '', '', '', '', '', '', '', '', '', '',
-      JSON.stringify({ name: student.name || '', schoolYear: student.schoolYear || null, schoolYearSet: student.schoolYearSet || null, dob: student.dob || '' })]);
+    rows.push(['student', '', student.name || '', student.schoolYear != null ? student.schoolYear : '', student.dob || '', '', '', '', '', '', '', '', '', '',
+      JSON.stringify({ name: student.name || '', schoolYear: student.schoolYear != null ? student.schoolYear : null, schoolYearSet: student.schoolYearSet || null, dob: student.dob || '' })]);
     for (const h of history || []) {
       rows.push(['session', iso(h.date), '', '', '', h.subject || '', h.year != null ? h.year : '', h.topic || '', h.diff || '', h.n, h.correct,
         h.stars !== undefined ? h.stars : '', h.time ? Math.round(h.time / 1000) : '', '', JSON.stringify(h)]);
@@ -239,7 +240,7 @@
       const row = {}; COLUMNS.forEach((c, i) => { row[c] = (r[i] || '').replace(/^'(?=[=+\-@])/, ''); });
       const o = json(row.data) || {};
       if (row.record === 'student') {
-        out.student = { name: str(o.name || row.name, 20), schoolYear: num(o.schoolYear || row.school_year, 1, 12),
+        out.student = { name: str(o.name || row.name, 20), schoolYear: num(o.schoolYear != null ? o.schoolYear : row.school_year, 0, 12),
           schoolYearSet: num(o.schoolYearSet, 2000, 2100), dob: /^\d{4}-\d{2}$/.test(o.dob || row.birth_month) ? (o.dob || row.birth_month) : '' };
       } else if (row.record === 'session') { const s = cleanSession(o, row); s ? out.history.push(s) : out.skipped++; }
       else if (row.record === 'badge') { const b = cleanBadge(o, row); b ? out.badges.push(b) : out.skipped++; }

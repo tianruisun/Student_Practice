@@ -433,12 +433,21 @@ async function run(site) {
       await page.fill('.profile-edit input[type=month]', dobFor(11));
       const text = (await hint.isVisible()) ? await hint.textContent() : '';
       check('R6.4 Year 11 by age reads "Year 11", not a course name', /Year 11\./.test(text) && !/Advanced|Standard|Extension/.test(text), text);
-      for (const n of [0, -1, -3]) {
+      for (const n of [-1, -3]) {
         await page.fill('.profile-edit input[type=month]', dobFor(n));
-        check(`R6.3 no hint for an age before Year 1 (${n})`, !(await hint.isVisible()), dobFor(n));
+        check(`R6.3 no hint for an age before Kindergarten (${n})`, !(await hint.isVisible()), dobFor(n));
       }
+      await page.fill('.profile-edit input[type=month]', dobFor(0));
+      check('R9.3 hint for Kindergarten, named Kindergarten', await hint.isVisible() && /Kindergarten\./.test(await hint.textContent()), await hint.textContent());
+      check('R9.3 the school year list offers Kindergarten', (await page.locator('.profile-edit select option').evaluateAll(o => o.map(x => x.value))).includes('0'));
       await page.fill('.profile-edit input[type=month]', dobFor(1));
       check('R6.3 hint for Year 1', await hint.isVisible() && /Year 1\./.test(await hint.textContent()), await hint.textContent());
+      await page.fill('.profile-edit input[type=month]', dobFor(0));
+      await page.locator('.profile-hint button').click();
+      check('R9.3 Use Kindergarten sets the school year to Kindergarten', (await page.locator('.profile-edit select').inputValue()) === '0');
+      await page.locator('.profile-edit button[type=submit]').click();
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.profiles')).list[0]);
+      check('R9.3 Kindergarten is saved as school year 0 and shown in the list', saved.schoolYear === 0 && /Kindergarten/.test(await page.textContent('#profileList')), JSON.stringify(saved));
       check('R6.3 R6.4 no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
@@ -1326,7 +1335,9 @@ async function run(site) {
           f.scrollLeft = 0; const a = charRect(first, fi); const firstIn = a.left >= l - 1 && a.right <= rt + 1;
           f.scrollLeft = 1e9; const reach = over <= 1 || f.scrollLeft >= over - 1; const b = charRect(last, li); const lastIn = b.left >= l - 1 && b.right <= rt + 1;
           f.scrollLeft = 0;
-          return { over, reach, firstIn, lastIn, ok: over <= 1 || (reach && firstIn && lastIn) };
+          // R9.4: script can scroll an overflow-x: hidden box, a finger cannot; so the box must also be auto or scroll
+          const ox = getComputedStyle(f).overflowX, swipe = ox === 'auto' || ox === 'scroll';
+          return { over, reach, firstIn, lastIn, ox, swipe, ok: over <= 1 || (swipe && reach && firstIn && lastIn) };
         };
         return [...document.querySelectorAll('#qList .formula')].map(window.__reach).filter(x => !x.ok).length;
       });
@@ -1357,6 +1368,10 @@ async function run(site) {
       check(`R7.1 ${W}: a planted 40-digit number stays on one line (not split into two numbers)`, num.lines === 1, JSON.stringify(num));
       check(`R7.1 ${W}: it scrolls inside its box, which stays inside the card`, num.scrolls && num.inCard, JSON.stringify(num));
       check(`R8.1 ${W}: scrolling the box brings the first and the last digit into view`, num.reach && num.firstIn && num.lastIn, JSON.stringify(num));
+      check(`R9.4 ${W}: the box can be swiped (overflow-x auto or scroll, not hidden or clip)`, num.swipe, JSON.stringify(num));
+      // R9.4: the same box set to hidden and to clip must fail the check
+      const bad = await page.evaluate(() => ['hidden', 'clip'].map(v => { const f = [...document.querySelectorAll('#qList .formula')].find(e => e.scrollWidth > e.clientWidth + 1); const old = f.style.overflowX; f.style.overflowX = v; const r = window.__reach(f); f.style.overflowX = old; return r.ok; }));
+      check(`R9.4 ${W}: the check fails when the box is set to hidden or clip`, bad.every(ok => ok === false), JSON.stringify(bad));
       check(`R7.1 ${W}: no sideways pan with the long number`, (await wide()) <= 0, String(await wide()));
       check(`R6.1 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();

@@ -286,15 +286,15 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
   t('suggested year: school year entered this year', () => assert.strictEqual(Rec.suggestYear({ schoolYear: 4, schoolYearSet: 2026 }, nov), 4));
   t('suggested year: moves up each new calendar year', () => assert.strictEqual(Rec.suggestYear({ schoolYear: 4, schoolYearSet: 2026 }, new Date(2028, 1, 1)), 6));
   t('year by age: not clamped (R6.3)', () => { assert.strictEqual(Rec.yearByAge('2022-06', nov), -1); assert.strictEqual(Rec.yearByAge('2021-03', nov), 0); assert.strictEqual(Rec.yearByAge('2010-03', nov), 11); assert.strictEqual(Rec.yearByAge('', nov), null); assert.strictEqual(Rec.yearByAge('2010-3', nov), null); });
-  t('suggested year: a preschool birth month still clamps to Year 1', () => assert.strictEqual(Rec.suggestYear({ dob: '2022-06' }, nov), 1));
+  t('suggested year: a preschool birth month clamps to Kindergarten (R9.3)', () => assert.strictEqual(Rec.suggestYear({ dob: '2022-06' }, nov), 0));
   t('suggested year: school year wins over birth month', () => assert.strictEqual(Rec.suggestYear({ schoolYear: 3, schoolYearSet: 2026, dob: '2016-03' }, nov), 3));
   t('suggested year: born Jan-Jul starts Kindergarten the year they turn 5', () => {
     assert.strictEqual(Rec.suggestYear({ dob: '2016-03' }, nov), 5);   // K 2021, Year 5 in 2026
     assert.strictEqual(Rec.suggestYear({ dob: '2016-07' }, nov), 5);
   });
   t('suggested year: born Aug-Dec starts a year later', () => assert.strictEqual(Rec.suggestYear({ dob: '2016-08' }, nov), 4));
-  t('suggested year: kept within Years 1-12, null when unknown', () => {
-    assert.strictEqual(Rec.suggestYear({ dob: '2022-01' }, nov), 1);
+  t('suggested year: kept within Kindergarten to Year 12, null when unknown', () => {
+    assert.strictEqual(Rec.suggestYear({ dob: '2022-01' }, nov), 0);
     assert.strictEqual(Rec.suggestYear({ dob: '2000-01' }, nov), 12);
     assert.strictEqual(Rec.suggestYear({}, nov), null);
     assert.strictEqual(Rec.suggestYear({ dob: 'not a date' }, nov), null);
@@ -899,6 +899,57 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('R8.1: the R7.1 flow scrolls the long number to its end and checks the last digit comes into the box', () => {
     assert.ok(/f\.scrollLeft = 1e9/.test(flows));
     assert.ok(/reach/.test(flows) && /lastIn/.test(flows));
+  });
+}
+
+/* v1.10.0 R10: answers to the R9 findings */
+{
+  const Rec = require('../js/records.js');
+  t('R9.1: a Kindergarten-only question type stays in Kindergarten (a top year of 0 is kept)', () => {
+    for (const k of ['kcount', 'kaddsub', 'kpattern']) assert.strictEqual(G.SUBJECTS.maths[k].maxYear, 0, k);
+    for (const k of Object.keys(G.SUBJECTS.maths).filter(k => /^k[a-z]+$/.test(k))) assert.ok(G.SUBJECTS.maths[k].maxYear <= 6, k);
+    for (const y of [7, 8, 9, 10, 11, 12, 13, 14]) {
+      assert.deepStrictEqual(G.topicsFor('maths', y).filter(k => /^k[a-z]+$/.test(k)), [], 'year ' + y);
+      for (let i = 0; i < 25; i++) for (const q of G.generateSet('maths', y, 'mixed', 2, 20)) assert.ok(!/^k[a-z]+$/.test(q.ref.gen) && !K6.has(q.topic), y + ' ' + q.ref.gen);
+    }
+  });
+  t('R9.2: the Kindergarten AI brief asks for counting to 20, no word-problem share and no "harder than Australian" level', () => {
+    const names = K6.topicsFor(0).map(k => [k, k]);
+    for (const topic of ['mixed', 'k6add']) for (const d of [1, 2, 3, 4]) {
+      const p = AI.buildPrompt('maths', 0, topic, d, 5, names);
+      assert.ok(/Kindergarten/.test(p) && /within 20/.test(p), 'level');
+      assert.ok(!/harder than Australian/.test(p) && !/word problems \(应用题\)/.test(p) && !/Include some word problems/.test(p), topic + ' d' + d);
+    }
+    const y1 = AI.buildPrompt('maths', 1, 'mixed', 2, 5, K6.topicsFor(1).map(k => [k, k]));
+    assert.ok(/harder than Australian/.test(y1) && /word problems \(应用题\)/.test(y1), 'Year 1 unchanged');
+  });
+  t('R9.3: Kindergarten is a school year: by age, entered in a profile, moving up, and through the progress file', () => {
+    const nov = new Date(2026, 10, 9);
+    assert.strictEqual(Rec.suggestYear({ dob: '2021-03' }, nov), 0);
+    assert.strictEqual(Rec.suggestYear({ schoolYear: 0, schoolYearSet: 2026 }, nov), 0);
+    assert.strictEqual(Rec.suggestYear({ schoolYear: 0, schoolYearSet: 2026 }, new Date(2027, 1, 1)), 1);
+    assert.strictEqual(Rec.suggestYear({ schoolYear: 0, schoolYearSet: 2026, dob: '2016-03' }, nov), 0, 'school year 0 wins over birth month');
+    const back = Rec.fromCSV(Rec.toCSV({ name: 'K', schoolYear: 0, schoolYearSet: 2026, dob: '2021-03' }, [], []));
+    assert.strictEqual(back.student.schoolYear, 0);
+    assert.strictEqual(Rec.fromCSV(Rec.toCSV({ name: 'N' }, [], [])).student.schoolYear, null);
+  });
+  t('R9.5: a "Which is lighter?" method names the lighter thing', () => {
+    let seen = 0;
+    for (let i = 0; i < 400; i++) { const q = G.SUBJECTS.maths.kmass.fn(0, 1); if (!q || !/lighter/.test(q.q.en)) continue; seen++; assert.ok(/lighter/.test(q.sol.en) && !/heavier/.test(q.sol.en) && /更轻/.test(q.sol.zh), q.sol.en); }
+    assert.ok(seen > 50, 'only ' + seen);
+  });
+  t('R9.6: 12 pm in 24-hour time keeps the hour 12, and no method adds 12 to 12', () => {
+    let noon = 0;
+    for (let i = 0; i < 6000; i++) for (const y of [5, 6]) {
+      const q = G.SUBJECTS.maths.ktime.fn(y, 2); if (!q || !/24-hour/.test(q.q.en)) continue;
+      assert.ok(!/12 \+ 12/.test(q.sol.en), q.sol.en);
+      if (/^Write 12:\d\d pm/.test(q.q.en)) { noon++; assert.ok(/stays 12/.test(q.sol.en) && /中午/.test(q.sol.zh), q.sol.en); }
+    }
+    assert.ok(noon > 5, 'only ' + noon);
+  });
+  t('R9.4: the long-number flow also needs a box a finger can swipe, and checks hidden and clip fail', () => {
+    const flows = require('fs').readFileSync(require('path').join(__dirname, 'flows.js'), 'utf8');
+    assert.ok(/getComputedStyle\(f\)\.overflowX/.test(flows) && /\['hidden', 'clip'\]/.test(flows));
   });
 }
 

@@ -82,7 +82,7 @@
       gameKey() { return K.games + '.' + P.active; },
       select(id) { P.active = id; store.set(K.profiles, P); },
       add(name) { if (P.list.length >= MAX_PROFILES) return null; let n = 1; while (P.list.some(x => x.id === 'p' + n)) n++; const pr = { id: 'p' + n, name }; P.list.push(pr); P.active = pr.id; store.set(K.profiles, P); return pr; },
-      // fields: name, schoolYear (1–12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
+      // fields: name, schoolYear (0 = Kindergarten to 12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
       update(id, fields) { const pr = P.list.find(x => x.id === id); if (pr) { Object.assign(pr, fields); store.set(K.profiles, P); } },
       remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
     };
@@ -1519,8 +1519,8 @@
     const name = field('profile.name', el('input')); name.type = 'text'; name.maxLength = 20; name.value = pr.name || ''; name.placeholder = Profiles.name(pr); name.autocomplete = 'off';
     const yr = field('profile.schoolYear', el('select'));
     yr.append(new Option(t('profile.yearUnset'), ''));
-    for (let y = 1; y <= 12; y++) yr.append(new Option(yearLabel(y), String(y)));
-    yr.value = pr.schoolYear ? String(Records.suggestYear({ schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet }, now)) : '';
+    for (let y = 0; y <= 12; y++) yr.append(new Option(yearLabel(y), String(y)));
+    yr.value = pr.schoolYear != null ? String(Records.suggestYear({ schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet }, now)) : '';
     const dob = field('profile.dob', el('input')); dob.type = 'month'; dob.value = pr.dob || '';
     dob.min = (thisYear - 25) + '-01'; dob.max = thisYear + '-' + String(now.getMonth() + 1).padStart(2, '0');
     // The birth month, read against today's date, gives the usual school year. When it differs from the school year
@@ -1528,10 +1528,10 @@
     const hint = el('p', 'profile-hint muted small'); hint.setAttribute('aria-live', 'polite'); f.append(hint);
     const showHint = () => {
       hint.innerHTML = '';
-      // Only for an age that is at school in Years 1-12 (R6.3); the plain "Year N", not a course name (R6.4).
+      // Only for an age that is at school, Kindergarten to Year 12 (R6.3, R9.3); the plain "Year N", not a course name (R6.4).
       const byAge = Records.yearByAge(dob.value, new Date());
-      if (byAge === null || byAge < 1 || byAge > 12 || yr.value === String(byAge)) { hint.hidden = true; return; }
-      const label = t('home.yearN', { n: byAge });
+      if (byAge === null || byAge < 0 || byAge > 12 || yr.value === String(byAge)) { hint.hidden = true; return; }
+      const label = byAge === 0 ? t('year.0') : t('home.yearN', { n: byAge });
       const use = el('button', 'btn ghost small', t('profile.useYear', { year: label })); use.type = 'button';
       use.addEventListener('click', () => { yr.value = String(byAge); showHint(); yr.focus(); });
       hint.append(el('span', '', t('profile.ageHint', { year: label }) + ' '), use);
@@ -1546,10 +1546,10 @@
     row.append(cancel, save); f.append(row);
     f.addEventListener('submit', e => {
       e.preventDefault();
-      const y = +yr.value || null, d = /^\d{4}-\d{2}$/.test(dob.value) ? dob.value : '';
+      const y = yr.value === '' ? null : +yr.value, d = /^\d{4}-\d{2}$/.test(dob.value) ? dob.value : '';
       // The details only move the default year on Home. A year the student or parent picked by hand on Home is
       // kept, whatever is edited here (Terry, R4.1, v1.7.0); applySuggestedYear remembers the new suggestion.
-      Profiles.update(pr.id, { name: name.value.trim().slice(0, 20), schoolYear: y, schoolYearSet: y ? thisYear : null, dob: d });
+      Profiles.update(pr.id, { name: name.value.trim().slice(0, 20), schoolYear: y, schoolYearSet: y != null ? thisYear : null, dob: d });
       editingProfile = null;
       if (pr === Profiles.active) applySuggestedYear();
       renderProfiles(); render();
@@ -1563,7 +1563,7 @@
      (R1.2; Terry's decision on R4.1, v1.7.0). */
   function applySuggestedYear() {
     const y = Records.suggestYear(Profiles.active, new Date()), st = S.settings;
-    if (!y || st.suggested === y) return;
+    if (y == null || st.suggested === y) return;
     // With a suggestion stored, a year that differs from it was picked by hand. Before any suggestion exists, only the
     // flag set on Home says so (R6.1).
     const handPicked = st.suggested == null ? st.yearPicked === true : st.year !== st.suggested;
@@ -1578,7 +1578,7 @@
       if (cur) pick.setAttribute('aria-current', 'true');
       pick.addEventListener('click', () => switchProfile(pr.id));
       const sug = Records.suggestYear(pr, new Date());
-      if (sug) pick.append(el('span', 'muted small', ' · ' + yearLabel(sug)));
+      if (sug != null) pick.append(el('span', 'muted small', ' · ' + yearLabel(sug)));
       const ren = el('button', 'icon-btn', '✎'); ren.type = 'button'; ren.setAttribute('aria-label', t('profile.edit'));
       ren.setAttribute('aria-expanded', String(editingProfile === pr.id));
       ren.addEventListener('click', () => { editingProfile = editingProfile === pr.id ? null : pr.id; renderProfiles(); });
@@ -1743,8 +1743,8 @@
     store.set(histKey(), h.list); store.set(Profiles.badgeKey(), b.list);
     const st = data.student;
     if (st) {   // details fill gaps only: what was entered on this device wins
-      Profiles.update(pr.id, { name: pr.name || st.name, schoolYear: pr.schoolYear || st.schoolYear,
-        schoolYearSet: pr.schoolYear ? pr.schoolYearSet : st.schoolYearSet, dob: pr.dob || st.dob });
+      Profiles.update(pr.id, { name: pr.name || st.name, schoolYear: pr.schoolYear != null ? pr.schoolYear : st.schoolYear,
+        schoolYearSet: pr.schoolYear != null ? pr.schoolYearSet : st.schoolYearSet, dob: pr.dob || st.dob });
       applySuggestedYear();
     }
     render();

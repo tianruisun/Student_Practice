@@ -107,7 +107,8 @@
 
   function register(subject, topic, minYear, fn, opts) {
     const o = typeof opts === 'object' && opts ? opts : {};
-    SUBJECTS[subject][topic] = { minYear, maxYear: o.maxYear || 14, fn, olympiadOnly: !!o.olympiadOnly };
+    SUBJECTS[subject][topic] = { minYear, maxYear: o.maxYear != null ? o.maxYear : 14, fn,   // R9.1: 0 (Kindergarten only) is a real top year
+      olympiadOnly: !!o.olympiadOnly };
   }
   function topicsFor(subject, y) {
     const s = SUBJECTS[subject] || {};

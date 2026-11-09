@@ -136,7 +136,7 @@
     if (y === 0) {
       const hv = pick([['a watermelon', '西瓜'], ['a schoolbag full of books', '装满书的书包'], ['a brick', '砖头']]), lt = pick([['a feather', '羽毛'], ['a leaf', '树叶'], ['a balloon', '气球']]), askH = Math.random() < 0.5;
       return mc({ topic: 'kmass', en: `Which is ${askH ? 'heavier' : 'lighter'}?`, zh: `哪个更${askH ? '重' : '轻'}？`, correct: askH ? { en: hv[0], zh: hv[1] } : { en: lt[0], zh: lt[1] }, wrong: [askH ? { en: lt[0], zh: lt[1] } : { en: hv[0], zh: hv[1] }],
-        solEn: `Hold one in each hand: ${hv[0]} pulls your hand down more, so it is heavier.`, solZh: `一只手拿一个：${hv[1]}让手往下沉得多，所以它更重。` });
+        solEn: `Hold one in each hand: ${hv[0]} pulls your hand down more, so ${askH ? 'it is heavier' : lt[0] + ' is lighter'}.`, solZh: `一只手拿一个：${hv[1]}让手往下沉得多，所以${askH ? '它更重' : lt[1] + '更轻'}。` });
     }
     if (y <= 2) {
       const a = R(2, 6), n = R(2, y === 1 ? 3 : 5);
@@ -196,7 +196,7 @@
     if (y === 5 || Math.random() < 0.4) {
       const to24 = Math.random() < 0.5, val = `${p2(h24)}:${p2(m)}`;
       if (to24) return mc({ topic: 'ktime', en: `Write ${ampm(h24, m)} in 24-hour time.`, zh: `把 ${ampmZh(h24, m)} 写成 24 小时制。`, correct: val, wrong: [`${p2((h24 + 12) % 24)}:${p2(m)}`, `${p2(h24 % 12 || 12)}:${p2(m)}`, `${p2((h24 + 1) % 24)}:${p2(m)}`, `${p2(h24)}:${p2((m + 30) % 60)}`].filter(w => w !== val),
-        solEn: h24 >= 12 ? `pm times after midday: add 12 to the hour (${h24 % 12 || 12} + 12 = ${h24}), so ${val}.` : `am times keep the hour${h24 === 0 ? ', but 12 midnight is 00' : ''}: ${val}.`, solZh: h24 >= 12 ? `下午的时间，小时数加 12：${val}。` : `上午的时间，小时数不变${h24 === 0 ? '（午夜 12 点写作 00）' : ''}：${val}。` });
+        solEn: h24 === 12 ? `12 pm is midday: the hour stays 12, so ${val}.` : h24 > 12 ? `pm times after midday: add 12 to the hour (${h24 - 12} + 12 = ${h24}), so ${val}.` : `am times keep the hour${h24 === 0 ? ', but 12 midnight is 00' : ''}: ${val}.`, solZh: h24 === 12 ? `中午 12 点，小时数还是 12：${val}。` : h24 > 12 ? `下午的时间，小时数加 12：${val}。` : `上午的时间，小时数不变${h24 === 0 ? '（午夜 12 点写作 00）' : ''}：${val}。` });
       return mc({ topic: 'ktime', en: `Write ${val} in 12-hour time.`, zh: `把 ${val} 写成 12 小时制。`, correct: { en: ampm(h24, m), zh: ampmZh(h24, m) }, wrong: [{ en: ampm((h24 + 12) % 24, m), zh: ampmZh((h24 + 12) % 24, m) }, { en: ampm((h24 + 2) % 24, m), zh: ampmZh((h24 + 2) % 24, m) }, { en: ampm((h24 + 14) % 24, m), zh: ampmZh((h24 + 14) % 24, m) }],
         solEn: h24 >= 12 ? `${p2(h24)} is after 12, so take away 12 and use pm: ${ampm(h24, m)}.` : `${p2(h24)} is before 12, so it is am: ${ampm(h24, m)}.`, solZh: h24 >= 12 ? `${p2(h24)} 大于 12，减去 12，是下午：${ampmZh(h24, m)}。` : `${p2(h24)} 小于 12，是上午：${ampmZh(h24, m)}。` });
     }

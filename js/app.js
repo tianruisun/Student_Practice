@@ -82,7 +82,7 @@
       gameKey() { return K.games + '.' + P.active; },
       select(id) { P.active = id; store.set(K.profiles, P); },
       add(name) { if (P.list.length >= MAX_PROFILES) return null; let n = 1; while (P.list.some(x => x.id === 'p' + n)) n++; const pr = { id: 'p' + n, name }; P.list.push(pr); P.active = pr.id; store.set(K.profiles, P); return pr; },
-      // fields: name, schoolYear (1–12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
+      // fields: name, schoolYear (0 = Kindergarten to 12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
       update(id, fields) { const pr = P.list.find(x => x.id === id); if (pr) { Object.assign(pr, fields); store.set(K.profiles, P); } },
       remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
     };
@@ -90,8 +90,8 @@
   const histKey = () => Profiles.histKey();
 
   /* ---------- state ---------- */
-  const YEARS = Gen.YEARS;   // 1–12, 13 = Year 12 Extension 1 (3U), 14 = Year 12 Extension 2 (4U)
-  const yearLabel = y => (y >= 11 ? t('year.' + y) : t('home.yearN', { n: y }));
+  const YEARS = Gen.YEARS;   // 0 = Kindergarten (v1.10.0), 1–12, 13 = Year 12 Extension 1 (3U), 14 = Year 12 Extension 2 (4U)
+  const yearLabel = y => (y === 0 || y >= 11 ? t('year.' + y) : t('home.yearN', { n: y }));
   const schoolOf = y => (y <= 6 ? 'primary' : 'high');
   const COUNTS = [1, 5, 10, 15, 20];
   const defaults = { subject: 'maths', year: 6, topic: 'mixed', diff: 2, count: 10, selLen: 'full', view: 'single' };
@@ -115,7 +115,7 @@
     S.screen = screen;
     document.querySelectorAll('.screen').forEach(s => { s.hidden = s.id !== 'screen-' + screen; });
     document.querySelectorAll('.tab').forEach(b => {
-      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading'].includes(screen)) ||
+      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading', 'study'].includes(screen)) ||
         (b.dataset.go === 'games' && (screen === 'game' || screen === 'puzzle'));
       if (cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
@@ -139,7 +139,7 @@
     document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || inGame);
     document.body.classList.toggle('in-game', inGame);   // the header too: a round needs the whole screen on a small phone
     $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading' || inGame;   // the tour shows Home; never leave a set for it
-    ({ home: renderHome, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
+    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
   }
 
   /* ---------- HOME ---------- */
@@ -192,8 +192,14 @@
     const f = el('div', 'figwrap small-fig'); f.innerHTML = Fig.render(q.fig, lang()); parent.append(f);
   }
 
+  /* Kindergarten to Year 6 maths: the NSW K–6 topics of js/scope-k6.js (v1.10.0), plus competition problems as before.
+     Everything else: the generators' own topics. */
+  function topicKeys(subject, year) {
+    if (subject === 'maths' && year <= 6 && window.ScopeK6) return ScopeK6.topicsFor(year).concat(Gen.topicsFor('maths', year).includes('olymp') ? ['olymp'] : []);
+    return Gen.topicsFor(subject, year);
+  }
   function topicOptions(subject, year) {
-    return [['mixed', t('topic.mixed')], ...Gen.topicsFor(subject, year).map(k => [k, t('topic.' + k)])];
+    return [['mixed', t('topic.mixed')], ...topicKeys(subject, year).map(k => [k, t('topic.' + k)])];
   }
 
   /* text of the correct answer / of what the student gave, in the current language */
@@ -214,7 +220,8 @@
     if (!SUBJECTS.includes(st.subject)) st.subject = 'maths';
     if (![1, 2, 3, 4].includes(st.diff)) st.diff = 2;
     if (!YEARS.includes(st.year)) st.year = 6;
-    if (st.topic !== 'mixed' && !Gen.topicsFor(st.subject, st.year).includes(st.topic)) st.topic = 'mixed';
+    if (st.year === 0 && st.subject === 'ga') st.year = 1;   // Kindergarten is for maths only
+    if (st.topic !== 'mixed' && !topicKeys(st.subject, st.year).includes(st.topic)) st.topic = 'mixed';
     tiles($('#subjectChips'), SUBJECTS.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); });
     $('#subjectNote').textContent = t(st.subject === 'ga' ? 'home.gaNote' : st.subject === 'sel' ? 'home.selNote' : st.subject === 'comp' ? 'home.compNote' : 'home.levelNote');
     const isSel = st.subject === 'sel', isComp = st.subject === 'comp';
@@ -232,8 +239,10 @@
     combo($('#schoolSel'), ['primary', 'high'].map(k => [k, t('school.' + k)]), school, v => {
       st.year = v === 'primary' ? Math.min(st.year, 6) : Math.max(st.year, 7); st.yearPicked = true; saveSettings(); renderHome();
     });
-    combo($('#yearSel'), (school === 'primary' ? Gen.PRIMARY : Gen.HIGH).map(y => [y, yearLabel(y)]), st.year, v => { st.year = +v; st.yearPicked = true; saveSettings(); renderHome(); });
-    combo($('#topicSel'), topicOptions(st.subject, st.year), st.topic, v => { st.topic = v; saveSettings(); });
+    combo($('#yearSel'), (school === 'primary' ? Gen.PRIMARY.filter(y => y > 0 || st.subject === 'maths') : Gen.HIGH).map(y => [y, yearLabel(y)]), st.year, v => { st.year = +v; st.yearPicked = true; saveSettings(); renderHome(); });
+    combo($('#topicSel'), topicOptions(st.subject, st.year), st.topic, v => { st.topic = v; saveSettings(); showStudyLink(); });
+    $('#studyCard').hidden = st.subject !== 'maths';
+    showStudyLink();
     combo($('#diffSel'), [1, 2, 3, 4].map(d => [d, t('diff.' + d)]), st.diff, v => { st.diff = +v; saveSettings(); });
     const isCustom = !COUNTS.includes(st.count);
     combo($('#countSel'), [...COUNTS.map(n => [n, String(n)]), ['custom', t('home.countCustom')]], isCustom ? 'custom' : st.count, v => {
@@ -280,7 +289,7 @@
     const c = store.get(K.ai, null);
     return c && c.provider && c.provider !== 'local' && c.key ? c : null;
   }
-  function topicNames(subject, year) { return Gen.topicsFor(subject, year).map(k => [k, window.I18N.STRINGS.en['topic.' + k]]); }
+  function topicNames(subject, year) { return topicKeys(subject, year).map(k => [k, window.I18N.STRINGS.en['topic.' + k]]); }
 
   async function startQuiz(settings) {
     if (isTimed(settings.subject)) return startTest(settings);
@@ -328,7 +337,7 @@
     const questions = Similar.makeSet(items, perQ, 50);
     if (!questions.length) return toast(t('rev.none'));
     const first = items[0], fb = first.fb || {};
-    const settings = { subject: 'review', topic: 'similar', year: first.q.year || fb.year || S.settings.year, diff: first.q.diff || fb.diff || S.settings.diff, count: questions.length };
+    const settings = { subject: 'review', topic: 'similar', year: first.q.year != null ? first.q.year : fb.year != null ? fb.year : S.settings.year, diff: first.q.diff || fb.diff || S.settings.diff, count: questions.length };
     S.lastQuizSettings = { similar: items, perQ };
     S.quiz = {
       exam: false, questions, i: 0, page: 0, results: [], started: Date.now(),
@@ -745,6 +754,101 @@
     } else {
       openPrint(Gen.generateSet(st.subject, st.year, st.topic, st.diff, st.count), Object.assign({}, st));
     }
+  }
+
+  /* ---------- STUDY (v1.10.0): the NSW K–6 topics by year and strand, a lesson for each, then practice on it ----------
+     Terry: "Student can choose to study first base on the scope and sequence ... for each topic, generate learning
+     material for student to study before they practice their questions." Topics: js/scope-k6.js; lessons:
+     js/lessons-k2.js and js/lessons-36.js. The year picked here is kept in the settings as studyYear. */
+  const STRAND_ICON = { num: '🔢', mes: '📏', sta: '📊' };
+  const studyYearOf = st => (window.ScopeK6 && ScopeK6.YEARS.includes(st.studyYear) ? st.studyYear : st.year <= 6 ? st.year : 6);
+  const studied = () => (S.settings.studied && typeof S.settings.studied === 'object' ? S.settings.studied : {});
+  let studyTopic = null;   // the lesson on screen, or null for the topic list
+  function openStudy(topic, year) {
+    const st = S.settings;
+    st.studyYear = year != null ? year : studyYearOf(st);
+    saveSettings();
+    studyTopic = topic && ScopeK6.inYear(topic, st.studyYear) ? topic : null;
+    go('study');
+    if (studyTopic) focusLesson();
+  }
+  function showStudyLink() {
+    const st = S.settings;
+    $('#studyTopicBtn').hidden = !(st.subject === 'maths' && window.ScopeK6 && ScopeK6.inYear(st.topic, st.year));
+  }
+  function focusLesson() { const h = $('#lessonH'); if (h) h.focus({ preventScroll: true }); window.scrollTo(0, 0); }
+  function showLesson(id) { studyTopic = id; renderStudy(); focusLesson(); }
+
+  function renderStudy() {
+    const st = S.settings, y = studyYearOf(st);
+    if (studyTopic && !ScopeK6.inYear(studyTopic, y)) studyTopic = null;
+    $('#studyList').hidden = !!studyTopic;
+    $('#studyLesson').hidden = !studyTopic;
+    if (studyTopic) { renderLesson(y, studyTopic); return; }
+    chips($('#studyYears'), 'studyYear', ScopeK6.YEARS.map(v => [v, v === 0 ? t('year.0short') : String(v)]), y, v => { st.studyYear = +v; saveSettings(); renderStudy(); });
+    $('#studyYears').querySelectorAll('input').forEach((inp, i) => inp.setAttribute('aria-label', yearLabel(ScopeK6.YEARS[i])));
+    const box = $('#studyTopics'), done = studied();
+    box.innerHTML = '';
+    box.append(el('h3', 'study-year-h', yearLabel(y)));
+    ScopeK6.STRANDS.forEach(sd => {
+      const ids = ScopeK6.topicsFor(y).filter(id => ScopeK6.strandOf(id) === sd);
+      if (!ids.length) return;
+      const sec = el('section', 'study-strand s-' + sd), ul = el('ul', 'study-topics');
+      sec.append(el('h4', 'study-strand-h', STRAND_ICON[sd] + ' ' + t('study.strand.' + sd)));
+      ids.forEach(id => {
+        const li = el('li'), b = el('button', 'study-topic'), w = ScopeK6.what(id, y);
+        b.type = 'button'; b.dataset.topic = id;
+        b.append(el('span', 'study-topic-name', t('topic.' + id)), el('span', 'study-topic-what', w[lang()] || w.en));
+        if (done[y + ':' + id]) b.append(el('span', 'study-done', t('study.done')));
+        b.addEventListener('click', () => showLesson(id));
+        li.append(b); ul.append(li);
+      });
+      sec.append(ul); box.append(sec);
+    });
+  }
+
+  function renderLesson(y, id) {
+    const st = S.settings, art = $('#studyLesson'), sd = ScopeK6.strandOf(id), w = ScopeK6.what(id, y);
+    const L = window.LessonsK6 && window.LessonsK6[y + ':' + id], c = L && (L[lang()] || L.en);
+    art.innerHTML = '';
+    const back = el('button', 'btn ghost small study-back', '‹ ' + t('study.back')); back.type = 'button';
+    back.addEventListener('click', () => { studyTopic = null; renderStudy(); window.scrollTo(0, 0); });
+    const h = el('h2', '', t('topic.' + id)); h.id = 'lessonH'; h.tabIndex = -1;
+    const nw = el('p', 'study-new');
+    nw.append(el('strong', '', t('study.newThisYear') + ' '), document.createTextNode(w[lang()] || w.en));
+    art.append(back, h, el('p', 'study-tag s-' + sd, yearLabel(y) + ' · ' + t('study.strand.' + sd)), nw);
+    if (c) {
+      art.append(el('p', 'study-intro', c.intro), el('h3', '', t('study.keyIdeas')));
+      const ul = el('ul', 'study-points'); c.points.forEach(p => ul.append(el('li', '', p))); art.append(ul);
+      art.append(el('h3', '', t('study.examples')));
+      c.ex.forEach(([q, a], i) => {
+        const d = el('div', 'study-ex');
+        d.append(el('p', 'study-ex-q', t('study.example', { n: i + 1 }) + ' ' + q), el('p', 'study-ex-a', a));
+        art.append(d);
+      });
+      const tip = el('p', 'study-tip');
+      tip.append(el('strong', '', '💡 ' + t('study.tip') + ' '), document.createTextNode(c.tip));
+      art.append(tip);
+    }
+    const act = el('div', 'study-actions');
+    const go1 = el('button', 'btn primary big', t('study.practise', { n: st.count })); go1.type = 'button'; go1.id = 'studyPractise';
+    go1.addEventListener('click', () => practiseTopic(y, id));
+    act.append(go1, el('p', 'muted small', t('study.practiseNote', { diff: t('diff.' + st.diff) })));
+    const list = ScopeK6.topicsFor(y), nx = list[list.indexOf(id) + 1];
+    if (nx) {
+      const b = el('button', 'btn secondary', t('study.next', { topic: t('topic.' + nx) })); b.type = 'button'; b.id = 'studyNext';
+      b.addEventListener('click', () => showLesson(nx));
+      act.append(b);
+    }
+    art.append(act);
+    if (!studied()[y + ':' + id]) { st.studied = Object.assign({}, studied(), { [y + ':' + id]: Date.now() }); saveSettings(); }
+  }
+
+  /* practise the lesson's topic at the student's own level and number of questions (set on Home) */
+  function practiseTopic(y, id) {
+    const st = S.settings;
+    st.subject = 'maths'; st.year = y; st.topic = id; st.yearPicked = true; saveSettings();
+    startQuiz(st);
   }
 
   /* One row of "score by topic": label, count (and percent), and a bar coloured below 50 % / below 80 % / above. */
@@ -1415,8 +1519,8 @@
     const name = field('profile.name', el('input')); name.type = 'text'; name.maxLength = 20; name.value = pr.name || ''; name.placeholder = Profiles.name(pr); name.autocomplete = 'off';
     const yr = field('profile.schoolYear', el('select'));
     yr.append(new Option(t('profile.yearUnset'), ''));
-    for (let y = 1; y <= 12; y++) yr.append(new Option(yearLabel(y), String(y)));
-    yr.value = pr.schoolYear ? String(Records.suggestYear({ schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet }, now)) : '';
+    for (let y = 0; y <= 12; y++) yr.append(new Option(yearLabel(y), String(y)));
+    yr.value = pr.schoolYear != null ? String(Records.suggestYear({ schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet }, now)) : '';
     const dob = field('profile.dob', el('input')); dob.type = 'month'; dob.value = pr.dob || '';
     dob.min = (thisYear - 25) + '-01'; dob.max = thisYear + '-' + String(now.getMonth() + 1).padStart(2, '0');
     // The birth month, read against today's date, gives the usual school year. When it differs from the school year
@@ -1424,10 +1528,10 @@
     const hint = el('p', 'profile-hint muted small'); hint.setAttribute('aria-live', 'polite'); f.append(hint);
     const showHint = () => {
       hint.innerHTML = '';
-      // Only for an age that is at school in Years 1-12 (R6.3); the plain "Year N", not a course name (R6.4).
+      // Only for an age that is at school, Kindergarten to Year 12 (R6.3, R9.3); the plain "Year N", not a course name (R6.4).
       const byAge = Records.yearByAge(dob.value, new Date());
-      if (byAge === null || byAge < 1 || byAge > 12 || yr.value === String(byAge)) { hint.hidden = true; return; }
-      const label = t('home.yearN', { n: byAge });
+      if (byAge === null || byAge < 0 || byAge > 12 || yr.value === String(byAge)) { hint.hidden = true; return; }
+      const label = byAge === 0 ? t('year.0') : t('home.yearN', { n: byAge });
       const use = el('button', 'btn ghost small', t('profile.useYear', { year: label })); use.type = 'button';
       use.addEventListener('click', () => { yr.value = String(byAge); showHint(); yr.focus(); });
       hint.append(el('span', '', t('profile.ageHint', { year: label }) + ' '), use);
@@ -1442,10 +1546,10 @@
     row.append(cancel, save); f.append(row);
     f.addEventListener('submit', e => {
       e.preventDefault();
-      const y = +yr.value || null, d = /^\d{4}-\d{2}$/.test(dob.value) ? dob.value : '';
+      const y = yr.value === '' ? null : +yr.value, d = /^\d{4}-\d{2}$/.test(dob.value) ? dob.value : '';
       // The details only move the default year on Home. A year the student or parent picked by hand on Home is
       // kept, whatever is edited here (Terry, R4.1, v1.7.0); applySuggestedYear remembers the new suggestion.
-      Profiles.update(pr.id, { name: name.value.trim().slice(0, 20), schoolYear: y, schoolYearSet: y ? thisYear : null, dob: d });
+      Profiles.update(pr.id, { name: name.value.trim().slice(0, 20), schoolYear: y, schoolYearSet: y != null ? thisYear : null, dob: d });
       editingProfile = null;
       if (pr === Profiles.active) applySuggestedYear();
       renderProfiles(); render();
@@ -1459,7 +1563,7 @@
      (R1.2; Terry's decision on R4.1, v1.7.0). */
   function applySuggestedYear() {
     const y = Records.suggestYear(Profiles.active, new Date()), st = S.settings;
-    if (!y || st.suggested === y) return;
+    if (y == null || st.suggested === y) return;
     // With a suggestion stored, a year that differs from it was picked by hand. Before any suggestion exists, only the
     // flag set on Home says so (R6.1).
     const handPicked = st.suggested == null ? st.yearPicked === true : st.year !== st.suggested;
@@ -1474,7 +1578,7 @@
       if (cur) pick.setAttribute('aria-current', 'true');
       pick.addEventListener('click', () => switchProfile(pr.id));
       const sug = Records.suggestYear(pr, new Date());
-      if (sug) pick.append(el('span', 'muted small', ' · ' + yearLabel(sug)));
+      if (sug != null) pick.append(el('span', 'muted small', ' · ' + yearLabel(sug)));
       const ren = el('button', 'icon-btn', '✎'); ren.type = 'button'; ren.setAttribute('aria-label', t('profile.edit'));
       ren.setAttribute('aria-expanded', String(editingProfile === pr.id));
       ren.addEventListener('click', () => { editingProfile = editingProfile === pr.id ? null : pr.id; renderProfiles(); });
@@ -1575,6 +1679,8 @@
   const startOrHome = () => (S.screen === 'home' ? startQuiz(S.settings) : go('home'));
   $('#fabStart').addEventListener('click', startOrHome);
   $('#heroStart').addEventListener('click', () => startQuiz(S.settings));
+  $('#studyCard').addEventListener('click', () => openStudy(null));
+  $('#studyTopicBtn').addEventListener('click', () => openStudy(S.settings.topic, S.settings.year));
   $('#navStudents').addEventListener('click', () => $('#profileBtn').click());
   $('#langBtn').addEventListener('click', () => {
     window.I18N.setLang(lang() === 'zh' ? 'en' : 'zh');
@@ -1637,8 +1743,8 @@
     store.set(histKey(), h.list); store.set(Profiles.badgeKey(), b.list);
     const st = data.student;
     if (st) {   // details fill gaps only: what was entered on this device wins
-      Profiles.update(pr.id, { name: pr.name || st.name, schoolYear: pr.schoolYear || st.schoolYear,
-        schoolYearSet: pr.schoolYear ? pr.schoolYearSet : st.schoolYearSet, dob: pr.dob || st.dob });
+      Profiles.update(pr.id, { name: pr.name || st.name, schoolYear: pr.schoolYear != null ? pr.schoolYear : st.schoolYear,
+        schoolYearSet: pr.schoolYear != null ? pr.schoolYearSet : st.schoolYearSet, dob: pr.dob || st.dob });
       applySuggestedYear();
     }
     render();

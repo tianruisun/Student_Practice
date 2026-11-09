@@ -29,15 +29,17 @@ ok({ value: 7.33, tol: 1e-9 }, '7.33'); no({ value: 7.33, tol: 1e-9 }, '7.3349')
 /* every generated question: clean text; typed answers accept their own displayed answer; MC well-formed */
 require('../js/gen-core.js'); require('../js/gen-maths.js'); require('../js/gen-word.js'); require('../js/gen-junior.js');
 require('../js/gen-senior.js'); require('../js/gen-charts.js'); require('../js/gen-olympiad.js'); require('../js/gen-amo.js'); require('../js/gen-ga.js');
-const G = globalThis.Gen;
+require('../js/gen-k6.js'); require('../js/scope-k6.js'); require('../js/lessons-k2.js'); require('../js/lessons-36.js');
+const G = globalThis.Gen, K6 = globalThis.ScopeK6;
 const FIGR = require('../js/figures.js');
 let gen = 0;
 const BAD = /undefined|NaN|Infinity|null|\[object|function\s*\(/;
-for (const subject of ['maths', 'ga']) for (const y of G.YEARS) for (const d of [1, 2, 3, 4]) for (const topic of ['mixed', ...G.topicsFor(subject, y)]) {
+const k6list = (subject, y) => (subject === 'maths' && y <= 6 ? K6.topicsFor(y).concat(G.topicsFor('maths', y).includes('olymp') ? ['olymp'] : []) : G.topicsFor(subject, y));
+for (const subject of ['maths', 'ga']) for (const y of G.YEARS.filter(y => y > 0 || subject === 'maths')) for (const d of [1, 2, 3, 4]) for (const topic of ['mixed', ...k6list(subject, y)]) {
   const set = G.generateSet(subject, y, topic, d, 15);
   t(`set size ${subject} y${y} d${d} ${topic}`, () => assert.ok(set.length >= 8, 'got ' + set.length));
-  if (subject === 'maths' && topic === 'mixed' && y >= 4 && y <= 10 && d <= 2) t(`mixed has word problems y${y} d${d}`, () => assert.ok(set.filter(q => q.topic === 'word').length >= 3));
-  if (subject === 'maths' && topic === 'mixed' && d === 4) t(`challenge mixes in competition problems y${y}`, () => assert.ok(set.filter(q => q.olympiad).length >= 5, 'only ' + set.filter(q => q.olympiad).length));
+  if (subject === 'maths' && topic === 'mixed' && y >= 4 && y <= 10 && d <= 2) t(`mixed has word problems y${y} d${d}`, () => assert.ok(set.filter(q => q.topic === 'word' || q.topic === 'k6word').length >= 3));
+  if (subject === 'maths' && topic === 'mixed' && d === 4 && y >= 1) t(`challenge mixes in competition problems y${y}`, () => assert.ok(set.filter(q => q.olympiad).length >= 5, 'only ' + set.filter(q => q.olympiad).length));
   for (const q of set) {
     gen++;
     const id = `${subject} y${y} d${d} ${q.topic}: ${q.q.en}`;
@@ -46,14 +48,15 @@ for (const subject of ['maths', 'ga']) for (const y of G.YEARS) for (const d of 
       for (const s of texts) assert.ok(typeof s === 'string' && s.length && !BAD.test(s), JSON.stringify(s));
       assert.strictEqual(q.subject, subject);
       const reg = G.SUBJECTS[subject][q.topic];
-      assert.ok(reg && reg.minYear <= y && y <= reg.maxYear, 'topic outside its years');
+      if (K6.has(q.topic)) assert.ok(K6.inYear(q.topic, y) && q.year === y, 'K–6 topic outside its years');
+      else assert.ok(reg && reg.minYear <= y && y <= reg.maxYear, 'topic outside its years');
       if (q.fig) for (const l of ['en', 'zh']) { const h = FIGR.render(q.fig, l); assert.ok(h.startsWith('<figure') && !/NaN|undefined/.test(h), 'figure ' + q.fig.type); }
       // v1.6.4 (F.3): a topic with too few distinct questions is topped up from the year's other topics, after its own
       if (topic !== 'mixed' && q.topic !== topic) assert.ok(set.slice(set.indexOf(q)).every(x => x.topic !== topic), 'top-up before the topic ran out');
     });
     if (q.type === 'mc') {
       t(id + ' mc', () => {
-        assert.ok(q.choices.length >= 3 && q.choices.length <= 5, 'options ' + q.choices.length);
+        assert.ok(q.choices.length >= (/^k[a-z]+$/.test(q.ref.gen) ? 2 : 3) && q.choices.length <= 5, 'options ' + q.choices.length);
         assert.ok(Number.isInteger(q.correct) && q.correct >= 0 && q.correct < q.choices.length);
         assert.strictEqual(new Set(q.choices.map(c => c.en)).size, q.choices.length, 'duplicate options');
       });
@@ -69,8 +72,8 @@ for (const subject of ['maths', 'ga']) for (const y of G.YEARS) for (const d of 
 
 /* Year coverage, school split and olympiad bank */
 t('years 1–14 all have maths topics', () => { for (const y of G.YEARS) assert.ok(G.topicsFor('maths', y).length >= 6, 'year ' + y); });
-t('ga available every year', () => { for (const y of G.YEARS) assert.ok(G.topicsFor('ga', y).length >= 5, 'year ' + y); });
-t('primary/high split', () => { assert.deepStrictEqual(G.PRIMARY, [1, 2, 3, 4, 5, 6]); assert.deepStrictEqual(G.HIGH, [7, 8, 9, 10, 11, 12, 13, 14]); });
+t('ga available every school year from Year 1 (Kindergarten is maths only, v1.10.0)', () => { for (const y of G.YEARS.filter(y => y > 0)) assert.ok(G.topicsFor('ga', y).length >= 5, 'year ' + y); });
+t('primary/high split', () => { assert.deepStrictEqual(G.PRIMARY, [0, 1, 2, 3, 4, 5, 6]); assert.deepStrictEqual(G.HIGH, [7, 8, 9, 10, 11, 12, 13, 14]); });
 t('extension topics only in 3U/4U', () => {
   assert.ok(!G.topicsFor('maths', 12).includes('comb') && G.topicsFor('maths', 13).includes('comb'));
   assert.ok(!G.topicsFor('maths', 13).includes('complex') && G.topicsFor('maths', 14).includes('complex'));
@@ -283,15 +286,15 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
   t('suggested year: school year entered this year', () => assert.strictEqual(Rec.suggestYear({ schoolYear: 4, schoolYearSet: 2026 }, nov), 4));
   t('suggested year: moves up each new calendar year', () => assert.strictEqual(Rec.suggestYear({ schoolYear: 4, schoolYearSet: 2026 }, new Date(2028, 1, 1)), 6));
   t('year by age: not clamped (R6.3)', () => { assert.strictEqual(Rec.yearByAge('2022-06', nov), -1); assert.strictEqual(Rec.yearByAge('2021-03', nov), 0); assert.strictEqual(Rec.yearByAge('2010-03', nov), 11); assert.strictEqual(Rec.yearByAge('', nov), null); assert.strictEqual(Rec.yearByAge('2010-3', nov), null); });
-  t('suggested year: a preschool birth month still clamps to Year 1', () => assert.strictEqual(Rec.suggestYear({ dob: '2022-06' }, nov), 1));
+  t('suggested year: a preschool birth month clamps to Kindergarten (R9.3)', () => assert.strictEqual(Rec.suggestYear({ dob: '2022-06' }, nov), 0));
   t('suggested year: school year wins over birth month', () => assert.strictEqual(Rec.suggestYear({ schoolYear: 3, schoolYearSet: 2026, dob: '2016-03' }, nov), 3));
   t('suggested year: born Jan-Jul starts Kindergarten the year they turn 5', () => {
     assert.strictEqual(Rec.suggestYear({ dob: '2016-03' }, nov), 5);   // K 2021, Year 5 in 2026
     assert.strictEqual(Rec.suggestYear({ dob: '2016-07' }, nov), 5);
   });
   t('suggested year: born Aug-Dec starts a year later', () => assert.strictEqual(Rec.suggestYear({ dob: '2016-08' }, nov), 4));
-  t('suggested year: kept within Years 1-12, null when unknown', () => {
-    assert.strictEqual(Rec.suggestYear({ dob: '2022-01' }, nov), 1);
+  t('suggested year: kept within Kindergarten to Year 12, null when unknown', () => {
+    assert.strictEqual(Rec.suggestYear({ dob: '2022-01' }, nov), 0);
     assert.strictEqual(Rec.suggestYear({ dob: '2000-01' }, nov), 12);
     assert.strictEqual(Rec.suggestYear({}, nov), null);
     assert.strictEqual(Rec.suggestYear({ dob: 'not a date' }, nov), null);
@@ -788,11 +791,165 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
 {
   const fs = require('fs'), path = require('path');
   const css = fs.readFileSync(path.join(__dirname, '../css/style.css'), 'utf8');
-  t('R6.1: a long formula wraps inside its card instead of staying on one cut-off line', () => {
+  t('R6.1 / R7.1: a long formula wraps at its spaces, and a long token is not split (it scrolls in its box)', () => {
     const rule = (css.match(/\n\.formula \{[^}]*\}/) || [""])[0];
     assert.ok(/white-space: normal;/.test(rule), rule);
     assert.ok(!/nowrap/.test(rule), rule);
-    assert.ok(/overflow-wrap: break-word;/.test(rule), rule);
+    assert.ok(!/overflow-wrap|word-break/.test(rule), rule);
+    assert.ok(/overflow-x: auto;/.test(rule), rule);
+  });
+}
+
+/* v1.10.0 R9: K–6 study mode (Terry's 2026-11-09 request): NSW K–6 topics, Kindergarten, lessons */
+{
+  const fs = require('fs'), path = require('path'), vm = require('vm');
+  const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} };
+  box.window = box;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../js/i18n.js'), 'utf8'), box);
+  const STR = box.I18N.STRINGS, LES = globalThis.LessonsK6, Rec = require('../js/records.js'), Sim = require('../js/similar.js');
+  const app = fs.readFileSync(path.join(__dirname, '../js/app.js'), 'utf8');
+
+  t('K–6: Kindergarten (0) to Year 6 each list the NSW topics, Kindergarten has no word problems or chance', () => {
+    assert.deepStrictEqual(K6.YEARS, [0, 1, 2, 3, 4, 5, 6]);
+    assert.deepStrictEqual(K6.topicsFor(0), ['k6place', 'k6add', 'k6mul', 'k6frac', 'k6len', 'k6mass', 'k6shape', 'k6time', 'k6data']);
+    for (const y of [1, 2]) assert.ok(K6.topicsFor(y).includes('k6chance') && !K6.topicsFor(y).includes('k6word'));
+    for (const y of [3, 4, 5, 6]) assert.strictEqual(K6.topicsFor(y).length, 11);
+    assert.deepStrictEqual(K6.topicsFor(7), []);
+  });
+  t('K–6: every topic and year names generators that exist for the year they run at, and says what is new in both languages', () => {
+    for (const y of K6.YEARS) for (const id of K6.topicsFor(y)) {
+      assert.ok(K6.STRANDS.includes(K6.strandOf(id)), id);
+      const w = K6.what(id, y);
+      assert.ok(w && w.en && w.zh, `what ${y}:${id}`);
+      for (const [gen, gy] of K6.gens(id, y)) {
+        const g = G.SUBJECTS.maths[gen];
+        assert.ok(g && g.minYear <= gy && gy <= g.maxYear, `${y}:${id} → ${gen} at ${gy}`);
+      }
+    }
+  });
+  t('K–6: one full lesson per topic and year, in English and Chinese, and no stray lessons', () => {
+    let n = 0;
+    for (const y of K6.YEARS) for (const id of K6.topicsFor(y)) {
+      n++;
+      const L = LES[y + ':' + id];
+      assert.ok(L, 'no lesson ' + y + ':' + id);
+      for (const lang of ['en', 'zh']) {
+        const c = L[lang];
+        assert.ok(c.intro && c.tip && c.points.length >= 3 && c.ex.length >= 2, `${y}:${id} ${lang}`);
+        for (const [q, a] of c.ex) assert.ok(q && a, `${y}:${id} ${lang} example`);
+        if (lang === 'zh') assert.ok(/[一-鿿]/.test(c.intro + c.tip), `${y}:${id} zh is Chinese`);
+      }
+    }
+    assert.strictEqual(Object.keys(LES).length, n);
+    assert.strictEqual(n, 73);
+  });
+  t('K–6: a 20-question set on any topic, year and level is full, on its topic and labelled with the year', () => {
+    for (const y of K6.YEARS) for (const id of K6.topicsFor(y)) for (const d of [1, 2, 3, 4]) {
+      const set = G.generateSet('maths', y, id, d, 20);
+      assert.strictEqual(set.length, 20, `${y}:${id} d${d}`);
+      assert.ok(set.every(q => q.topic === id && q.year === y && q.subject === 'maths'), `${y}:${id} d${d}`);
+    }
+  });
+  t('K–6: Kindergarten keeps to small numbers (answers 20 or less) and has no competition problems', () => {
+    for (let i = 0; i < 40; i++) for (const d of [1, 2, 3, 4]) for (const q of G.generateSet('maths', 0, 'mixed', d, 15)) {
+      assert.ok(!q.olympiad && K6.inYear(q.topic, 0), q.topic);
+      if (q.type === 'input') assert.ok(q.value >= 0 && q.value <= 20, q.q.en + ' = ' + q.value);
+    }
+  });
+  t('K–6: only the K–6 question types may offer two choices; all others keep at least three', () => {
+    for (const subject of ['maths', 'ga']) for (const y of [1, 4, 8]) for (const q of G.generateSet(subject, y, 'mixed', 2, 30)) {
+      if (q.type === 'mc' && q.choices.length < 3) assert.ok(/^k[a-z]+$/.test(q.ref.gen), q.ref.gen);
+    }
+  });
+  t('K–6: every K–6 topic, question type, study word and Kindergarten exist in English and Chinese', () => {
+    const keys = ['year.0', 'year.0short', 'study.cardT', 'study.cardS', 'study.thisTopic', 'study.heading', 'study.intro', 'study.year', 'study.source',
+      'study.strand.num', 'study.strand.mes', 'study.strand.sta', 'study.done', 'study.back', 'study.newThisYear', 'study.keyIdeas', 'study.examples',
+      'study.example', 'study.tip', 'study.practise', 'study.practiseNote', 'study.next',
+      ...K6.ORDER.map(k => 'topic.' + k), ...Object.keys(G.SUBJECTS.maths).filter(k => /^k[a-z]+$/.test(k) && !K6.has(k)).map(k => 'topic.' + k)];
+    for (const lang of ['en', 'zh']) for (const k of keys) assert.ok(STR[lang][k], lang + ' ' + k);
+  });
+  t('K–6: Home lists the K–6 topics (and competition problems from Year 1) for Kindergarten to Year 6 maths', () => {
+    assert.ok(/if \(subject === 'maths' && year <= 6 && window\.ScopeK6\) return ScopeK6\.topicsFor\(year\)/.test(app));
+    assert.ok(/Gen\.PRIMARY\.filter\(y => y > 0 \|\| st\.subject === 'maths'\)/.test(app), 'Kindergarten is offered for maths only');
+  });
+  t('K–6: a Kindergarten session and badge keep year 0 through the progress file', () => {
+    const h = [{ date: 1762400000000, subject: 'maths', year: 0, topic: 'k6add', diff: 1, n: 5, correct: 5, stars: 3, time: null, byTopic: { k6add: [5, 5] }, wrong: [] }];
+    const b = [{ date: 1762400000000, kind: 'perfect', subject: 'maths', year: 0, diff: 1, n: 5 }];
+    const back = Rec.fromCSV(Rec.toCSV({ name: 'K' }, h, b));
+    assert.strictEqual(back.history[0].year, 0);
+    assert.strictEqual(back.badges[0].year, 0);
+    assert.strictEqual(Rec.levelOf(b[0]), 'maths:0:1');
+    // a timed paper with no year stays without one
+    const t2 = Rec.fromCSV(Rec.toCSV({ name: 'S' }, [{ date: 1762500000000, subject: 'sel', topic: 'sel', diff: 2, n: 35, correct: 30, stars: 2, time: 1800000, byTopic: {}, wrong: [] }], []));
+    assert.ok(t2.history[0].year == null, "a timed paper must not become Kindergarten: " + t2.history[0].year);
+  });
+  t('K–6: similar questions keep the K–6 topic and the student year (Kindergarten too)', () => {
+    for (const [y, id] of [[0, 'k6add'], [3, 'k6len'], [6, 'k6shape'], [1, 'k6chance']]) for (const q of G.generateSet('maths', y, id, 2, 3)) {
+      const out = Sim.make(q, 3);
+      assert.ok(out.length >= 2, `${y}:${id} only ${out.length}`);
+      assert.ok(out.every(x => x.topic === id && x.year === y), `${y}:${id}`);
+    }
+  });
+}
+
+/* v1.10.0 R9: answer to R8.1 (the long-number flow checks scroll reach, not only overflow) */
+{
+  const fs = require('fs'), path = require('path');
+  const flows = fs.readFileSync(path.join(__dirname, 'flows.js'), 'utf8');
+  t('R8.1: the R7.1 flow scrolls the long number to its end and checks the last digit comes into the box', () => {
+    assert.ok(/f\.scrollLeft = 1e9/.test(flows));
+    assert.ok(/reach/.test(flows) && /lastIn/.test(flows));
+  });
+}
+
+/* v1.10.0 R10: answers to the R9 findings */
+{
+  const Rec = require('../js/records.js');
+  t('R9.1: a Kindergarten-only question type stays in Kindergarten (a top year of 0 is kept)', () => {
+    for (const k of ['kcount', 'kaddsub', 'kpattern']) assert.strictEqual(G.SUBJECTS.maths[k].maxYear, 0, k);
+    for (const k of Object.keys(G.SUBJECTS.maths).filter(k => /^k[a-z]+$/.test(k))) assert.ok(G.SUBJECTS.maths[k].maxYear <= 6, k);
+    for (const y of [7, 8, 9, 10, 11, 12, 13, 14]) {
+      assert.deepStrictEqual(G.topicsFor('maths', y).filter(k => /^k[a-z]+$/.test(k)), [], 'year ' + y);
+      for (let i = 0; i < 25; i++) for (const q of G.generateSet('maths', y, 'mixed', 2, 20)) assert.ok(!/^k[a-z]+$/.test(q.ref.gen) && !K6.has(q.topic), y + ' ' + q.ref.gen);
+    }
+  });
+  t('R9.2: the Kindergarten AI brief asks for counting to 20, no word-problem share and no "harder than Australian" level', () => {
+    const names = K6.topicsFor(0).map(k => [k, k]);
+    for (const topic of ['mixed', 'k6add']) for (const d of [1, 2, 3, 4]) {
+      const p = AI.buildPrompt('maths', 0, topic, d, 5, names);
+      assert.ok(/Kindergarten/.test(p) && /within 20/.test(p), 'level');
+      assert.ok(!/harder than Australian/.test(p) && !/word problems \(应用题\)/.test(p) && !/Include some word problems/.test(p), topic + ' d' + d);
+    }
+    const y1 = AI.buildPrompt('maths', 1, 'mixed', 2, 5, K6.topicsFor(1).map(k => [k, k]));
+    assert.ok(/harder than Australian/.test(y1) && /word problems \(应用题\)/.test(y1), 'Year 1 unchanged');
+  });
+  t('R9.3: Kindergarten is a school year: by age, entered in a profile, moving up, and through the progress file', () => {
+    const nov = new Date(2026, 10, 9);
+    assert.strictEqual(Rec.suggestYear({ dob: '2021-03' }, nov), 0);
+    assert.strictEqual(Rec.suggestYear({ schoolYear: 0, schoolYearSet: 2026 }, nov), 0);
+    assert.strictEqual(Rec.suggestYear({ schoolYear: 0, schoolYearSet: 2026 }, new Date(2027, 1, 1)), 1);
+    assert.strictEqual(Rec.suggestYear({ schoolYear: 0, schoolYearSet: 2026, dob: '2016-03' }, nov), 0, 'school year 0 wins over birth month');
+    const back = Rec.fromCSV(Rec.toCSV({ name: 'K', schoolYear: 0, schoolYearSet: 2026, dob: '2021-03' }, [], []));
+    assert.strictEqual(back.student.schoolYear, 0);
+    assert.strictEqual(Rec.fromCSV(Rec.toCSV({ name: 'N' }, [], [])).student.schoolYear, null);
+  });
+  t('R9.5: a "Which is lighter?" method names the lighter thing', () => {
+    let seen = 0;
+    for (let i = 0; i < 400; i++) { const q = G.SUBJECTS.maths.kmass.fn(0, 1); if (!q || !/lighter/.test(q.q.en)) continue; seen++; assert.ok(/lighter/.test(q.sol.en) && !/heavier/.test(q.sol.en) && /更轻/.test(q.sol.zh), q.sol.en); }
+    assert.ok(seen > 50, 'only ' + seen);
+  });
+  t('R9.6: 12 pm in 24-hour time keeps the hour 12, and no method adds 12 to 12', () => {
+    let noon = 0;
+    for (let i = 0; i < 6000; i++) for (const y of [5, 6]) {
+      const q = G.SUBJECTS.maths.ktime.fn(y, 2); if (!q || !/24-hour/.test(q.q.en)) continue;
+      assert.ok(!/12 \+ 12/.test(q.sol.en), q.sol.en);
+      if (/^Write 12:\d\d pm/.test(q.q.en)) { noon++; assert.ok(/stays 12/.test(q.sol.en) && /中午/.test(q.sol.zh), q.sol.en); }
+    }
+    assert.ok(noon > 5, 'only ' + noon);
+  });
+  t('R9.4: the long-number flow also needs a box a finger can swipe, and checks hidden and clip fail', () => {
+    const flows = require('fs').readFileSync(require('path').join(__dirname, 'flows.js'), 'utf8');
+    assert.ok(/getComputedStyle\(f\)\.overflowX/.test(flows) && /\['hidden', 'clip'\]/.test(flows));
   });
 }
 

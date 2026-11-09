@@ -80,7 +80,8 @@
       if (cand === null) break;
       if (!seen.has(cand)) { seen.add(cand); wrong.push(both(cand)); }
     }
-    if (wrong.length < 2) return null;            // caller retries
+    // caller retries; a question with only two sensible answers (longer or shorter, am or pm) sets minWrong: 1
+    if (wrong.length < (o.minWrong || 2)) return null;
     const choices = shuffle([right, ...wrong]);
     return {
       type: 'mc', topic: o.topic, q: { en: o.en, zh: o.zh }, choices, correct: choices.indexOf(right),
@@ -97,15 +98,17 @@
   }
 
   /* ---------- registry ----------
-     Years: 1–12, plus 13 = Year 12 Extension 1 (3U) and 14 = Year 12 Extension 2 (4U).
-     Each topic covers minYear..maxYear. */
-  const YEARS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-  const PRIMARY = [1, 2, 3, 4, 5, 6], HIGH = [7, 8, 9, 10, 11, 12, 13, 14];
+     Years: 0 = Kindergarten (v1.10.0), 1–12, plus 13 = Year 12 Extension 1 (3U) and 14 = Year 12 Extension 2 (4U).
+     Each topic covers minYear..maxYear. Kindergarten to Year 6 maths practice follows the NSW K–6 topics in
+     js/scope-k6.js (generate and generateSet hand those over). */
+  const YEARS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+  const PRIMARY = [0, 1, 2, 3, 4, 5, 6], HIGH = [7, 8, 9, 10, 11, 12, 13, 14];
   const SUBJECTS = { maths: {}, ga: {} };   // subject -> topic -> { minYear, maxYear, fn }
 
   function register(subject, topic, minYear, fn, opts) {
     const o = typeof opts === 'object' && opts ? opts : {};
-    SUBJECTS[subject][topic] = { minYear, maxYear: o.maxYear || 14, fn, olympiadOnly: !!o.olympiadOnly };
+    SUBJECTS[subject][topic] = { minYear, maxYear: o.maxYear != null ? o.maxYear : 14, fn,   // R9.1: 0 (Kindergarten only) is a real top year
+      olympiadOnly: !!o.olympiadOnly };
   }
   function topicsFor(subject, y) {
     const s = SUBJECTS[subject] || {};
@@ -131,7 +134,10 @@
     return null;
   }
 
+  const k6 = () => root.ScopeK6 || null;
+  const isK6 = (subject, year, topic) => subject === 'maths' && year <= 6 && !!k6() && (topic === 'mixed' || k6().has(topic));
   function generate(subject, year, topic, diff) {
+    if (subject === 'maths' && k6() && k6().has(topic)) return k6().generate(year, topic, diff);
     const list = topicsFor(subject, year).filter(k => !SUBJECTS[subject][k].olympiadOnly || topic === k);
     const t = topic !== 'mixed' && topicsFor(subject, year).includes(topic) ? topic : pick(list);
     const O = olympiad();
@@ -150,6 +156,7 @@
   /* n distinct questions. Mixed: spread topics evenly; in maths about 1 in 3 is a word problem (应用题)
      where word problems exist for the year, and Advanced/Challenge mix in competition problems. */
   function generateSet(subject, year, topic, diff, n) {
+    if (isK6(subject, year, topic)) return k6().generateSet(year, topic, diff, n);
     const out = [], seen = new Set();
     const all = topicsFor(subject, year).filter(k => !SUBJECTS[subject][k].olympiadOnly);
     const others = [];

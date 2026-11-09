@@ -464,9 +464,10 @@ select.combo:focus { border-color: var(--pri); }
 sup { font-size: 0.7em; line-height: 0; }
 .formula { display: block; margin: 0.55rem 0 0.35rem; padding: 0.7rem 0.9rem; text-align: center; font-size: 1.3em; font-weight: 700; letter-spacing: 0.02em;
   background: var(--surface-2); border: 1.5px solid var(--hair); border-radius: var(--radius-sm); overflow-x: auto;
-  /* R6.1 (v1.10.0): a formula too long for the card wraps between its terms instead of being cut off at the card edge
-     (one that fits stays on one line); a single unbreakable token still scrolls inside the box as a last resort */
-  white-space: normal; overflow-wrap: break-word; }
+  /* R6.1 (v1.10.0): a formula too long for the card wraps at its spaces instead of being cut off at the card edge
+     (one that fits stays on one line). R7.1: a single token longer than a line (say a long number) is not split,
+     so it never reads as two numbers; it scrolls inside the box instead */
+  white-space: normal; }
 .lead { display: block; }
 .tail { display: block; font-size: 0.85em; font-weight: 600; color: var(--muted); }
 @media print { .formula { background: none; border: 0; text-align: left; padding: 1mm 0 1mm 4mm; font-size: 1.15em; white-space: normal; } .tail { color: #000; } }
@@ -920,3 +921,47 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
   #screen-puzzle.pz-on[data-game="numbers"] .un-msg { font-size: 0.8rem; }
 }
 @media print { #screen-puzzle { display: none; } }
+
+/* ---------- v1.10.0: K–6 study mode (NSW scope and sequence) ---------- */
+.study-card { display: flex; align-items: center; gap: 0.85rem; width: 100%; margin: 0.9rem 0 0.2rem; padding: 0.85rem 1rem; text-align: left;
+  min-height: var(--tap); border: 1.5px solid var(--hair); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink);
+  box-shadow: var(--shadow); font: inherit; cursor: pointer; }
+.study-card:hover { border-color: var(--pri-2); }
+.study-card-ic { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.5rem; background: var(--ok-soft); }
+.study-card-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.study-card-t { font-weight: 700; }
+.study-card-s { font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
+.study-card-go { flex: 0 0 auto; font-size: 1.6rem; color: var(--muted); }
+.study-topic-btn { margin-top: 0.4rem; }
+.study-years-f { border: 0; padding: 0; margin: 0.8rem 0 0.4rem; min-width: 0; }
+.study-year-h { margin: 1rem 0 0.2rem; }
+.study-strand { margin-top: 0.9rem; }
+.study-strand-h { margin: 0 0 0.45rem; font-size: 0.95rem; }
+.study-strand.s-num .study-strand-h { color: var(--pri); }
+.study-strand.s-mes .study-strand-h { color: var(--ok); }
+.study-strand.s-sta .study-strand-h { color: #b45309; }
+@media (prefers-color-scheme: dark) { .study-strand.s-sta .study-strand-h { color: #fbbf24; } }
+.study-topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+@media (min-width: 640px) { .study-topics { grid-template-columns: repeat(2, 1fr); } }
+.study-topic { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%; height: 100%; min-height: var(--tap); padding: 0.7rem 0.9rem;
+  text-align: left; border: 1.5px solid var(--hair); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.study-topic:hover { border-color: var(--pri-2); }
+.study-topic-name { font-weight: 700; }
+.study-topic-what { font-size: 0.85rem; color: var(--muted); line-height: 1.35; }
+.study-done { font-size: 0.78rem; font-weight: 700; color: var(--ok); }
+#studyLesson { max-width: 46rem; }
+#studyLesson h2 { margin: 0.6rem 0 0.2rem; }
+#studyLesson h2:focus { outline: none; }
+#studyLesson h3 { margin: 1.1rem 0 0.4rem; font-size: 1rem; }
+.study-back { margin-top: 0.2rem; }
+.study-tag { margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--muted); }
+.study-new { margin: 0.6rem 0 0; padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); background: var(--pri-soft); }
+.study-intro { font-size: 1.05rem; line-height: 1.55; }
+.study-points { margin: 0; padding-left: 1.2rem; display: grid; gap: 0.35rem; line-height: 1.5; }
+.study-ex { margin: 0 0 0.55rem; padding: 0.65rem 0.85rem; border: 1.5px solid var(--hair); border-radius: var(--radius-sm); background: var(--surface); overflow-wrap: break-word; }
+.study-ex-q { margin: 0 0 0.3rem; font-weight: 600; }
+.study-ex-a { margin: 0; color: var(--ok); font-weight: 600; }
+.study-tip { margin: 0.9rem 0 0; padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); background: var(--warn-soft); }
+.study-actions { display: grid; gap: 0.6rem; margin: 1.2rem 0 0.5rem; }
+.study-actions p { margin: 0; }
+@media print { .study-card, .study-topic-btn { display: none; } }

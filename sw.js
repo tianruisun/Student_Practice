@@ -2,7 +2,7 @@
    BUILD: a browser installs a new service worker only when THIS file's bytes change, not when version.js does
    (R6.2, v1.7.0). So BUILD changes with every push to Test that changes an app file: <APP_VERSION>+<n>, n counting
    the pushes of that version. Installing then re-fetches every file below. tests/run.js checks both rules. */
-const BUILD = '1.10.0+2';
+const BUILD = '1.10.0+3';
 importScripts('./version.js');
 const CACHE_VERSION = 'maths-' + self.APP_VERSION;
 const ASSETS = [
@@ -20,6 +20,10 @@ const ASSETS = [
   './js/gen-junior.js',
   './js/gen-senior.js',
   './js/gen-charts.js',
+  './js/gen-k6.js',
+  './js/scope-k6.js',
+  './js/lessons-k2.js',
+  './js/lessons-36.js',
   './js/gen-olympiad.js',
   './js/gen-amo.js',
   './js/gen-ga.js',

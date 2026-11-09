@@ -35,7 +35,7 @@
   function make(item, n, fb) {
     fb = fb || {};
     const ref = item.ref || {}, O = root.Olympiad, S = root.Selective;
-    const year = ref.year || item.year || fb.year || 6, diff = ref.diff || item.diff || fb.diff || 2;
+    const year = [ref.year, item.year, fb.year].find(v => v != null && v !== '') ?? 6, diff = ref.diff || item.diff || fb.diff || 2;
     let out = [];
     // only templates that exist: a ref from an imported file may name anything
     const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
@@ -60,7 +60,9 @@
       cand.sort((a, b) => likeness(b, item) - likeness(a, item));
       out = out.concat(cand.slice(0, n - out.length));
     }
-    return out.slice(0, n);
+    // a K–6 topic (v1.10.0) is made by one of several generators: keep the original's topic and year on the new ones
+    const k6 = root.ScopeK6 && root.ScopeK6.has(item.topic);
+    return out.slice(0, n).map(q => (k6 ? Object.assign(q, { topic: item.topic, year: item.year != null ? item.year : q.year }) : q));
   }
 
   /* a practice set from several review items, n of each (at most `max` in total) */

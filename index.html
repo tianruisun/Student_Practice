@@ -64,6 +64,13 @@
         <p class="muted small note" id="subjectNote"></p>
       </fieldset>
 
+      <!-- v1.10.0: K–6 study mode (NSW scope and sequence): read a lesson first, then practise it -->
+      <button type="button" id="studyCard" class="study-card">
+        <span class="study-card-ic" aria-hidden="true">📖</span>
+        <span class="study-card-txt"><span class="study-card-t" data-i18n="study.cardT">Study first</span><span class="study-card-s" data-i18n="study.cardS">NSW Kindergarten to Year 6: pick a topic, read the lesson, then practise it</span></span>
+        <span class="study-card-go" aria-hidden="true">›</span>
+      </button>
+
       <h3 class="sec-title" id="optionsTitle" data-i18n="home.heading">Set up your practice</h3>
       <div id="practiceOptions" class="card form-card">
         <div class="field-row">
@@ -79,6 +86,7 @@
         <div class="field">
           <label class="label" for="topicSel" data-i18n="home.topic">Topic</label>
           <select id="topicSel" class="combo"></select>
+          <button type="button" id="studyTopicBtn" class="btn ghost small study-topic-btn" hidden><span aria-hidden="true">📖</span> <span data-i18n="study.thisTopic">Study this topic first</span></button>
         </div>
         <div class="field">
           <label class="label" for="diffSel" data-i18n="home.diff">Difficulty</label>
@@ -200,6 +208,21 @@
     </section>
 
     <!-- PROGRESS -->
+    <!-- STUDY (v1.10.0): the K–6 topics by year and strand, then one lesson -->
+    <section id="screen-study" class="screen" hidden aria-labelledby="studyH">
+      <div id="studyList">
+        <h2 id="studyH" data-i18n="study.heading">Study</h2>
+        <p class="muted" data-i18n="study.intro">Choose your year, then a topic. Read the lesson, then practise the topic.</p>
+        <fieldset class="study-years-f">
+          <legend class="label" data-i18n="study.year">Year</legend>
+          <div class="chips chips-7" id="studyYears"></div>
+        </fieldset>
+        <div id="studyTopics"></div>
+        <p class="muted small" data-i18n="study.source"></p>
+      </div>
+      <article id="studyLesson" hidden aria-labelledby="lessonH"></article>
+    </section>
+
     <section id="screen-progress" class="screen" hidden aria-labelledby="progH">
       <h2 id="progH" data-i18n="prog.heading">Progress</h2>
       <div id="progBody"></div>
@@ -390,6 +413,10 @@
   <script src="./js/gen-junior.js"></script>
   <script src="./js/gen-senior.js"></script>
   <script src="./js/gen-charts.js"></script>
+  <script src="./js/gen-k6.js"></script>
+  <script src="./js/scope-k6.js"></script>
+  <script src="./js/lessons-k2.js"></script>
+  <script src="./js/lessons-36.js"></script>
   <script src="js/gen-olympiad.js"></script>
   <script src="./js/gen-amo.js"></script>
   <script src="./js/gen-ga.js"></script>

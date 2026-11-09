@@ -50,6 +50,7 @@
 
   /* Years 1–12; 13 = Year 12 Extension 1 (3U); 14 = Year 12 Extension 2 (4U) */
   function yearText(year) {
+    if (year === 0) return 'a Kindergarten student (NSW Early Stage 1, age about 5)';
     if (year <= 10) return `a Year ${year} student (age about ${year + 5})`;
     if (year <= 12) return `a Year ${year} student studying NSW HSC Mathematics Advanced`;
     if (year === 13) return 'a Year 12 student studying NSW HSC Mathematics Extension 1 (3 Unit)';

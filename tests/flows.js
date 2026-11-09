@@ -1314,10 +1314,26 @@ async function run(site) {
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 10, diff: 3, count: 20 }) }, null,
         { context: { viewport: { width: W, height: 640 }, isMobile: true, hasTouch: true } });
       const wide = () => page.evaluate(() => document.documentElement.scrollWidth - Math.min(innerWidth, window.visualViewport ? visualViewport.width : innerWidth));
-      const cut = () => page.evaluate(() => [...document.querySelectorAll('#qList .formula')].filter(e => e.scrollWidth > e.clientWidth + 1).length);
+      // R8.1 (v1.10.0 R9): a formula passes if it fits, or if scrolling its box brings both its first and its last
+      // character into view (overflow-x: hidden or clip would leave scrollLeft at 0 and fail)
+      const reach = () => page.evaluate(() => {
+        window.__reach = f => {
+          const r = f.getBoundingClientRect(), l = r.left + f.clientLeft, rt = l + f.clientWidth;
+          const texts = []; const w = document.createTreeWalker(f, NodeFilter.SHOW_TEXT); while (w.nextNode()) if (w.currentNode.textContent.trim()) texts.push(w.currentNode);
+          const charRect = (node, i) => { const rg = document.createRange(); rg.setStart(node, i); rg.setEnd(node, i + 1); return rg.getBoundingClientRect(); };
+          const first = texts[0], last = texts[texts.length - 1], li = last.textContent.trimEnd().length - 1, fi = first.textContent.length - first.textContent.trimStart().length;
+          const over = f.scrollWidth - f.clientWidth;
+          f.scrollLeft = 0; const a = charRect(first, fi); const firstIn = a.left >= l - 1 && a.right <= rt + 1;
+          f.scrollLeft = 1e9; const reach = over <= 1 || f.scrollLeft >= over - 1; const b = charRect(last, li); const lastIn = b.left >= l - 1 && b.right <= rt + 1;
+          f.scrollLeft = 0;
+          return { over, reach, firstIn, lastIn, ok: over <= 1 || (reach && firstIn && lastIn) };
+        };
+        return [...document.querySelectorAll('#qList .formula')].map(window.__reach).filter(x => !x.ok).length;
+      });
       await page.click('#startBtn');
       for (let pg = 0; pg < 4; pg++) {
-        check(`R6.1 ${W}: page ${pg + 1}: no formula is cut off`, (await cut()) === 0, String(await cut()));
+        const cut = await reach();
+        check(`R6.1 ${W}: page ${pg + 1}: no formula is cut off (it fits, or its box scrolls to both ends)`, cut === 0, String(cut));
         check(`R6.1 ${W}: page ${pg + 1}: no sideways pan`, (await wide()) <= 0, String(await wide()));
         if (await page.locator('#nextPage').isEnabled()) await page.click('#nextPage'); else break;
       }
@@ -1336,10 +1352,11 @@ async function run(site) {
         document.querySelector('#qList .qcard').appendChild(f);
         const card = f.closest('.qcard').getBoundingClientRect(), r = f.getBoundingClientRect();
         const rg = document.createRange(); rg.selectNodeContents(f);
-        return { lines: new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size, scrolls: f.scrollWidth > f.clientWidth, inCard: r.left >= card.left - 0.5 && r.right <= card.right + 0.5 };
+        return Object.assign({ lines: new Set([...rg.getClientRects()].map(x => Math.round(x.top))).size, scrolls: f.scrollWidth > f.clientWidth, inCard: r.left >= card.left - 0.5 && r.right <= card.right + 0.5 }, window.__reach(f));
       });
       check(`R7.1 ${W}: a planted 40-digit number stays on one line (not split into two numbers)`, num.lines === 1, JSON.stringify(num));
       check(`R7.1 ${W}: it scrolls inside its box, which stays inside the card`, num.scrolls && num.inCard, JSON.stringify(num));
+      check(`R8.1 ${W}: scrolling the box brings the first and the last digit into view`, num.reach && num.firstIn && num.lastIn, JSON.stringify(num));
       check(`R7.1 ${W}: no sideways pan with the long number`, (await wide()) <= 0, String(await wide()));
       check(`R6.1 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();
@@ -1395,6 +1412,56 @@ async function run(site) {
       check('R3.3: Progress says there are no sessions', /No|no/.test(await page.textContent('#progBody')));
       check('R3.3: the badge shelf is shown anyway', (await page.locator('#progBody .badge-shelf').count()) === 1 && /1/.test(await page.textContent('#progBody .badge-shelf h3')), await page.textContent('#progBody'));
       check('R3.3: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.10.0 R9: K–6 study mode (Terry 2026-11-09): pick a year (Kindergarten too) and a topic, read the lesson, then practise it
+    for (const [W, H, phone] of [[375, 812, false], [320, 568, true]]) await flow(`R9 study mode ${W}×${H}${phone ? ' phone' : ''}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 3 }) },
+        null, { context: { viewport: { width: W, height: H }, ...(phone ? { isMobile: true, hasTouch: true } : {}) } });
+      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - (window.visualViewport ? visualViewport.width : innerWidth));
+      check(`R9 ${W}: Home shows the study card for maths`, await page.locator('#studyCard').isVisible());
+      await page.click('#studyCard');
+      check(`R9 ${W}: the study screen opens on the student's year with the list of topics`, (await page.locator('#screen-study').isVisible()) && (await page.locator('#studyYears input:checked').getAttribute('value')) === '3' && (await page.locator('.study-topic').count()) === 11, String(await page.locator('.study-topic').count()));
+      check(`R9 ${W}: topics are grouped by strand`, (await page.locator('#studyTopics h4').count()) === 3);
+      check(`R9 ${W}: the year chips include Kindergarten, named for screen readers`, (await page.locator('#studyYears input').count()) === 7 && (await page.locator('#studyYears input').first().getAttribute('aria-label')) === 'Kindergarten');
+      check(`R9 ${W}: no sideways pan on the topic list`, (await wide()) <= 0, String(await wide()));
+      await page.locator('#studyYears label').first().click();
+      const kt = await page.locator('.study-topic').evaluateAll(bs => bs.map(b => b.dataset.topic));
+      check(`R9 ${W}: Kindergarten lists 9 topics (no word problems, no chance)`, kt.length === 9 && !kt.includes('k6word') && !kt.includes('k6chance'), kt.join(','));
+      await page.locator('.study-topic[data-topic="k6add"]').click();
+      check(`R9 ${W}: the lesson opens with its heading focused`, (await page.locator('#studyLesson').isVisible()) && (await page.evaluate(() => document.activeElement.id)) === 'lessonH');
+      check(`R9 ${W}: the lesson has key ideas, worked examples and a tip`, (await page.locator('#studyLesson li').count()) >= 3 && (await page.locator('#studyLesson .study-ex').count()) >= 1 && (await page.locator('#studyLesson .study-tip').count()) === 1);
+      check(`R9 ${W}: no sideways pan on the lesson`, (await wide()) <= 0, String(await wide()));
+      const first = await page.textContent('#lessonH');
+      await page.click('#studyNext');
+      check(`R9 ${W}: Next goes to the next topic's lesson`, (await page.textContent('#lessonH')) !== first && (await page.evaluate(() => document.activeElement.id)) === 'lessonH', await page.textContent('#lessonH'));
+      await page.click('#studyLesson .study-back');
+      check(`R9 ${W}: a read lesson is marked on the list`, (await page.locator('.study-topic[data-topic="k6add"]').textContent()).includes('✓'), await page.locator('.study-topic[data-topic="k6add"]').textContent());
+      await page.locator('.study-topic[data-topic="k6add"]').click();
+      await page.click('#studyPractise');
+      await page.waitForSelector('#screen-quiz:not([hidden])');
+      const set = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers() : []));
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.settings.p1')));
+      check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && set.length === 5, JSON.stringify({ year: saved.year, topic: saved.topic, n: set.length }));
+      await page.click('#quitBtn');
+      await page.waitForSelector('#screen-home:not([hidden])');
+      check(`R9 ${W}: Home now shows Kindergarten and the topic, with a link back to its lesson`, (await page.locator('#yearSel').inputValue()) === '0' && (await page.locator('#topicSel').inputValue()) === 'k6add' && (await page.locator('#studyTopicBtn').isVisible()), await page.locator('#yearSel').inputValue());
+      const opts = await page.locator('#topicSel option').evaluateAll(o => o.map(x => x.value));
+      check(`R9 ${W}: Home lists the Kindergarten topics`, opts.includes('k6add') && opts.includes('k6shape') && !opts.includes('frac'), opts.join(','));
+      await page.click('#langBtn');
+      await page.click('#studyTopicBtn');
+      check(`R9 ${W}: the lesson is in Chinese after switching language`, /[一-鿿]/.test(await page.textContent('#studyLesson')));
+      check(`R9 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // R9: Kindergarten is offered for maths only; other subjects keep Year 1 as their first year, and hide the study card
+    await flow('R9 Kindergarten is maths only', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 0, topic: 'k6add' }) });
+      check('R9: Kindergarten is the first year for maths', (await page.locator('#yearSel option').first().getAttribute('value')) === '0');
+      await page.locator('label:has(input[name="subject"][value="ga"])').click();
+      check('R9: General ability has no Kindergarten and moves to Year 1', !(await page.locator('#yearSel option').evaluateAll(o => o.map(x => x.value))).includes('0') && (await page.locator('#yearSel').inputValue()) === '1', await page.locator('#yearSel').inputValue());
+      check('R9: the study card is hidden for General ability', !(await page.locator('#studyCard').isVisible()));
+      check('R9 maths only: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
   } finally {

@@ -20,7 +20,7 @@
     return out;
   }
   /* The level a badge counts for. Badges from before v1.7.0 have no level: "earlier". */
-  const levelOf = b => (b.paper ? 'paper:' + b.paper : b.year && b.diff ? [b.subject || 'maths', b.year, b.diff].join(':') : 'earlier');
+  const levelOf = b => (b.paper ? 'paper:' + b.paper : b.year != null && b.diff ? [b.subject || 'maths', b.year, b.diff].join(':') : 'earlier');
 
   /* badges list → { level: { kind: count } } */
   function collection(badges) {
@@ -74,11 +74,11 @@
     rows.push(['student', '', student.name || '', student.schoolYear || '', student.dob || '', '', '', '', '', '', '', '', '', '',
       JSON.stringify({ name: student.name || '', schoolYear: student.schoolYear || null, schoolYearSet: student.schoolYearSet || null, dob: student.dob || '' })]);
     for (const h of history || []) {
-      rows.push(['session', iso(h.date), '', '', '', h.subject || '', h.year || '', h.topic || '', h.diff || '', h.n, h.correct,
+      rows.push(['session', iso(h.date), '', '', '', h.subject || '', h.year != null ? h.year : '', h.topic || '', h.diff || '', h.n, h.correct,
         h.stars !== undefined ? h.stars : '', h.time ? Math.round(h.time / 1000) : '', '', JSON.stringify(h)]);
     }
     for (const b of badges || []) {
-      rows.push(['badge', iso(b.date), '', '', '', b.subject || '', b.year || '', b.topic || '', b.diff || '', b.n || '', '', '', '',
+      rows.push(['badge', iso(b.date), '', '', '', b.subject || '', b.year != null ? b.year : '', b.topic || '', b.diff || '', b.n || '', '', '', '',
         b.kind || 'perfect', JSON.stringify(b)]);
     }
     // the byte-order mark lets Excel open Chinese names correctly
@@ -154,7 +154,7 @@
     const ref = cleanRef(w.ref); if (ref) out.ref = ref;
     if (w.reviewed === true) out.reviewed = true;   // R4 (v1.10.0): removed from the review list
     if (QUESTION_SUBJECTS.includes(w.subject)) out.subject = w.subject;
-    const year = int(w.year, 1, 14), diff = int(w.diff, 1, 4);
+    const year = int(w.year, 0, 14), diff = int(w.diff, 1, 4);
     if (year !== null) out.year = year;
     if (diff !== null) out.diff = diff;
     return out;
@@ -169,7 +169,7 @@
     if (Array.isArray(r.sel) && r.sel.length === 2 && int(r.sel[0], 1, 3) !== null && int(r.sel[1], 0, 100000) !== null) out.sel = [r.sel[0], r.sel[1]];
     if (WORD.test(r.gen || '')) out.gen = r.gen;
     if (QUESTION_SUBJECTS.includes(r.subject)) out.subject = r.subject;
-    const year = int(r.year, 1, 14), diff = int(r.diff, 1, 4);
+    const year = int(r.year, 0, 14), diff = int(r.diff, 1, 4);
     if (year !== null) out.year = year;
     if (diff !== null) out.diff = diff;
     return Object.keys(out).length ? out : null;
@@ -183,7 +183,7 @@
     if (!date || n === null || correct === null || correct > n) return null;
     // a subject the app does not have, or a practice set with no year, cannot be shown: skipped and counted (R2.3)
     const subject = str(o.subject || row.subject, 20) || 'maths';
-    const year = int(o.year !== undefined ? o.year : row.year, 1, 14);
+    const year = int(o.year !== undefined ? o.year : row.year, 0, 14);
     if (!QUESTION_SUBJECTS.includes(subject) || (year === null && !TIMED.includes(subject))) return null;
     const s = Object.assign({}, o, {
       date, n, correct, subject, topic: topicOf(o.topic || row.topic),
@@ -215,7 +215,7 @@
     if (!QUESTION_SUBJECTS.includes(subject)) return null;
     const b = Object.assign({}, o, { date, kind, subject });
     // a timed-paper badge has no year or difficulty: only keep the ones that are there
-    const year = int(o.year !== undefined ? o.year : row.year, 1, 14), diff = int(o.diff !== undefined ? o.diff : row.difficulty, 1, 4);
+    const year = int(o.year !== undefined ? o.year : row.year, 0, 14), diff = int(o.diff !== undefined ? o.diff : row.difficulty, 1, 4);
     if (year !== null) b.year = year; else delete b.year;
     if (diff !== null) b.diff = diff; else delete b.diff;
     // a paper the app does not know would label its level with raw keys (R2.3): the badge is skipped

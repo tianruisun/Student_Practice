@@ -7,7 +7,7 @@
 
    Levels are calibrated so Year N matches what a student in Grade N in China (人教版) or
    Primary/Secondary N in Singapore (MOE) is expected to handle. Difficulty 1–4:
-   1 Core 基础 · 2 Standard 提高 · 3 Advanced 拓展 · 4 Challenge 挑战 (competition style). */
+   1 Core 基础 · 2 Elevated 进阶 · 3 Challenging 挑战 · 4 Competitive 竞赛 (competition style; names from v1.11.0). */
 (function (root) {
   'use strict';
 

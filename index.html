@@ -33,6 +33,7 @@
       <span id="profileName" hidden></span>
     </button>
     <div class="top-actions">
+      <button type="button" id="newsBtn" class="round-btn" data-i18n-aria="news.btn"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="8.5" width="17" height="4" rx="1"/><path d="M5 12.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7.5M12 8.5V21M12 8.5c-1.2-2.6-3-4.4-4.6-4.1-1.3.2-1.6 2 .1 3 1.2.8 2.9 1.1 4.5 1.1zM12 8.5c1.2-2.6 3-4.4 4.6-4.1 1.3.2 1.6 2-.1 3-1.2.8-2.9 1.1-4.5 1.1z"/></svg></button>
       <button type="button" id="tourBtn" class="round-btn" data-i18n-aria="tour.open"><span aria-hidden="true">?</span></button>
       <button type="button" id="langBtn" class="round-btn" data-i18n="lang.switch" data-i18n-aria="lang.label">中文</button>
       <button type="button" id="parentBtn" class="round-btn" aria-pressed="false"><span id="parentIcon" aria-hidden="true">🔒</span><span id="parentLabel" class="sr-only" data-i18n="nav.parent">Parent</span></button>
@@ -42,21 +43,7 @@
   <main id="main" tabindex="-1">
     <!-- HOME -->
     <section id="screen-home" class="screen" aria-labelledby="homeH">
-      <div class="hero">
-        <div class="hero-text">
-          <h2 id="homeH" data-i18n="home.heroTitle">Ready to practise?</h2>
-          <p class="hero-sub" id="heroSummary"></p>
-          <button type="button" id="heroStart" class="hero-btn" data-i18n="home.heroGo">Get started</button>
-        </div>
-        <svg class="hero-art" viewBox="0 0 140 110" aria-hidden="true">
-          <rect x="18" y="86" width="112" height="12" rx="3" fill="#fde68a"/><rect x="18" y="86" width="112" height="4" rx="2" fill="#f59e0b"/>
-          <rect x="30" y="22" width="20" height="64" rx="3" fill="#a78bfa"/><rect x="30" y="30" width="20" height="4" fill="#7c3aed"/>
-          <rect x="52" y="14" width="22" height="72" rx="3" fill="#fbbf24"/><rect x="52" y="22" width="22" height="4" fill="#d97706"/>
-          <rect x="76" y="28" width="18" height="58" rx="3" fill="#f87171"/><rect x="76" y="36" width="18" height="4" fill="#dc2626"/>
-          <rect x="97" y="34" width="26" height="52" rx="3" transform="rotate(12 110 60)" fill="#60a5fa"/>
-          <circle cx="114" cy="18" r="13" fill="#fff" opacity=".95"/><text x="114" y="23.5" text-anchor="middle" font-size="16" font-weight="700" fill="#6d28d9">π</text>
-        </svg>
-      </div>
+      <h2 id="homeH" class="sr-only" data-i18n="nav.home">Home</h2>
 
       <fieldset>
         <legend class="sec-title" data-i18n="home.subject">Subject</legend>
@@ -398,6 +385,16 @@
     </form>
   </dialog>
 
+  <!-- v1.11.0: What's new (once per version, after an update) and Release history (the gift button) share this dialog -->
+  <dialog id="newsDlg" aria-labelledby="newsTitle">
+    <h3 id="newsTitle"></h3>
+    <div id="newsBody" class="news-body"></div>
+    <div class="row">
+      <button type="button" id="newsShow" class="btn secondary" data-i18n="news.show">Show me</button>
+      <button type="button" id="newsClose" class="btn primary" autofocus>Got it</button>
+    </div>
+  </dialog>
+
   <div id="printArea" class="print-area" aria-hidden="true"></div>
 
   <div id="toast" class="toast" role="status" hidden></div>
@@ -426,6 +423,7 @@
   <script src="./js/records.js"></script>
   <script src="./js/ai.js"></script>
   <script src="./js/tour.js"></script>
+  <script src="./js/releases.js"></script>
   <script src="./js/game-balloons.js"></script>
   <script src="./js/game-kit.js"></script>
   <script src="./js/game-sudoku.js"></script>

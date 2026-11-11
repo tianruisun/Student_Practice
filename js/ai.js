@@ -43,16 +43,16 @@
 
   const DIFF_WORDS = {
     1: 'Core – the standard textbook level for this year (China 人教版 / Singapore MOE), one or two steps',
-    2: 'Standard – typical school exam questions for this year in China / Singapore, usually two or three steps',
-    3: 'Advanced – TUTORING-CENTRE EXTENSION level (培优班 / selective & scholarship coaching): clearly harder than any school exam, multi-step and non-routine, combining ideas; do NOT keep to the school syllabus difficulty',
-    4: 'Challenge – OLYMPIAD level, as hard as the Australian Mathematical Olympiad (AMO) / AIMO and the hardest AMC questions (奥数/数学竞赛): far beyond school standards. Adapt AMO-style problems (find all n such that …, functional equations, Diophantine equations, tilings and counting, games and invariants, extremal problems, sequences) into questions with ONE exact whole-number answer, e.g. "find the sum of all n …" or "how many …". Each must need a genuine insight, not a routine method'
+    2: 'Elevated – typical school exam questions for this year in China / Singapore, usually two or three steps',
+    3: 'Challenging – TUTORING-CENTRE EXTENSION level (培优班 / selective & scholarship coaching): clearly harder than any school exam, multi-step and non-routine, combining ideas; do NOT keep to the school syllabus difficulty',
+    4: 'Competitive – OLYMPIAD level, as hard as the Australian Mathematical Olympiad (AMO) / AIMO and the hardest AMC questions (奥数/数学竞赛): far beyond school standards. Adapt AMO-style problems (find all n such that …, functional equations, Diophantine equations, tilings and counting, games and invariants, extremal problems, sequences) into questions with ONE exact whole-number answer, e.g. "find the sum of all n …" or "how many …". Each must need a genuine insight, not a routine method'
   };
   /* Kindergarten (maths year 0) has its own scale: every level stays one step and within 20 (R10.1) */
   const DIFF_WORDS_K = {
     1: 'Core – Kindergarten level: counting, comparing and adding or taking away within 10, one step',
-    2: 'Standard – Kindergarten level: counting, comparing and adding or taking away within 20, one step',
-    3: 'Advanced – the top of Kindergarten: within 20 and one step, with a small twist such as a missing number or ordering three numbers',
-    4: 'Challenge – a Kindergarten puzzle: within 20 and still one step, but needing a little thinking, such as a missing number or what comes next in a pattern'
+    2: 'Elevated – Kindergarten level: counting, comparing and adding or taking away within 20, one step',
+    3: 'Challenging – the top of Kindergarten: within 20 and one step, with a small twist such as a missing number or ordering three numbers',
+    4: 'Competitive – a Kindergarten puzzle: within 20 and still one step, but needing a little thinking, such as a missing number or what comes next in a pattern'
   };
 
   /* Years 1–12; 13 = Year 12 Extension 1 (3U); 14 = Year 12 Extension 2 (4U) */

@@ -47,6 +47,13 @@
     3: 'Advanced – TUTORING-CENTRE EXTENSION level (培优班 / selective & scholarship coaching): clearly harder than any school exam, multi-step and non-routine, combining ideas; do NOT keep to the school syllabus difficulty',
     4: 'Challenge – OLYMPIAD level, as hard as the Australian Mathematical Olympiad (AMO) / AIMO and the hardest AMC questions (奥数/数学竞赛): far beyond school standards. Adapt AMO-style problems (find all n such that …, functional equations, Diophantine equations, tilings and counting, games and invariants, extremal problems, sequences) into questions with ONE exact whole-number answer, e.g. "find the sum of all n …" or "how many …". Each must need a genuine insight, not a routine method'
   };
+  /* Kindergarten (maths year 0) has its own scale: every level stays one step and within 20 (R10.1) */
+  const DIFF_WORDS_K = {
+    1: 'Core – Kindergarten level: counting, comparing and adding or taking away within 10, one step',
+    2: 'Standard – Kindergarten level: counting, comparing and adding or taking away within 20, one step',
+    3: 'Advanced – the top of Kindergarten: within 20 and one step, with a small twist such as a missing number or ordering three numbers',
+    4: 'Challenge – a Kindergarten puzzle: within 20 and still one step, but needing a little thinking, such as a missing number or what comes next in a pattern'
+  };
 
   /* Years 1–12; 13 = Year 12 Extension 1 (3U); 14 = Year 12 Extension 2 (4U) */
   function yearText(year) {
@@ -114,10 +121,10 @@
     const topics = topic === 'mixed'
       ? `Mix these topics: ${topicNames.filter(([k]) => k !== 'olymp').map(([k, name]) => `${k} (${name})`).join(', ')}.`
       : `Topic: ${topic} (${(topicNames.find(([k]) => k === topic) || [])[1] || topic}).`;
-    const tiny = subject === 'maths' && year === 0;   // Kindergarten (R9.2)
+    const tiny = subject === 'maths' && year === 0;   // Kindergarten (R9.2, R10.1)
     const vars = {
-      count: n, student: yearText(year), topics, difficulty: DIFF_WORDS[diff],
-      levelNote: tiny ? 'Kindergarten level: counting, comparing and simple adding and taking away within 20, one step, short sentences, no algebra.' : diff >= 3 ? `The difficulty must be obviously higher than ordinary school work for ${yearText(year)}${diff === 4 ? ' – think competition finalists' : ''}.` : (subject === 'maths' ? 'Use the level of the same grade in mainland China (人教版) and Singapore (MOE), which is harder than Australian/UK expectations.' : ''),
+      count: n, student: yearText(year), topics, difficulty: (tiny ? DIFF_WORDS_K : DIFF_WORDS)[diff],
+      levelNote: tiny ? 'Kindergarten: every number within 20, short sentences a 5-year-old can follow; no multi-step problems, no algebra, no competition problems.' : diff >= 3 ? `The difficulty must be obviously higher than ordinary school work for ${yearText(year)}${diff === 4 ? ' – think competition finalists' : ''}.` : (subject === 'maths' ? 'Use the level of the same grade in mainland China (人教版) and Singapore (MOE), which is harder than Australian/UK expectations.' : ''),
       wordProblems: subject !== 'maths' || tiny ? '' : topic === 'mixed' || topic === 'word'
         ? (year >= 11 ? 'Include some applied (word) problems that need a model or equation.' : `At least ${topic === 'word' ? 'all' : 'a third'} of the questions must be word problems (应用题): a situation the student must turn into a calculation or an equation (方程) and solve.`)
         : 'Include some word problems where they fit the topic.'

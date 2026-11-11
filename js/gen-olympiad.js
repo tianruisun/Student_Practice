@@ -1,5 +1,5 @@
 /* Competition / tutoring-centre problems (奥数 · Australian Maths Competition · AMC/AIME-lite).
-   Used for difficulty 3 (Advanced) and 4 (Challenge). Every answer is computed by brute force
+   Used for difficulty 3 (Challenging) and 4 (Competitive). Every answer is computed by brute force
    (enumeration, simulation or exact arithmetic) so it is correct by construction.
    Bands: J = Years 1–3, P = Years 4–6, H = Years 7–10, S = Years 11–12 (incl. Extension 1 & 2). */
 (function (root) {
@@ -19,7 +19,7 @@
   const ord = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
 
   const T = [];
-  /* bands, minD (3 = Advanced, 4 = Challenge), tags = related practice topics */
+  /* bands, minD (3 = Challenging, 4 = Competitive), tags = related practice topics */
   const add = (bands, minD, tags, fn) => T.push({ bands, minD, tags, fn });
   const Q = o => mk(Object.assign({ topic: 'olymp' }, o));
 
@@ -300,11 +300,11 @@
 
   /* ---------- picking ---------- */
   function generate(year, diff, tag) {
-    // 3 = Advanced, 4 = Challenge, 5 = AMO level only (hard end of competition papers)
+    // 3 = Challenging, 4 = Competitive, 5 = AMO level only (hard end of competition papers)
     const b = band(year), d = Math.max(3, Math.min(5, diff));
     let pool = T.filter(t => t.bands.includes(b) && t.minD <= (d === 3 ? 3 : 5) && (!tag || t.tags.includes(tag)));
     if (!pool.length) return null;
-    // Advanced keeps to the gentler templates; Challenge leans on the hardest ones, mostly AMO-level
+    // Challenging keeps to the gentler templates; Competitive leans on the hardest ones, mostly AMO-level
     const hard = pool.filter(t => t.minD >= 4), amo = pool.filter(t => t.minD === 5);
     if (d === 5 && amo.length) pool = amo;
     else if (d === 4 && amo.length && Math.random() < 0.6) pool = amo;

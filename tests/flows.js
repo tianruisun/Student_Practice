@@ -8,11 +8,14 @@ const PIN = '2468';
 /* initScript: code run in the page before the app (e.g. to make storage fail).
    options.clock: install Playwright's fake clock before the app loads (page.clock.runFor moves time on).
    options.tour: leave the first-visit guided tour (v1.8.0) on. Otherwise it is marked as seen before the app runs, so
-   it does not cover the screen in flows that test something else. */
+   it does not cover the screen in flows that test something else.
+   options.news: leave What's new (v1.11.0) on. Otherwise it is marked as seen (a version above any release), because a
+   seeded browser looks like one that used an earlier version and would get the pop-up. */
 async function freshPage(browser, site, seed, initScript, options = {}) {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, ...options.context });
   context.setDefaultTimeout(20000);   // no single step may wait longer than 20 s
   if (!options.tour) await context.addInitScript(() => { try { if (localStorage.getItem('sp.tour') === null) localStorage.setItem('sp.tour', '"done"'); } catch (e) { /* blocked */ } });
+  if (!options.news) await context.addInitScript(() => { try { if (localStorage.getItem('sp.news') === null) localStorage.setItem('sp.news', '"999.0.0"'); } catch (e) { /* blocked */ } });
   if (initScript) await context.addInitScript(initScript);
   if (options.route) await context.route('**/*', options.route);   // e.g. answer one file with 404
   const page = await context.newPage();
@@ -166,8 +169,9 @@ async function run(site) {
     });
     await flow('F.13 button size', async () => {
       const { context, page } = await freshPage(browser, site);
-      const h = await page.evaluate(() => document.querySelector('#heroStart').getBoundingClientRect().height);
-      check('F.13 Get started button is at least 44 px tall', h >= 44, h);
+      // v1.11.0 W3: the Get started banner is gone; Start practice and the ▶ button are the two ways to start
+      const h = await page.evaluate(() => [document.querySelector('#startBtn'), document.querySelector('#fabStart')].map(b => b.getBoundingClientRect().height));
+      check('F.13 Start practice and ▶ are at least 44 px tall', h.every(x => x >= 44), h);
       await context.close();
     });
 
@@ -1430,8 +1434,10 @@ async function run(site) {
       await context.close();
     });
     // v1.10.0 R9: K–6 study mode (Terry 2026-11-09): pick a year (Kindergarten too) and a topic, read the lesson, then practise it
-    for (const [W, H, phone] of [[375, 812, false], [320, 568, true]]) await flow(`R9 study mode ${W}×${H}${phone ? ' phone' : ''}`, async () => {
-      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 3 }) },
+    // v1.11.0 R2.1 (v1.10.1): the phone run starts in single view, so the view round trip below runs on every run (a third
+    // run would add ~20 s to a suite with a 7-minute limit; the study screens do not depend on the view)
+    for (const [W, H, phone, view] of [[375, 812, false, 'pages'], [320, 568, true, 'single']]) await flow(`R9 study mode ${W}×${H}${phone ? ' phone' : ''}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 3, view }) },
         null, { context: { viewport: { width: W, height: H }, ...(phone ? { isMobile: true, hasTouch: true } : {}) } });
       const wide = () => page.evaluate(() => document.documentElement.scrollWidth - (window.visualViewport ? visualViewport.width : innerWidth));
       check(`R9 ${W}: Home shows the study card for maths`, await page.locator('#studyCard').isVisible());
@@ -1463,10 +1469,21 @@ async function run(site) {
       // v1.10.1 R1.1: read the topic of every question, not only the saved setting: show all cards (page view), compare each
       // card's topic badge with the app's own name for k6add, then put the view back as the student had it
       const wasSingle = (await page.getAttribute('#viewSingle', 'aria-pressed')) === 'true';
+      check(`R9 ${W}: the set opens in the student's view (${view})`, wasSingle === (view === 'single'), String(wasSingle));
+      // v1.11.0 R2.2 (v1.10.1): in single view the student moves to question 2 first; Pages and back to single view must
+      // land on question 2 again by itself (the app keeps the question while it is on the page shown). R2 (R1 R2.2): read
+      // straight after the switch, before any tap, so the check fails on a build that goes back to question 1
+      const curQ = () => page.locator('#palette button').evaluateAll(bs => bs.findIndex(b => b.getAttribute('aria-current') === 'true'));
+      if (wasSingle) await page.locator('#palette button').nth(1).click();
+      const at = wasSingle ? await curQ() : -1;
       if (wasSingle) await page.click('#viewPages');
       const want = await page.evaluate(() => window.I18N.t('topic.k6add'));
-      const topics = await page.locator('#qList .qcard .badge').allTextContents();
-      if (wasSingle) await page.click('#viewSingle');
+      // v1.11.0 R2.3 (v1.10.1): only the topic badge in each card's head, never a marks badge
+      const topics = await page.locator('#qList .qcard .qhead .badge:not(.marks)').allTextContents();
+      if (wasSingle) {
+        await page.click('#viewSingle');
+        check(`R9 ${W}: back in single view on the student's question (2)`, at === 1 && (await curQ()) === at, JSON.stringify({ at, now: await curQ() }));
+      }
       const onTopic = topics.length === shown && topics.every(x => x.trim() === want);
       check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && shown === 5 && (hooked === null || hooked === shown) && onTopic, JSON.stringify({ year: saved.year, topic: saved.topic, shown, hooked, topics }));
       await page.click('#quitBtn');
@@ -1488,6 +1505,111 @@ async function run(site) {
       check('R9: General ability has no Kindergarten and moves to Year 1', !(await page.locator('#yearSel option').evaluateAll(o => o.map(x => x.value))).includes('0') && (await page.locator('#yearSel').inputValue()) === '1', await page.locator('#yearSel').inputValue());
       check('R9: the study card is hidden for General ability', !(await page.locator('#studyCard').isVisible()));
       check('R9 maths only: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.11.0 W1a (Terry 2026-11-11): What's new pops up once per version for someone who used an earlier version, with
+    // only what changed since the version they last saw; a first visit does not get it; "Show me" walks through the items
+    const isOpen = page => page.locator('#newsDlg').evaluate(d => d.open);
+    const appVersion = page => page.evaluate(() => self.APP_VERSION);
+    await flow('v1.11 What\'s new after an update', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() }, null, { news: true });
+      const v = await appVersion(page);
+      check('v1.11 What\'s new: opens on its own for a browser that used an earlier version', await isOpen(page));
+      check('v1.11 What\'s new: the title names this version', (await page.textContent('#newsTitle')).includes(v), await page.textContent('#newsTitle'));
+      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 3, await page.locator('#newsBody li').count());
+      const sizes = await page.evaluate(() => ['#newsShow', '#newsClose'].map(s => document.querySelector(s).getBoundingClientRect().height));
+      check('v1.11 What\'s new: Show me and Got it are at least 44 px tall', sizes.every(h => h >= 44), sizes);
+      check('v1.11 What\'s new: nothing is stored until it is closed', (await page.evaluate(() => localStorage.getItem('sp.news'))) === null);
+      await page.click('#newsClose');
+      check('v1.11 What\'s new: Got it closes it and remembers this version', !(await isOpen(page)) && (await page.evaluate(() => JSON.parse(localStorage.getItem('sp.news')))) === v);
+      await page.reload({ waitUntil: 'load' });
+      check('v1.11 What\'s new: not shown again for the same version', !(await isOpen(page)));
+      check('v1.11 What\'s new: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    await flow('v1.11 What\'s new Show me', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() }, null, { news: true });
+      await page.click('#newsShow');
+      check('v1.11 Show me: the dialog closes and the guided tour opens', !(await isOpen(page)) && (await page.locator('#tourDlg').count()) === 1);
+      const titles = [];
+      for (let k = 0; k < 3 && (await page.locator('#tourDlg').count()); k++) { titles.push(await page.textContent('#tourTitle')); await page.click('#tourNext'); }
+      const want = await page.evaluate(() => ['news', 'levels', 'start'].map(id => window.I18N.t('rel.' + self.APP_VERSION + '.' + id + 'T')));
+      check('v1.11 Show me: one step per new item, in order', JSON.stringify(titles) === JSON.stringify(want), JSON.stringify(titles));
+      check('v1.11 Show me: the tour ends on Home, and What\'s new is remembered', (await page.locator('#tourDlg').count()) === 0 && (await visible(page, '#screen-home')) && !!(await page.evaluate(() => localStorage.getItem('sp.news'))));
+      check('v1.11 Show me: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    await flow('v1.11 What\'s new: first visit and skipped versions', async () => {
+      let { context, page } = await freshPage(browser, site, null, null, { news: true });
+      check('v1.11 first visit: no What\'s new', !(await isOpen(page)));
+      check('v1.11 first visit: marked as up to date', (await page.evaluate(() => JSON.parse(localStorage.getItem('sp.news')))) === (await appVersion(page)));
+      await context.close();
+      // a browser that last saw v1.10.0 gets everything after it, each under its own version heading
+      ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.10.0"' }, null, { news: true }));
+      const heads = await page.locator('#newsBody h4').allTextContents();
+      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 2 && heads[0].includes(await appVersion(page)) && heads[1].includes('1.10.1'), JSON.stringify(heads));
+      // R1.2: one Show me only (the one at the bottom), never one per version as well
+      check('v1.11 skipped versions: a single Show me', (await page.locator('#newsBody .news-show-v').count()) === 0 && (await page.locator('#newsShow').isVisible()), String(await page.locator('#newsBody .news-show-v').count()));
+      // R1.6: Escape closes it and remembers this version, like Got it
+      await page.keyboard.press('Escape');
+      check('v1.11 What\'s new: Escape closes it and remembers this version', !(await isOpen(page)) && (await page.evaluate(() => JSON.parse(localStorage.getItem('sp.news')))) === (await appVersion(page)));
+      await page.reload({ waitUntil: 'load' });
+      check('v1.11 What\'s new: not shown again after Escape', !(await isOpen(page)));
+      await context.close();
+      // R1.6: a browser that already saw a later version (Test, then Production) gets nothing, and keeps the later version
+      ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.12.0"' }, null, { news: true }));
+      check('v1.11 later version seen: no What\'s new, and the stored version is not lowered', !(await isOpen(page)) && (await page.evaluate(() => localStorage.getItem('sp.news'))) === '"1.12.0"', await page.evaluate(() => localStorage.getItem('sp.news')));
+      await context.close();
+    });
+    // v1.11.0 W1b: Release history is its own button, for anyone (a first visit too), every version from v1.10.0 on.
+    // R2 (R1.1): the button is at the end of Home, not in the header, and the student's greeting is not cut off
+    for (const [W, H] of [[375, 812], [320, 568]]) await flow(`v1.11 Release history ${W}×${H}`, async () => {
+      const { context, page, errors } = await freshPage(browser, site, null, null, { context: { viewport: { width: W, height: H } } });
+      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      const top = await page.evaluate(() => ['#profileBtn', '#tourBtn', '#langBtn', '#parentBtn'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
+      check(`v1.11 ${W}: the header fits its buttons, each at least 44 px tall`, top.every(([l, r, h]) => l >= 0 && r <= W && h >= 44) && (await wide()) <= 0, JSON.stringify(top));
+      const hello = () => page.evaluate(() => { const h = document.querySelector('#helloText'); return { text: h.textContent, sw: h.scrollWidth, cw: h.clientWidth }; });
+      let g = await hello();
+      check(`v1.11 ${W}: the greeting is shown whole, not cut off`, /Student 1/.test(g.text) && g.sw <= g.cw + 1, JSON.stringify(g));
+      check(`v1.11 ${W}: Release history is on Home, not in the header`, (await page.locator('#screen-home #newsBtn').count()) === 1 && (await page.locator('header #newsBtn').count()) === 0 && (await page.textContent('#newsBtn')).trim() === 'Release history');
+      const nb = await page.locator('#newsBtn').boundingBox();
+      check(`v1.11 ${W}: the Release history button is at least 44 px tall`, nb && nb.height >= 44, JSON.stringify(nb));
+      await page.click('#newsBtn');
+      const heads = await page.locator('#newsBody h4').allTextContents();
+      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 3 && heads[0].includes(await appVersion(page)) && heads[2].includes('1.10.0'), JSON.stringify(heads));
+      check(`v1.11 ${W}: the newest version is marked as this version`, (await page.locator('#newsBody .news-ver').first().locator('.news-cur').count()) === 1);
+      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 2);
+      const box = await page.evaluate(() => { const r = document.querySelector('#newsDlg').getBoundingClientRect(); return [r.top, r.bottom, innerHeight]; });
+      check(`v1.11 ${W}: the dialog fits the screen (its list scrolls)`, box[0] >= 0 && box[1] <= box[2], JSON.stringify(box));
+      check(`v1.11 ${W}: Close is reachable`, await page.locator('#newsClose').isVisible());
+      // Show me for v1.10.0, then back to the history
+      await page.locator('#newsBody .news-ver').nth(2).locator('.news-show-v').click();
+      check(`v1.11 ${W}: Show me for v1.10.0 starts on its first item`, (await page.textContent('#tourTitle')) === (await page.evaluate(() => window.I18N.t('rel.1.10.0.studyT'))), await page.textContent('#tourTitle'));
+      await page.click('#tourSkip');
+      check(`v1.11 ${W}: after Show me the history opens again`, await isOpen(page));
+      await page.click('#newsClose');
+      check(`v1.11 ${W}: Close closes it`, !(await isOpen(page)));
+      check(`v1.11 ${W}: opening history leaves the What's new state alone`, (await page.evaluate(() => localStorage.getItem('sp.news'))) === '"999.0.0"');
+      await page.click('#langBtn');
+      g = await hello();
+      check(`v1.11 ${W}: the greeting is shown whole in Chinese`, /学生 1/.test(g.text) && g.sw <= g.cw + 1, JSON.stringify(g));
+      await page.click('#newsBtn');
+      check(`v1.11 ${W}: in Chinese`, (await page.textContent('#newsTitle')) === '版本历史' && /[一-鿿]/.test(await page.textContent('#newsBody')) && (await page.textContent('#newsClose')) === '关闭');
+      check(`v1.11 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    // v1.11.0 W2 and W3: plain level names in the difficulty list; Home has no banner, starts from Start practice or ▶
+    await flow('v1.11 levels and Home', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
+      check('v1.11 levels in English', JSON.stringify(await page.locator('#diffSel option').allTextContents()) === JSON.stringify(['Core', 'Elevated', 'Challenging', 'Competitive']), JSON.stringify(await page.locator('#diffSel option').allTextContents()));
+      check('v1.11 the level note names no olympiad', !/olympiad|AMO/i.test(await page.textContent('#diffNote')), await page.textContent('#diffNote'));
+      check('v1.11 Home: no banner and no Get started button', (await page.locator('.hero, #heroStart').count()) === 0);
+      check('v1.11 Home: the screen keeps a heading for screen readers', (await page.textContent('#homeH')) === 'Home');
+      await page.click('#langBtn');
+      check('v1.11 levels in Chinese', JSON.stringify(await page.locator('#diffSel option').allTextContents()) === JSON.stringify(['基础', '进阶', '挑战', '竞赛']), JSON.stringify(await page.locator('#diffSel option').allTextContents()));
+      await page.click('#fabStart');
+      check('v1.11 Home: ▶ starts the set', await visible(page, '#screen-quiz'));
+      check('v1.11 levels and Home: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
   } finally {

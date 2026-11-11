@@ -1,6 +1,6 @@
 /* Senior maths: Year 11–12 Mathematics Advanced (11–14), Extension 1 / 3U (13–14), Extension 2 / 4U (14).
    Year 13 = Year 12 Extension 1, Year 14 = Year 12 Extension 2. Answers are numbers (exact or 2 d.p.).
-   Advanced/Challenge also draw on the olympiad bank. */
+   Challenging/Competitive also draw on the olympiad bank. */
 (function (root) {
   'use strict';
   const G = root.Gen || require('./gen-core.js');

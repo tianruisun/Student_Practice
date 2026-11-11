@@ -266,7 +266,7 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
   t('badges: all three for a fast, first-try, perfect set', () => assert.deepStrictEqual(Rec.awardsFor(base), ['perfect', 'firstTry', 'speed']));
   t('badges: none below 100%', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, correct: 9 }), []));
   t('badges: a second try loses First try only', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, firstTry: 9 }), ['perfect', 'speed']));
-  t('badges: speed limit per difficulty (Standard 30 s a question)', () => {
+  t('badges: speed limit per difficulty (Elevated 30 s a question)', () => {
     assert.ok(Rec.awardsFor({ ...base, seconds: 300 }).includes('speed'));
     assert.ok(!Rec.awardsFor({ ...base, seconds: 301 }).includes('speed'));
     assert.ok(Rec.awardsFor({ ...base, diff: 4, seconds: 900 }).includes('speed'));
@@ -977,6 +977,57 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('R9.4: the long-number flow also needs a box a finger can swipe, and checks hidden and clip fail', () => {
     const flows = require('fs').readFileSync(require('path').join(__dirname, 'flows.js'), 'utf8');
     assert.ok(/getComputedStyle\(f\)\.overflowX/.test(flows) && /\['hidden', 'clip'\]/.test(flows));
+  });
+}
+
+/* v1.11.0 W1: release notes. Every item has a title and a how-to in both languages; newest first; the top entry is this
+   version; history starts at v1.10.0 (Terry, 2026-11-11); every "Show me" target is on the page. */
+{
+  const fs = require('fs'), path = require('path'), vm = require('vm'), root = path.join(__dirname, '..');
+  const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} };
+  box.window = box; box.self = box;
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8'), box);
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'version.js'), 'utf8'), box);
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/releases.js'), 'utf8'), box);
+  const S = box.I18N.STRINGS, R = JSON.parse(JSON.stringify(box.RELEASES)), cmp = box.compareVersions;
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  t('releases: newest first, top entry is APP_VERSION, oldest is 1.10.0', () => {
+    assert.strictEqual(R[0].v, box.APP_VERSION);
+    assert.strictEqual(R[R.length - 1].v, '1.10.0');
+    for (let i = 1; i < R.length; i++) assert.strictEqual(cmp(R[i - 1].v, R[i].v), 1, R[i - 1].v + ' before ' + R[i].v);
+  });
+  t('releases: every item has a title and a how-to in English and Chinese', () => {
+    const keys = R.flatMap(r => r.items.flatMap(it => ['rel.' + r.v + '.' + it.id + 'T', 'rel.' + r.v + '.' + it.id]))
+      .concat(['news.btn', 'news.title', 'news.history', 'news.version', 'news.current', 'news.show', 'news.close', 'news.closeHistory']);
+    assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.zh[k] === S.en[k]), []);
+  });
+  t('releases: every Show me target is in index.html', () => {
+    const sels = R.flatMap(r => r.items.map(it => it.show)).filter(Boolean);
+    assert.deepStrictEqual(sels.filter(s => !html.includes('id="' + s.slice(1) + '"')), []);
+  });
+  t('releases: compareVersions orders by number, not by text', () => {
+    assert.strictEqual(cmp('1.10.0', '1.9.0'), 1); assert.strictEqual(cmp('1.9.9', '1.10.0'), -1);
+    assert.strictEqual(cmp('1.11.0', '1.11.0'), 0); assert.strictEqual(cmp('999.0.0', '1.11.0'), 1);
+  });
+  t('releases: release history text keeps no olympiad words on the levels (W2)', () => {
+    assert.ok(!/olympiad|AMO/i.test(S.en['rel.1.11.0.levels'].split('.')[0]));
+  });
+  /* v1.11.0 W2: the four levels, one plain word each */
+  t('levels: Core / Elevated / Challenging / Competitive and 基础 / 进阶 / 挑战 / 竞赛, also in the short form', () => {
+    for (const p of ['diff.', 'diff.short.']) {
+      assert.deepStrictEqual([1, 2, 3, 4].map(d => S.en[p + d]), ['Core', 'Elevated', 'Challenging', 'Competitive'], p);
+      assert.deepStrictEqual([1, 2, 3, 4].map(d => S.zh[p + d]), ['基础', '进阶', '挑战', '竞赛'], p);
+    }
+  });
+  t('levels: no old level name is left in the interface text', () => {
+    const bad = /\b(Standard|Advanced) and\b|\bAdvanced and Challenge\b|Core \/ Standard|Advanced – tutoring-centre level|Challenge – olympiad \(AMO\) level|提高 \/|拓展和挑战|培优班水平/;
+    const hits = ['en', 'zh'].flatMap(l => Object.entries(S[l]).filter(([, v]) => bad.test(v)).map(([k]) => l + ':' + k));
+    assert.deepStrictEqual(hits, []);
+  });
+  /* v1.11.0 W3: the Get started banner is gone from Home */
+  t('Home: no hero banner or Get started button', () => {
+    assert.ok(!/class="hero"|id="heroStart"|id="heroSummary"/.test(html));
+    assert.ok(/id="startBtn"/.test(html) && /id="fabStart"/.test(html));
   });
 }
 

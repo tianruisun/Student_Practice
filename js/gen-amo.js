@@ -3,7 +3,7 @@
    here is a "find all … and give the sum / count / value" adaptation with ONE whole-number answer
    (0–999). The answer is always found by brute force (enumeration, exact search or simulation),
    so it is correct by construction; the proof idea is given in the worked solution.
-   These templates have minD 5: used heavily at Challenge (4) and for the hard end of competition papers. */
+   These templates have minD 5: used heavily at Competitive (4) and for the hard end of competition papers. */
 (function (root) {
   'use strict';
   const G = root.Gen || require('./gen-core.js');

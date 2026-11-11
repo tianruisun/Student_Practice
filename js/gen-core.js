@@ -7,7 +7,7 @@
 
    Levels are calibrated so Year N matches what a student in Grade N in China (人教版) or
    Primary/Secondary N in Singapore (MOE) is expected to handle. Difficulty 1–4:
-   1 Core 基础 · 2 Standard 提高 · 3 Advanced 拓展 · 4 Challenge 挑战 (competition style). */
+   1 Core 基础 · 2 Elevated 进阶 · 3 Challenging 挑战 · 4 Competitive 竞赛 (competition style; names from v1.11.0). */
 (function (root) {
   'use strict';
 
@@ -116,7 +116,7 @@
   }
   function subjectOf(topic) { return Object.keys(SUBJECTS).find(s => SUBJECTS[s][topic]) || 'maths'; }
 
-  /* Advanced (3) and Challenge (4) draw on the olympiad / tutoring-centre bank (gen-olympiad.js) */
+  /* Challenging (3) and Competitive (4) draw on the olympiad / tutoring-centre bank (gen-olympiad.js) */
   const OLY_SHARE = { 3: 0.4, 4: 0.75 };
   function olympiad() { return root.Olympiad || null; }
 
@@ -141,7 +141,7 @@
     const list = topicsFor(subject, year).filter(k => !SUBJECTS[subject][k].olympiadOnly || topic === k);
     const t = topic !== 'mixed' && topicsFor(subject, year).includes(topic) ? topic : pick(list);
     const O = olympiad();
-    // a specific topic at Advanced/Challenge: sometimes use a competition problem on that topic
+    // a specific topic at Challenging/Competitive: sometimes use a competition problem on that topic
     if (O && subject === 'maths' && diff >= 3 && t !== 'olymp' && Math.random() < OLY_SHARE[diff] * 0.8) {
       const q = O.generate(year, diff, t);
       if (q) return finish(q, subject, year, diff, t);
@@ -154,7 +154,7 @@
   }
 
   /* n distinct questions. Mixed: spread topics evenly; in maths about 1 in 3 is a word problem (应用题)
-     where word problems exist for the year, and Advanced/Challenge mix in competition problems. */
+     where word problems exist for the year, and Challenging/Competitive mix in competition problems. */
   function generateSet(subject, year, topic, diff, n) {
     if (isK6(subject, year, topic)) return k6().generateSet(year, topic, diff, n);
     const out = [], seen = new Set();

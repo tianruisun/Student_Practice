@@ -1,5 +1,5 @@
 /* Maths topics (typed answers). Calibrated to China (人教版) / Singapore (MOE) year levels.
-   d = difficulty 1..4 (Core, Standard, Advanced, Challenge). */
+   d = difficulty 1..4 (Core, Elevated, Challenging, Competitive). */
 (function (root) {
   'use strict';
   const G = root.Gen || require('./gen-core.js');

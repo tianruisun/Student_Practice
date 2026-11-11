@@ -1,5 +1,5 @@
 /* Years 1–3 maths (with pictures and charts where they help). d = 1..4.
-   Advanced/Challenge also draw on the olympiad bank (gen-olympiad.js). */
+   Challenging/Competitive also draw on the olympiad bank (gen-olympiad.js). */
 (function (root) {
   'use strict';
   const G = root.Gen || require('./gen-core.js');

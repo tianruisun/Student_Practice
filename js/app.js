@@ -42,10 +42,11 @@
     },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour', games: 'sp.games' };
-  /* This app's keys that are not a student's data: the language, the "moved" flag and the tour flag. They do not make a
+  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour', games: 'sp.games', news: 'sp.news' };
+  /* This app's keys that are not a student's data: the language, the "moved" flag, the tour flag and (v1.11.0) the last
+     version whose What's new this browser has seen. They do not make a
      browser look used (below), and a Forgot-PIN erase keeps them (eraseAll). One list, so the two cannot drift apart. */
-  const NOT_USER_DATA = ['sp.lang', 'sp.moved', K.tour];
+  const NOT_USER_DATA = ['sp.lang', 'sp.moved', K.tour, K.news];
   const isUserData = k => k.startsWith('sp.') && !NOT_USER_DATA.includes(k);
   /* Guided tour (v1.8.0): "new" from a browser's first visit until the tour is finished or skipped, then "done".
      Read before the student profiles are created: a browser that already holds any of this app's data (profiles, or
@@ -131,7 +132,11 @@
     $('#parentIcon').textContent = S.parent ? '🔓' : '🔒';
     const who = Profiles.name(Profiles.active);
     $('#profileName').textContent = who;
-    $('#helloText').textContent = t('home.hello', { name: who });
+    // the wave is its own span, so a narrow phone can drop it and keep the name (v1.11.0 R1.1)
+    const hello = $('#helloText'), wave = el('span', 'hello-wave', ' 👋');
+    wave.setAttribute('aria-hidden', 'true');
+    hello.textContent = t('home.hello', { name: who });
+    hello.append(wave);
     $('#profileAvatar').textContent = (who.trim()[0] || 'S').toUpperCase();
     const nb = badgeCount(), ab = $('#avatarBadge');
     ab.hidden = !nb; ab.textContent = '🏅' + nb;
@@ -252,9 +257,6 @@
     });
     $('#countCustom').hidden = !isCustom;
     if (isCustom) $('#countCustom').value = st.count;
-    $('#heroSummary').textContent = isSel ? t('subject.sel') + ' · ' + t(st.selLen === 'short' ? 'sel.len.short' : 'sel.len.full')
-      : isComp ? t('topic.' + compPaper(st))
-      : [t('subject.' + st.subject), yearLabel(st.year), t('topic.' + st.topic), t('diff.short.' + st.diff)].join(' · ');
     $('#optionsTitle').hidden = isSel || isComp;
     const ai = aiConfig();
     $('#sourceLine').textContent = ai ? t('home.source.ai', { name: AI.PROVIDERS[ai.provider].name }) : t('home.source.local');
@@ -591,7 +593,9 @@
   function setView(v) {
     const Q = S.quiz, cur = view();
     if (v === cur) return;
-    if (Q) { if (v === 'pages') Q.page = Math.floor(Q.i / PAGE); else Q.i = Q.page * PAGE; }
+    // back to single view: the same question if it is still on the page shown, else the first question of that page
+    // (v1.11.0 R2.2 of v1.10.1: Pages and back used to return to the page's first question every time)
+    if (Q) { if (v === 'pages') Q.page = Math.floor(Q.i / PAGE); else if (Math.floor(Q.i / PAGE) !== Q.page) Q.i = Q.page * PAGE; }
     S.settings.view = v; saveSettings();
     if (Q) { renderQuiz(); window.scrollTo(0, 0); }
   }
@@ -1668,6 +1672,87 @@
     if (!window.Tour.run(steps, { t, onEnd: () => { store.set(K.tour, 'done'); back(); } })) back();
   }
 
+  /* ---------- What's new and Release history (v1.11.0) ----------
+     What's new pops up once per version for a browser that used an earlier version, with only what changed since the
+     version it last saw. A first visit gets the guided tour instead, and is marked as up to date. Release history (the
+     gift button) lists every version in js/releases.js, for anyone, at any time. "Show me" walks through the items on Home
+     with the guided tour, so the student sees where each new thing is. */
+  const RELEASES = self.RELEASES || [];
+  const cmpV = self.compareVersions || (() => 0);
+  const relKey = (r, it) => 'rel.' + r.v + '.' + it.id;
+  const unseenReleases = () => {
+    const seen = store.get(K.news, null);
+    if (seen === null) return usedBefore ? RELEASES.filter(r => r.v === self.APP_VERSION) : [];
+    return RELEASES.filter(r => cmpV(r.v, seen) > 0 && cmpV(r.v, self.APP_VERSION) <= 0);
+  };
+  let newsMode = null, newsList = [];   // 'new' or 'history', and the releases on screen
+  const canShowMe = () => !!window.Tour && !window.Tour.running && !['quiz', 'loading'].includes(S.screen) && !gameBusy();
+  function newsSection(r, headed) {
+    const sec = el('section', 'news-ver');
+    if (headed) {
+      const h = el('h4', 'news-vh', t('news.version', { v: r.v }));
+      if (r.v === self.APP_VERSION) h.append(' ', el('span', 'news-cur', t('news.current')));
+      sec.append(h);
+    }
+    const ul = el('ul', 'news-list');
+    r.items.forEach(it => { const li = el('li'); li.append(el('b', '', t(relKey(r, it) + 'T')), el('span', '', t(relKey(r, it)))); ul.append(li); });
+    sec.append(ul);
+    // one Show me per version in Release history only; What's new has the single Show me at the bottom (R1.2)
+    if (headed && newsMode === 'history' && r.items.some(it => it.show) && canShowMe()) {
+      const b = el('button', 'btn secondary small news-show-v', t('news.show')); b.type = 'button';
+      b.addEventListener('click', () => showMe([r]));
+      sec.append(b);
+    }
+    return sec;
+  }
+  function renderNews() {
+    const body = $('#newsBody'); body.innerHTML = '';
+    const history = newsMode === 'history';
+    $('#newsTitle').textContent = history ? t('news.history') : t('news.title', { v: newsList[0].v });
+    newsList.forEach(r => body.append(newsSection(r, history || newsList.length > 1)));
+    $('#newsShow').hidden = history || !newsList.some(r => r.items.some(it => it.show)) || !canShowMe();
+    $('#newsClose').textContent = t(history ? 'news.closeHistory' : 'news.close');
+  }
+  function openNews(mode) {
+    const list = mode === 'history' ? RELEASES : unseenReleases();
+    if (!list.length || $('#newsDlg').open) return false;
+    newsMode = mode; newsList = list;
+    renderNews();
+    window.I18N.applyStatic($('#newsDlg'));
+    $('#newsDlg').showModal();
+    $('#newsBody').scrollTop = 0;
+    return true;
+  }
+  /* the guided tour, one step per item; from Release history it comes back to the list afterwards */
+  function showMe(releases) {
+    const fromHistory = newsMode === 'history';
+    markNewsSeen();
+    $('#newsDlg').close();
+    if (!canShowMe()) return;
+    if (S.screen !== 'home') go('home');
+    const steps = [];
+    releases.forEach(r => r.items.forEach(it => steps.push({ target: it.show || null, title: relKey(r, it) + 'T', text: relKey(r, it) })));
+    const back = () => { window.scrollTo(0, 0); if (fromHistory) openNews('history'); };
+    if (!window.Tour.run(steps, { t, onEnd: back })) back();
+  }
+  // remembered as soon as the student acts (the dialog's close event comes a moment later); Escape still lands here
+  const markNewsSeen = () => { if (newsMode === 'new') store.set(K.news, self.APP_VERSION); };
+  $('#newsDlg').addEventListener('close', markNewsSeen);
+  $('#newsClose').addEventListener('click', () => { markNewsSeen(); $('#newsDlg').close(); });
+  $('#newsShow').addEventListener('click', () => showMe(newsList));
+  $('#newsBtn').addEventListener('click', () => { if (!window.Tour || !window.Tour.running) openNews('history'); });
+  /* on load: What's new if there is something this browser has not seen; otherwise just remember the version */
+  function maybeShowNews() {
+    if (tourState === 'new' || !unseenReleases().length) {
+      // remember this version, but never move back (a browser that already saw a later version, e.g. Test then Production)
+      const seen = store.get(K.news, null);
+      if (seen === null || cmpV(seen, self.APP_VERSION) < 0) store.set(K.news, self.APP_VERSION);
+      return;
+    }
+    if (document.querySelector('dialog[open]')) return;   // another dialog is up: next time
+    openNews('new');
+  }
+
   /* ---------- wire up ---------- */
   $('#tourBtn').addEventListener('click', startTour);
   document.querySelectorAll('.tab[data-go]').forEach(b => b.addEventListener('click', async () => {
@@ -1678,7 +1763,6 @@
   }));
   const startOrHome = () => (S.screen === 'home' ? startQuiz(S.settings) : go('home'));
   $('#fabStart').addEventListener('click', startOrHome);
-  $('#heroStart').addEventListener('click', () => startQuiz(S.settings));
   $('#studyCard').addEventListener('click', () => openStudy(null));
   $('#studyTopicBtn').addEventListener('click', () => openStudy(S.settings.topic, S.settings.year));
   $('#navStudents').addEventListener('click', () => $('#profileBtn').click());
@@ -1816,4 +1900,5 @@
   applySuggestedYear();
   go('home');
   if (tourState === 'new') requestAnimationFrame(startTour);   // first visit in this browser
+  maybeShowNews();   // v1.11.0: after an update, what changed
 })();

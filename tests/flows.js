@@ -1455,9 +1455,12 @@ async function run(site) {
       await page.locator('.study-topic[data-topic="k6add"]').click();
       await page.click('#studyPractise');
       await page.waitForSelector('#screen-quiz:not([hidden])');
-      const set = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers() : []));
+      // v1.10.1: count the set from the screen (one palette button per question, in every view), so the check also runs on
+      // Production, which has no window.__testAnswers; where the hook exists it must agree with the screen
+      const shown = await page.locator('#palette button').count();
+      const hooked = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers().length : null));
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.settings.p1')));
-      check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && set.length === 5, JSON.stringify({ year: saved.year, topic: saved.topic, n: set.length }));
+      check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && shown === 5 && (hooked === null || hooked === shown), JSON.stringify({ year: saved.year, topic: saved.topic, shown, hooked }));
       await page.click('#quitBtn');
       await page.waitForSelector('#screen-home:not([hidden])');
       check(`R9 ${W}: Home now shows Kindergarten and the topic, with a link back to its lesson`, (await page.locator('#yearSel').inputValue()) === '0' && (await page.locator('#topicSel').inputValue()) === 'k6add' && (await page.locator('#studyTopicBtn').isVisible()), await page.locator('#yearSel').inputValue());

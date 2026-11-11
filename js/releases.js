@@ -3,8 +3,14 @@
    show: an optional CSS selector on Home that "Show me" highlights for that item.
    Add the new version at the top of this list in every release that changes something a student or parent can see. */
 self.RELEASES = [
+  { v: '1.12.0', items: [
+    { id: 'modes', show: '#modeTiles' },
+    { id: 'icons', show: '#topicSel' },
+    { id: 'settings', show: '#navParent' },
+    { id: 'relax', show: '#navGames' }
+  ] },
   { v: '1.11.0', items: [
-    { id: 'news', show: '#newsBtn' },
+    { id: 'news', show: '#navParent' },
     { id: 'levels', show: '#diffSel' },
     { id: 'start', show: '#startBtn' }
   ] },
@@ -12,7 +18,7 @@ self.RELEASES = [
     { id: 'checks' }
   ] },
   { v: '1.10.0', items: [
-    { id: 'study', show: '#studyCard' },
+    { id: 'study', show: '#modeTiles' },
     { id: 'kinder', show: '#yearSel' },
     { id: 'games', show: '#navGames' },
     { id: 'submit' }

@@ -110,7 +110,6 @@
 
   /* ---------- navigation ---------- */
   function go(screen) {
-    if (screen === 'parent' && !S.parent) return;
     if (S.screen === 'game' && screen !== 'game' && game) game.stop();   // leaving a round ends it, with no score kept
     if (S.screen === 'puzzle' && screen !== 'puzzle' && puzzle) puzzle.stop();   // the same for the puzzle games
     S.screen = screen;
@@ -126,10 +125,6 @@
 
   function render() {
     window.I18N.applyStatic();
-    const pb = $('#parentBtn');
-    pb.setAttribute('aria-pressed', String(S.parent));
-    $('#parentLabel').textContent = t(S.parent ? 'nav.parentOn' : 'nav.parent');
-    $('#parentIcon').textContent = S.parent ? '🔓' : '🔒';
     const who = Profiles.name(Profiles.active);
     $('#profileName').textContent = who;
     // the wave is its own span, so a narrow phone can drop it and keep the name (v1.11.0 R1.1)
@@ -143,7 +138,6 @@
     const inGame = S.screen === 'game' || S.screen === 'puzzle';
     document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || inGame);
     document.body.classList.toggle('in-game', inGame);   // the header too: a round needs the whole screen on a small phone
-    $('#tourBtn').hidden = S.screen === 'quiz' || S.screen === 'loading' || inGame;   // the tour shows Home; never leave a set for it
     ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
   }
 
@@ -169,11 +163,32 @@
     sel: SVG('<rect x="6" y="5" width="20" height="24" rx="4" fill="#f59e0b"/><rect x="11" y="2.5" width="10" height="5.5" rx="2" fill="#b45309"/><path d="M10.5 14h11M10.5 19h11M10.5 24h6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>'),
     comp: SVG('<path d="M10 4h12v8a6 6 0 0 1-12 0z" fill="#f43f5e"/><path d="M10 6.5H5.5a4.5 4.5 0 0 0 4.8 5.5M22 6.5h4.5a4.5 4.5 0 0 1-4.8 5.5" stroke="#f43f5e" stroke-width="2.2" fill="none"/><path d="M16 18v5" stroke="#be123c" stroke-width="2.6"/><rect x="10" y="23.5" width="12" height="5" rx="1.8" fill="#be123c"/><path d="M16 7.5l1.1 2.2 2.4.3-1.8 1.7.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.7 2.4-.3z" fill="#fde68a"/>')
   };
-  function tiles(container, options, value, onChange) {
+  /* v1.12.0 W4: Study / Practice / Test, drawn like the subject icons */
+  const MODE_ICON = {
+    study: SVG('<path d="M4 7.5c3.6-1.6 7.6-1.6 12 .8v18c-4.4-2.4-8.4-2.4-12-.8z" fill="#34d399"/><path d="M28 7.5c-3.6-1.6-7.6-1.6-12 .8v18c4.4-2.4 8.4-2.4 12-.8z" fill="#10b981"/><path d="M7.5 12.5c2.3-.6 4.6-.4 6.5.6M7.5 17c2.3-.6 4.6-.4 6.5.6M18 13.1c1.9-1 4.2-1.2 6.5-.6M18 17.6c1.9-1 4.2-1.2 6.5-.6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>'),
+    practice: SVG('<rect x="4" y="4" width="24" height="24" rx="7" fill="#7c4dff"/><path d="M10 16.5l4 4 8-9" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
+    test: SVG('<circle cx="16" cy="17.5" r="11" fill="#f59e0b"/><rect x="13" y="2.5" width="6" height="3.5" rx="1.5" fill="#b45309"/><path d="M16 11v7l4.5 3" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>')
+  };
+  /* an emoji in front of each topic in the topic list (Terry, v1.12.0: "okay for your suggestion for now") */
+  const TOPIC_ICON = {
+    mixed: '🌟', place: '🔢', addsub: '➕', muldiv: '✖️', mental: '🧠', numth: '🔍', pattern: '🔁', frac: '🍕', dec: '🔸',
+    pct: '💯', ratio: '⚖️', int: '🌡️', index: '🌱', alg: '🔤', quad: '🌈', linear: '📈', meas: '📏', angle: '📐',
+    pyth: '🔺', stats: '📊', prob: '🎲', word: '📝', count: '🧮', add1: '🍎', mult1: '✖️', shape1: '🔷', time1: '🕒',
+    money1: '💰', frac1: '🍕', graph1: '📊', func: '📈', explog: '🧪', trig: '📐', calc: '📉', series: '♾️', stats2: '📊',
+    graphs: '📈', comb: '🔀', poly: '🧩', vectors: '➡️', invtrig: '🔄', complex: '🌀', integ: '🧮', mech: '🚀',
+    datafig: '📊', geofig: '📐', olymp: '🏆',
+    kcount: '🔢', kaddsub: '➕', kshare: '🍬', kpattern: '🔁', kshape: '🔷', kmeas: '📏', kmass: '⚖️', ktime: '🕒',
+    kchance: '🎲', kspace: '🧭', kops: '🧮', kdata: '📊',
+    k6place: '🔢', k6add: '➕', k6mul: '✖️', k6frac: '🍕', k6len: '📏', k6mass: '⚖️', k6shape: '🔷', k6time: '🕒',
+    k6data: '📊', k6chance: '🎲', k6word: '📝',
+    gseries: '🔢', gletter: '🔤', gcode: '🔐', glogic: '🧠', gsymbol: '✳️', gpattern: '🧩', gspatial: '🧊'
+  };
+  const topicLabel = k => (TOPIC_ICON[k] ? TOPIC_ICON[k] + ' ' : '') + t('topic.' + k);
+  function tiles(container, name, options, value, onChange) {
     container.innerHTML = '';
     options.forEach(([v, label, icon, sub], k) => {
-      const lab = el('label', 'tile t' + k);
-      const inp = el('input'); inp.type = 'radio'; inp.name = 'subject'; inp.value = String(v);
+      const lab = el('label', 'tile t' + k + ' tile-' + v);
+      const inp = el('input'); inp.type = 'radio'; inp.name = name; inp.value = String(v);
       inp.checked = String(v) === String(value);
       inp.addEventListener('change', () => onChange(v));
       const box = el('span', 'tile-box');
@@ -204,7 +219,7 @@
     return Gen.topicsFor(subject, year);
   }
   function topicOptions(subject, year) {
-    return [['mixed', t('topic.mixed')], ...topicKeys(subject, year).map(k => [k, t('topic.' + k)])];
+    return [['mixed', topicLabel('mixed')], ...topicKeys(subject, year).map(k => [k, topicLabel(k)])];
   }
 
   /* text of the correct answer / of what the student gave, in the current language */
@@ -220,6 +235,21 @@
 
   function saveSettings() { store.set(Profiles.setKey(), S.settings); }
 
+  /* v1.12.0 W4: first what to do. Test = the timed papers (subject sel or comp); Study = the K–6 maths lessons;
+     Practice = everything else. Each remembers its own subject, so switching back and forth keeps the choice. */
+  const MODES = ['study', 'practice', 'test'];
+  const homeMode = st => (isTimed(st.subject) ? 'test' : st.mode === 'study' && window.ScopeK6 ? 'study' : 'practice');
+  function setMode(m) {
+    const st = S.settings, cur = homeMode(st);
+    if (m === cur) return;
+    if (cur === 'practice') st.pracSubject = st.subject;
+    if (cur === 'test') st.testSubject = st.subject;
+    st.mode = m;
+    if (m === 'study') st.subject = 'maths';
+    else if (m === 'practice') st.subject = ['maths', 'ga'].includes(st.pracSubject) ? st.pracSubject : 'maths';
+    else st.subject = ['sel', 'comp'].includes(st.testSubject) ? st.testSubject : 'sel';
+  }
+
   function renderHome() {
     const st = S.settings;
     if (!SUBJECTS.includes(st.subject)) st.subject = 'maths';
@@ -227,16 +257,36 @@
     if (!YEARS.includes(st.year)) st.year = 6;
     if (st.year === 0 && st.subject === 'ga') st.year = 1;   // Kindergarten is for maths only
     if (st.topic !== 'mixed' && !topicKeys(st.subject, st.year).includes(st.topic)) st.topic = 'mixed';
-    tiles($('#subjectChips'), SUBJECTS.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); });
-    $('#subjectNote').textContent = t(st.subject === 'ga' ? 'home.gaNote' : st.subject === 'sel' ? 'home.selNote' : st.subject === 'comp' ? 'home.compNote' : 'home.levelNote');
+    const mode = homeMode(st);
+    if (mode === 'study') st.subject = 'maths';
+    tiles($('#modeTiles'), 'mode', MODES.map(m => [m, t('mode.' + m), MODE_ICON[m], t('mode.' + m + '.sub')]), mode, v => { setMode(v); saveSettings(); renderHome(); });
+    $('#subjectBox').hidden = mode === 'study';
+    if (mode !== 'study') {
+      const subs = mode === 'test' ? ['sel', 'comp'] : ['maths', 'ga'];
+      tiles($('#subjectChips'), 'subject', subs.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); });
+    }
     const isSel = st.subject === 'sel', isComp = st.subject === 'comp';
     $('#practiceOptions').hidden = isSel || isComp;
+    $('#practiceOnly').hidden = mode !== 'practice';
+    $('#schoolField').hidden = mode === 'study';
+    $('#schoolYearRow').classList.toggle('one', mode === 'study');
+    $('#printHome').hidden = mode === 'study';
     $('#selOptions').hidden = !isSel;
     $('#compOptions').hidden = !isComp;
     if (isComp) renderCompOptions();
     if (!['full', 'short'].includes(st.selLen)) st.selLen = 'full';
     combo($('#selLenSel'), ['full', 'short'].map(k => [k, t('sel.len.' + k)]), st.selLen, v => { st.selLen = v; saveSettings(); });
-    $('#startBtn').textContent = t(isSel ? 'sel.start' : isComp ? 'comp.start' : 'home.start');
+    // the key goes on the button too, so the language pass on another screen (render) keeps this name, not "Start practice"
+    const startKey = mode === 'study' ? 'study.open' : isSel ? 'sel.start' : isComp ? 'comp.start' : 'home.start';
+    $('#startBtn').dataset.i18n = startKey;
+    $('#startBtn').textContent = t(startKey);
+    if (mode === 'study') {   // Kindergarten to Year 6 only: the year and the topic of the lesson
+      const y = studyYearOf(st), keys = ScopeK6.topicsFor(y);
+      if (!keys.includes(st.studyTopic)) st.studyTopic = keys[0];
+      combo($('#yearSel'), ScopeK6.YEARS.map(k => [k, yearLabel(k)]), y, v => { st.studyYear = +v; saveSettings(); renderHome(); });
+      combo($('#topicSel'), keys.map(k => [k, topicLabel(k)]), st.studyTopic, v => { st.studyTopic = v; saveSettings(); });
+      return;
+    }
     if (!YEARS.includes(st.year)) st.year = 6;
     const school = schoolOf(st.year);
     // A year chosen here is the student's or parent's own choice: remembered, so a suggestion that appears later
@@ -245,9 +295,7 @@
       st.year = v === 'primary' ? Math.min(st.year, 6) : Math.max(st.year, 7); st.yearPicked = true; saveSettings(); renderHome();
     });
     combo($('#yearSel'), (school === 'primary' ? Gen.PRIMARY.filter(y => y > 0 || st.subject === 'maths') : Gen.HIGH).map(y => [y, yearLabel(y)]), st.year, v => { st.year = +v; st.yearPicked = true; saveSettings(); renderHome(); });
-    combo($('#topicSel'), topicOptions(st.subject, st.year), st.topic, v => { st.topic = v; saveSettings(); showStudyLink(); });
-    $('#studyCard').hidden = st.subject !== 'maths';
-    showStudyLink();
+    combo($('#topicSel'), topicOptions(st.subject, st.year), st.topic, v => { st.topic = v; saveSettings(); });
     combo($('#diffSel'), [1, 2, 3, 4].map(d => [d, t('diff.' + d)]), st.diff, v => { st.diff = +v; saveSettings(); });
     const isCustom = !COUNTS.includes(st.count);
     combo($('#countSel'), [...COUNTS.map(n => [n, String(n)]), ['custom', t('home.countCustom')]], isCustom ? 'custom' : st.count, v => {
@@ -257,9 +305,6 @@
     });
     $('#countCustom').hidden = !isCustom;
     if (isCustom) $('#countCustom').value = st.count;
-    $('#optionsTitle').hidden = isSel || isComp;
-    const ai = aiConfig();
-    $('#sourceLine').textContent = ai ? t('home.source.ai', { name: AI.PROVIDERS[ai.provider].name }) : t('home.source.local');
   }
 
   /* ---------- competition paper options (AMC divisions / AIMO) ---------- */
@@ -776,10 +821,6 @@
     go('study');
     if (studyTopic) focusLesson();
   }
-  function showStudyLink() {
-    const st = S.settings;
-    $('#studyTopicBtn').hidden = !(st.subject === 'maths' && window.ScopeK6 && ScopeK6.inYear(st.topic, st.year));
-  }
   function focusLesson() { const h = $('#lessonH'); if (h) h.focus({ preventScroll: true }); window.scrollTo(0, 0); }
   function showLesson(id) { studyTopic = id; renderStudy(); focusLesson(); }
 
@@ -851,7 +892,7 @@
   /* practise the lesson's topic at the student's own level and number of questions (set on Home) */
   function practiseTopic(y, id) {
     const st = S.settings;
-    st.subject = 'maths'; st.year = y; st.topic = id; st.yearPicked = true; saveSettings();
+    st.subject = 'maths'; st.mode = 'practice'; st.year = y; st.topic = id; st.yearPicked = true; saveSettings();
     startQuiz(st);
   }
 
@@ -1476,6 +1517,10 @@
   /* ---------- PARENT: settings ---------- */
   let draftProvider = null;
   function renderParent() {
+    $('#parentLocked').hidden = S.parent;
+    $('#parentArea').hidden = !S.parent;
+    $('#parentIcon').textContent = S.parent ? '🔓' : '🔒';
+    if (!S.parent) return;
     $('#csvInfo').replaceChildren(infoTip(t('csv.note'), t('csv.heading')));
     renderPrompt();
     const cfg = store.get(K.ai, { provider: 'local', key: '', model: '' });
@@ -1648,26 +1693,29 @@
     { target: null, title: 'tour.welcomeT', text: 'tour.welcome' },
     { target: '#profileBtn', title: 'tour.profileT', text: 'tour.profile' },
     { target: '#langBtn', title: 'tour.langT', text: 'tour.lang' },
-    { target: '#parentBtn', title: 'tour.parentT', text: 'tour.parent' },
+    { target: '#modeTiles', title: 'tour.modeT', text: 'tour.mode' },
     { target: '#subjectChips', title: 'tour.subjectT', text: 'tour.subject' },
     { target: '#practiceOptions', title: 'tour.optionsT', text: 'tour.options' },
     { target: '#startBtn', title: 'tour.startT', text: 'tour.start' },
     { target: '#printHome', title: 'tour.printT', text: 'tour.print' },
     { target: '.tab[data-go="progress"]', title: 'tour.progressT', text: 'tour.progress' },
     { target: '#navGames', title: 'tour.gamesT', text: 'tour.games' },
-    { target: '#navParent', title: 'tour.settingsT', text: 'tour.settings' },
-    { target: '#tourBtn', title: 'tour.againT', text: 'tour.again' }
+    { target: '#navParent', title: 'tour.settingsT', text: 'tour.settings' }
   ];
   function startTour() {
     if (!window.Tour || S.screen === 'quiz' || S.screen === 'loading' || window.Tour.running) return;   // tour.js failed to load: no tour
     document.querySelectorAll('dialog[open]').forEach(d => d.close());   // a student dialog left open would sit on top
     // the tour shows Home; afterwards go back to where the user was (Results cannot be reopened any other way)
-    const from = S.screen;
+    const from = S.screen, opener = document.activeElement;
     if (from !== 'home') go('home');
-    const back = () => { if (from !== 'home' && S.screen === 'home') go(from); else window.scrollTo(0, 0); };
-    /* the steps describe the Home screen as it is now: a Selective Test or Competition paper has no practice options,
-       and its Start button has its own name */
-    const steps = TOUR.filter(s => !(s.target === '#practiceOptions' && $('#practiceOptions').hidden))
+    // the tour gives focus back while Home is still shown; once the screen it came from is back, focus its button again
+    const back = () => {
+      if (from !== 'home' && S.screen === 'home') { go(from); if (opener && opener.isConnected && opener !== document.body) opener.focus({ preventScroll: true }); } else window.scrollTo(0, 0);
+    };
+    /* the steps describe the Home screen as it is now: a part hidden in this mode (subjects in Study, options in Test,
+       Print in Study) is left out, and the Start button has its own name */
+    const shownNow = sel => { const n = document.querySelector(sel); return !!n && n.getClientRects().length > 0; };
+    const steps = TOUR.filter(s => !s.target || s.target.startsWith('.tab') || shownNow(s.target))
       .map(s => (s.target === '#startBtn' ? Object.assign({}, s, { vars: { btn: $('#startBtn').textContent } }) : s));
     if (!window.Tour.run(steps, { t, onEnd: () => { store.set(K.tour, 'done'); back(); } })) back();
   }
@@ -1758,23 +1806,19 @@
   document.querySelectorAll('.tab[data-go]').forEach(b => b.addEventListener('click', async () => {
     if (S.screen === 'quiz' && !confirm(t(S.quiz && S.quiz.exam ? 'sel.quitConfirm' : 'quiz.quitConfirm'))) return;
     if (S.screen === 'quiz') { stopTimer(); S.quiz = null; }
-    if (b.dataset.go === 'parent') { if (await unlockParent()) { draftProvider = null; delete $('#aiKey').dataset.touched; go('parent'); } return; }
+    if (b.dataset.go === 'parent') { draftProvider = null; delete $('#aiKey').dataset.touched; }
     go(b.dataset.go);
   }));
-  const startOrHome = () => (S.screen === 'home' ? startQuiz(S.settings) : go('home'));
-  $('#fabStart').addEventListener('click', startOrHome);
-  $('#studyCard').addEventListener('click', () => openStudy(null));
-  $('#studyTopicBtn').addEventListener('click', () => openStudy(S.settings.topic, S.settings.year));
-  $('#navStudents').addEventListener('click', () => $('#profileBtn').click());
+  $('#studentsBtn').addEventListener('click', () => $('#profileBtn').click());
   $('#langBtn').addEventListener('click', () => {
     window.I18N.setLang(lang() === 'zh' ? 'en' : 'zh');
     render();   // instant: re-renders text only, the typed answer and quiz state are untouched
   });
-  $('#parentBtn').addEventListener('click', async () => {
-    if (S.screen === 'quiz' || gameBusy()) { await unlockParent(); return; }
-    if (await unlockParent()) { draftProvider = null; delete $('#aiKey').dataset.touched; go('parent'); }
+  $('#parentUnlock').addEventListener('click', async () => { draftProvider = null; delete $('#aiKey').dataset.touched; if (await unlockParent()) $('#parentArea').scrollIntoView({ block: 'start' }); });
+  $('#startBtn').addEventListener('click', () => {
+    const st = S.settings;
+    if (homeMode(st) === 'study') openStudy(st.studyTopic, studyYearOf(st)); else startQuiz(st);
   });
-  $('#startBtn').addEventListener('click', () => startQuiz(S.settings));
   $('#quitBtn').addEventListener('click', () => {
     if (confirm(t(S.quiz && S.quiz.exam ? 'sel.quitConfirm' : 'quiz.quitConfirm'))) { stopTimer(); S.quiz = null; go('home'); }
   });
@@ -1798,7 +1842,7 @@
   $('#unlockBtn').addEventListener('click', unlockParent);
   $('#againBtn').addEventListener('click', () => startQuiz(S.lastQuizSettings || S.settings));
   $('#homeBtn').addEventListener('click', () => go('home'));
-  $('#lockBtn').addEventListener('click', () => { S.parent = false; go('home'); });
+  $('#lockBtn').addEventListener('click', () => { S.parent = false; go('parent'); });
   $('#csvExport').addEventListener('click', () => {
     const pr = Profiles.active, name = Profiles.name(pr);
     const text = Records.toCSV({ name: pr.name || name, schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet, dob: pr.dob },

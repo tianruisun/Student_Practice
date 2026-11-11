@@ -1460,7 +1460,15 @@ async function run(site) {
       const shown = await page.locator('#palette button').count();
       const hooked = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers().length : null));
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.settings.p1')));
-      check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && shown === 5 && (hooked === null || hooked === shown), JSON.stringify({ year: saved.year, topic: saved.topic, shown, hooked }));
+      // v1.10.1 R1.1: read the topic of every question, not only the saved setting: show all cards (page view), compare each
+      // card's topic badge with the app's own name for k6add, then put the view back as the student had it
+      const wasSingle = (await page.getAttribute('#viewSingle', 'aria-pressed')) === 'true';
+      if (wasSingle) await page.click('#viewPages');
+      const want = await page.evaluate(() => window.I18N.t('topic.k6add'));
+      const topics = await page.locator('#qList .qcard .badge').allTextContents();
+      if (wasSingle) await page.click('#viewSingle');
+      const onTopic = topics.length === shown && topics.every(x => x.trim() === want);
+      check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && shown === 5 && (hooked === null || hooked === shown) && onTopic, JSON.stringify({ year: saved.year, topic: saved.topic, shown, hooked, topics }));
       await page.click('#quitBtn');
       await page.waitForSelector('#screen-home:not([hidden])');
       check(`R9 ${W}: Home now shows Kindergarten and the topic, with a link back to its lesson`, (await page.locator('#yearSel').inputValue()) === '0' && (await page.locator('#topicSel').inputValue()) === 'k6add' && (await page.locator('#studyTopicBtn').isVisible()), await page.locator('#yearSel').inputValue());

@@ -490,10 +490,10 @@ t('i18n: no key defined twice in a language', () => {
   const S = box.I18N.STRINGS;
   const block = (/const TOUR = \[([\s\S]*?)\n\s*\];/.exec(app) || [])[1] || '';
   const steps = [...block.matchAll(/target: (?:null|'([^']+)'), title: '([\w.]+)', text: '([\w.]+)'/g)];
-  // v1.12.0 W4: the parent lock and the ? button left the header (Settings now holds them); a step for Study / Practice / Test
-  t('tour: 11 steps found in app.js (v1.12.0: modes in, header lock and ? out)', () => assert.strictEqual(steps.length, 11));
+  // v1.12.0 W6: the steps follow the new Home (the week, the four cards, Carry on, Badges); the options are in the sheet
+  t('tour: 10 steps found in app.js (v1.12.0 W6: week, cards, Carry on, Badges; no options, Start or Print)', () => assert.strictEqual(steps.length, 10));
   t('tour: every text is in English and Chinese', () => {
-    const keys = steps.flatMap(m => [m[2], m[3]]).concat(['tour.open', 'tour.step', 'tour.next', 'tour.back', 'tour.skip', 'tour.done']);
+    const keys = steps.flatMap(m => [m[2], m[3]]).concat(['tour.step', 'tour.next', 'tour.back', 'tour.skip', 'tour.done']);
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.zh[k] === S.en[k]), []);
   });
   t('tour: every highlighted part is in index.html', () => {
@@ -1046,6 +1046,29 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.strictEqual(S.en['nav.games'], 'Relax'); assert.strictEqual(S.zh['nav.games'], '放松');
     for (const k of ['mode.legend', 'mode.study', 'mode.study.sub', 'mode.practice', 'mode.practice.sub', 'mode.test', 'mode.test.sub', 'study.open', 'settings.tour', 'parent.unlock'])
       assert.ok(S.en[k] && S.zh[k] && S.en[k] !== S.zh[k], k);
+  });
+  /* v1.12.0 W6 (Terry chose Option B): four cards on Home; the options and Start in a sheet */
+  t('W6: Home has the week, four cards, Carry on and Badges, and no Start of its own', () => {
+    const home = (/<section id="screen-home"[\s\S]*?<\/section>/.exec(html) || [''])[0];
+    for (const id of ['weekCard', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'homeBadges']) assert.ok(home.includes('id="' + id + '"'), id);
+    assert.ok(!/id="startBtn"|id="diffSel"|id="modeTiles"/.test(home));
+  });
+  t('W6: the sheet holds the subject, the options, Start and Print', () => {
+    const sheet = (/<dialog id="setupDlg"[\s\S]*?<\/dialog>/.exec(html) || [''])[0];
+    for (const id of ['subjectBox', 'practiceOptions', 'selOptions', 'compOptions', 'startBtn', 'printHome', 'setupClose', 'studyNote']) assert.ok(sheet.includes('id="' + id + '"'), id);
+  });
+  t('W6: the new words are in English and Chinese', () => {
+    const keys = ['mode.relax.sub', 'study.k6note', 'sheet.close', 'home.week', 'home.streak', 'home.streak1', 'home.streak0', 'home.weekSr', 'home.carry', 'home.lastTime', 'home.badges', 'home.seeAll',
+      'tour.weekT', 'tour.week', 'tour.carryT', 'tour.carry', 'tour.badgesT', 'tour.badges', 'day.1', 'day.2', 'day.3', 'day.4', 'day.5', 'day.6', 'day.7'];
+    assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.en[k] === S.zh[k]), []);
+  });
+  t('R1.5 (v1.12.0): release history names no single Start button; R1.6: tour.open is gone', () => {
+    assert.ok(!/Start practice/.test(S.en['rel.1.11.0.start']) && !/开始练习/.test(S.zh['rel.1.11.0.start']));
+    assert.ok(!('tour.open' in S.en) && !('tour.open' in S.zh));
+  });
+  t('R1.1 (v1.12.0): setMode keeps the Practice topic', () => {
+    const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+    assert.ok(/st\.pracTopic = st\.topic/.test(app) && /st\.topic = st\.pracTopic/.test(app));
   });
   t('W4: every topic the app offers has an emoji in the topic list', () => {
     const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');

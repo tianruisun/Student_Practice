@@ -1470,8 +1470,9 @@ async function run(site) {
       // card's topic badge with the app's own name for k6add, then put the view back as the student had it
       const wasSingle = (await page.getAttribute('#viewSingle', 'aria-pressed')) === 'true';
       check(`R9 ${W}: the set opens in the student's view (${view})`, wasSingle === (view === 'single'), String(wasSingle));
-      // v1.11.0 R2.2 (v1.10.1): in single view the student moves to question 2 first, so putting the view back must also
-      // put the student back on question 2 (switching view alone returns to question 1)
+      // v1.11.0 R2.2 (v1.10.1): in single view the student moves to question 2 first; Pages and back to single view must
+      // land on question 2 again by itself (the app keeps the question while it is on the page shown). R2 (R1 R2.2): read
+      // straight after the switch, before any tap, so the check fails on a build that goes back to question 1
       const curQ = () => page.locator('#palette button').evaluateAll(bs => bs.findIndex(b => b.getAttribute('aria-current') === 'true'));
       if (wasSingle) await page.locator('#palette button').nth(1).click();
       const at = wasSingle ? await curQ() : -1;
@@ -1481,7 +1482,6 @@ async function run(site) {
       const topics = await page.locator('#qList .qcard .qhead .badge:not(.marks)').allTextContents();
       if (wasSingle) {
         await page.click('#viewSingle');
-        await page.locator('#palette button').nth(at).click();
         check(`R9 ${W}: back in single view on the student's question (2)`, at === 1 && (await curQ()) === at, JSON.stringify({ at, now: await curQ() }));
       }
       const onTopic = topics.length === shown && topics.every(x => x.trim() === want);
@@ -1548,15 +1548,32 @@ async function run(site) {
       ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.10.0"' }, null, { news: true }));
       const heads = await page.locator('#newsBody h4').allTextContents();
       check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 2 && heads[0].includes(await appVersion(page)) && heads[1].includes('1.10.1'), JSON.stringify(heads));
+      // R1.2: one Show me only (the one at the bottom), never one per version as well
+      check('v1.11 skipped versions: a single Show me', (await page.locator('#newsBody .news-show-v').count()) === 0 && (await page.locator('#newsShow').isVisible()), String(await page.locator('#newsBody .news-show-v').count()));
+      // R1.6: Escape closes it and remembers this version, like Got it
+      await page.keyboard.press('Escape');
+      check('v1.11 What\'s new: Escape closes it and remembers this version', !(await isOpen(page)) && (await page.evaluate(() => JSON.parse(localStorage.getItem('sp.news')))) === (await appVersion(page)));
+      await page.reload({ waitUntil: 'load' });
+      check('v1.11 What\'s new: not shown again after Escape', !(await isOpen(page)));
+      await context.close();
+      // R1.6: a browser that already saw a later version (Test, then Production) gets nothing, and keeps the later version
+      ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.12.0"' }, null, { news: true }));
+      check('v1.11 later version seen: no What\'s new, and the stored version is not lowered', !(await isOpen(page)) && (await page.evaluate(() => localStorage.getItem('sp.news'))) === '"1.12.0"', await page.evaluate(() => localStorage.getItem('sp.news')));
       await context.close();
     });
-    // v1.11.0 W1b: Release history is its own button, for anyone (a first visit too), every version from v1.10.0 on
+    // v1.11.0 W1b: Release history is its own button, for anyone (a first visit too), every version from v1.10.0 on.
+    // R2 (R1.1): the button is at the end of Home, not in the header, and the student's greeting is not cut off
     for (const [W, H] of [[375, 812], [320, 568]]) await flow(`v1.11 Release history ${W}×${H}`, async () => {
       const { context, page, errors } = await freshPage(browser, site, null, null, { context: { viewport: { width: W, height: H } } });
       const wide = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-      const top = await page.evaluate(() => ['#profileBtn', '#newsBtn', '#tourBtn', '#langBtn', '#parentBtn'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
-      check(`v1.11 ${W}: the header fits five buttons, each at least 44 px tall`, top.every(([l, r, h]) => l >= 0 && r <= W && h >= 44) && (await wide()) <= 0, JSON.stringify(top));
-      check(`v1.11 ${W}: the history button has a name for screen readers`, (await page.getAttribute('#newsBtn', 'aria-label')) === 'Release history');
+      const top = await page.evaluate(() => ['#profileBtn', '#tourBtn', '#langBtn', '#parentBtn'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
+      check(`v1.11 ${W}: the header fits its buttons, each at least 44 px tall`, top.every(([l, r, h]) => l >= 0 && r <= W && h >= 44) && (await wide()) <= 0, JSON.stringify(top));
+      const hello = () => page.evaluate(() => { const h = document.querySelector('#helloText'); return { text: h.textContent, sw: h.scrollWidth, cw: h.clientWidth }; });
+      let g = await hello();
+      check(`v1.11 ${W}: the greeting is shown whole, not cut off`, /Student 1/.test(g.text) && g.sw <= g.cw + 1, JSON.stringify(g));
+      check(`v1.11 ${W}: Release history is on Home, not in the header`, (await page.locator('#screen-home #newsBtn').count()) === 1 && (await page.locator('header #newsBtn').count()) === 0 && (await page.textContent('#newsBtn')).trim() === 'Release history');
+      const nb = await page.locator('#newsBtn').boundingBox();
+      check(`v1.11 ${W}: the Release history button is at least 44 px tall`, nb && nb.height >= 44, JSON.stringify(nb));
       await page.click('#newsBtn');
       const heads = await page.locator('#newsBody h4').allTextContents();
       check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 3 && heads[0].includes(await appVersion(page)) && heads[2].includes('1.10.0'), JSON.stringify(heads));
@@ -1574,6 +1591,8 @@ async function run(site) {
       check(`v1.11 ${W}: Close closes it`, !(await isOpen(page)));
       check(`v1.11 ${W}: opening history leaves the What's new state alone`, (await page.evaluate(() => localStorage.getItem('sp.news'))) === '"999.0.0"');
       await page.click('#langBtn');
+      g = await hello();
+      check(`v1.11 ${W}: the greeting is shown whole in Chinese`, /学生 1/.test(g.text) && g.sw <= g.cw + 1, JSON.stringify(g));
       await page.click('#newsBtn');
       check(`v1.11 ${W}: in Chinese`, (await page.textContent('#newsTitle')) === '版本历史' && /[一-鿿]/.test(await page.textContent('#newsBody')) && (await page.textContent('#newsClose')) === '关闭');
       check(`v1.11 ${W}: no page errors`, errors.length === 0, errors.join(' | '));

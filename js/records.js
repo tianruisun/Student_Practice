@@ -8,7 +8,7 @@
      another level is a different badge to collect. */
   const KINDS = ['perfect', 'firstTry', 'speed'];
   const MIN_QUESTIONS = 5;                                  // first-try and speed need a real set, not 1 question
-  const SPEED_SECONDS = { 1: 20, 2: 30, 3: 60, 4: 90 };     // per question, by difficulty (Core … Challenge)
+  const SPEED_SECONDS = { 1: 20, 2: 30, 3: 60, 4: 90 };     // per question, by difficulty (Core … Competitive)
 
   /* s: { subject, year, diff, paper?, n, correct, firstTry, seconds } → kinds earned, in KINDS order */
   function awardsFor(s) {

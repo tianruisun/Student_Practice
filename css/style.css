@@ -964,6 +964,8 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .news-list b { display: block; }
 .news-list span { color: var(--muted); font-size: 0.92rem; }
 .news-show-v { margin-top: 0.6rem; min-height: 44px; }
-.round-btn .ri { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
-/* four round buttons in the header: a little less room between them on small phones, still 44 px to tap */
-@media (max-width: 380px) { .top-actions { gap: 0.3rem; } .top { gap: 0.4rem; } .round-btn { width: 44px; min-width: 44px; height: 44px; } }
+.news-btn .ri { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -5px; }
+/* R1.1: the header's round buttons take a little less room on phones (still 44 px to tap), so the greeting keeps its
+   width; on the narrowest phones the wave goes and the name stays */
+@media (max-width: 400px) { .top-actions { gap: 0.3rem; } .top { gap: 0.4rem; } .round-btn { width: 44px; min-width: 44px; height: 44px; } .hello { gap: 0.5rem; } }
+@media (max-width: 340px) { .hello-wave { display: none; } .hello-name { font-size: 0.94rem; } .avatar { width: 38px; height: 38px; } .top-actions { gap: 0.2rem; } }

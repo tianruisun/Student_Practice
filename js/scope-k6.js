@@ -118,7 +118,7 @@
   }
 
   /* n distinct questions for a year. Mixed works as it did before v1.10.0 (Gen.generateSet), on the K–6 topics:
-     at Advanced and Challenge some competition problems (Years 1–6), from Year 3 about 1 in 3 a word problem,
+     at Challenging and Competitive some competition problems (Years 1–6), from Year 3 about 1 in 3 a word problem,
      and the year's other topics in turn. A topic with too few distinct questions is filled from the year's other
      topics, so a set never comes back short. */
   const OLY_SHARE = { 3: 0.4, 4: 0.75 };

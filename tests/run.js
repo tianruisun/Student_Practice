@@ -266,7 +266,7 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
   t('badges: all three for a fast, first-try, perfect set', () => assert.deepStrictEqual(Rec.awardsFor(base), ['perfect', 'firstTry', 'speed']));
   t('badges: none below 100%', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, correct: 9 }), []));
   t('badges: a second try loses First try only', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, firstTry: 9 }), ['perfect', 'speed']));
-  t('badges: speed limit per difficulty (Standard 30 s a question)', () => {
+  t('badges: speed limit per difficulty (Elevated 30 s a question)', () => {
     assert.ok(Rec.awardsFor({ ...base, seconds: 300 }).includes('speed'));
     assert.ok(!Rec.awardsFor({ ...base, seconds: 301 }).includes('speed'));
     assert.ok(Rec.awardsFor({ ...base, diff: 4, seconds: 900 }).includes('speed'));

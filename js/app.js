@@ -132,7 +132,11 @@
     $('#parentIcon').textContent = S.parent ? '🔓' : '🔒';
     const who = Profiles.name(Profiles.active);
     $('#profileName').textContent = who;
-    $('#helloText').textContent = t('home.hello', { name: who });
+    // the wave is its own span, so a narrow phone can drop it and keep the name (v1.11.0 R1.1)
+    const hello = $('#helloText'), wave = el('span', 'hello-wave', ' 👋');
+    wave.setAttribute('aria-hidden', 'true');
+    hello.textContent = t('home.hello', { name: who });
+    hello.append(wave);
     $('#profileAvatar').textContent = (who.trim()[0] || 'S').toUpperCase();
     const nb = badgeCount(), ab = $('#avatarBadge');
     ab.hidden = !nb; ab.textContent = '🏅' + nb;
@@ -589,7 +593,9 @@
   function setView(v) {
     const Q = S.quiz, cur = view();
     if (v === cur) return;
-    if (Q) { if (v === 'pages') Q.page = Math.floor(Q.i / PAGE); else Q.i = Q.page * PAGE; }
+    // back to single view: the same question if it is still on the page shown, else the first question of that page
+    // (v1.11.0 R2.2 of v1.10.1: Pages and back used to return to the page's first question every time)
+    if (Q) { if (v === 'pages') Q.page = Math.floor(Q.i / PAGE); else if (Math.floor(Q.i / PAGE) !== Q.page) Q.i = Q.page * PAGE; }
     S.settings.view = v; saveSettings();
     if (Q) { renderQuiz(); window.scrollTo(0, 0); }
   }
@@ -1691,7 +1697,8 @@
     const ul = el('ul', 'news-list');
     r.items.forEach(it => { const li = el('li'); li.append(el('b', '', t(relKey(r, it) + 'T')), el('span', '', t(relKey(r, it)))); ul.append(li); });
     sec.append(ul);
-    if (headed && r.items.some(it => it.show) && canShowMe()) {
+    // one Show me per version in Release history only; What's new has the single Show me at the bottom (R1.2)
+    if (headed && newsMode === 'history' && r.items.some(it => it.show) && canShowMe()) {
       const b = el('button', 'btn secondary small news-show-v', t('news.show')); b.type = 'button';
       b.addEventListener('click', () => showMe([r]));
       sec.append(b);

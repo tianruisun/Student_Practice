@@ -490,7 +490,8 @@ t('i18n: no key defined twice in a language', () => {
   const S = box.I18N.STRINGS;
   const block = (/const TOUR = \[([\s\S]*?)\n\s*\];/.exec(app) || [])[1] || '';
   const steps = [...block.matchAll(/target: (?:null|'([^']+)'), title: '([\w.]+)', text: '([\w.]+)'/g)];
-  t('tour: 12 steps found in app.js (v1.9.0: Games tab)', () => assert.strictEqual(steps.length, 12));
+  // v1.12.0 W4: the parent lock and the ? button left the header (Settings now holds them); a step for Study / Practice / Test
+  t('tour: 11 steps found in app.js (v1.12.0: modes in, header lock and ? out)', () => assert.strictEqual(steps.length, 11));
   t('tour: every text is in English and Chinese', () => {
     const keys = steps.flatMap(m => [m[2], m[3]]).concat(['tour.open', 'tour.step', 'tour.next', 'tour.back', 'tour.skip', 'tour.done']);
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.zh[k] === S.en[k]), []);
@@ -862,7 +863,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     }
   });
   t('K–6: every K–6 topic, question type, study word and Kindergarten exist in English and Chinese', () => {
-    const keys = ['year.0', 'year.0short', 'study.cardT', 'study.cardS', 'study.thisTopic', 'study.heading', 'study.intro', 'study.year', 'study.source',
+    const keys = ['year.0', 'year.0short', 'study.open', 'mode.study', 'mode.practice', 'mode.test', 'study.heading', 'study.intro', 'study.year', 'study.source',
       'study.strand.num', 'study.strand.mes', 'study.strand.sta', 'study.done', 'study.back', 'study.newThisYear', 'study.keyIdeas', 'study.examples',
       'study.example', 'study.tip', 'study.practise', 'study.practiseNote', 'study.next',
       ...K6.ORDER.map(k => 'topic.' + k), ...Object.keys(G.SUBJECTS.maths).filter(k => /^k[a-z]+$/.test(k) && !K6.has(k)).map(k => 'topic.' + k)];
@@ -1027,7 +1028,32 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   /* v1.11.0 W3: the Get started banner is gone from Home */
   t('Home: no hero banner or Get started button', () => {
     assert.ok(!/class="hero"|id="heroStart"|id="heroSummary"/.test(html));
-    assert.ok(/id="startBtn"/.test(html) && /id="fabStart"/.test(html));
+    assert.ok(/id="startBtn"/.test(html));
+  });
+  /* v1.12.0 W4: Home and the bottom bar (Terry's notes on the v1.11.0 screenshot) */
+  t('W4: one start button on Home; no ▶ and no Students tab in the bottom bar; four tabs', () => {
+    assert.ok(!/id="fabStart"|id="navStudents"|id="studyCard"|id="studyTopicBtn"|id="sourceLine"|id="subjectNote"/.test(html));
+    const nav = (/<nav class="bottom-nav"[\s\S]*?<\/nav>/.exec(html) || [''])[0];
+    assert.strictEqual((nav.match(/class="tab"/g) || []).length, 4);
+  });
+  t('W4: the header keeps only the language button; tour and parent lock are in Settings', () => {
+    const header = (/<header class="top">[\s\S]*?<\/header>/.exec(html) || [''])[0];
+    assert.ok(/id="langBtn"/.test(header) && !/id="tourBtn"|id="parentBtn"/.test(header));
+    const settings = (/<section id="screen-parent"[\s\S]*?<\/section>/.exec(html) || [''])[0];
+    assert.ok(/id="tourBtn"/.test(settings) && /id="newsBtn"/.test(settings) && /id="studentsBtn"/.test(settings) && /id="parentUnlock"/.test(settings));
+  });
+  t('W4: Relax replaces Games in both languages; the mode texts exist', () => {
+    assert.strictEqual(S.en['nav.games'], 'Relax'); assert.strictEqual(S.zh['nav.games'], '放松');
+    for (const k of ['mode.legend', 'mode.study', 'mode.study.sub', 'mode.practice', 'mode.practice.sub', 'mode.test', 'mode.test.sub', 'study.open', 'settings.tour', 'parent.unlock'])
+      assert.ok(S.en[k] && S.zh[k] && S.en[k] !== S.zh[k], k);
+  });
+  t('W4: every topic the app offers has an emoji in the topic list', () => {
+    const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+    const icons = (/const TOPIC_ICON = \{([\s\S]*?)\n  \};/.exec(app) || [])[1] || '';
+    const has = new Set([...icons.matchAll(/(\w+): '/g)].map(m => m[1]));
+    const topics = Object.keys(S.en).filter(k => /^topic\./.test(k)).map(k => k.slice(6));
+    const offered = topics.filter(k => k === 'mixed' || globalThis.Gen && (Object.keys(Gen.SUBJECTS.maths).includes(k) || Object.keys(Gen.SUBJECTS.ga).includes(k)) || /^k6/.test(k));
+    assert.deepStrictEqual(offered.filter(k => !has.has(k)), []);
   });
 }
 

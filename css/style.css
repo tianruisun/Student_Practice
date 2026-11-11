@@ -98,7 +98,7 @@ h3 { font-size: 1.08rem; margin-bottom: 0.4rem; }
 }
 .round-btn[aria-pressed="true"] { background: var(--pri-soft); color: var(--pri); box-shadow: inset 0 0 0 2px var(--pri); }
 
-/* ---------- bottom navigation with a centre button ---------- */
+/* ---------- bottom navigation: four tabs (v1.12.0: no centre button) ---------- */
 .bottom-nav {
   position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 10;
   width: min(100%, 36rem); height: calc(var(--nav-h) + env(safe-area-inset-bottom));
@@ -115,12 +115,6 @@ body.no-nav .bottom-nav { display: none; }
 .tab .ni { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .tab[aria-current="page"] { background: var(--pri); color: var(--pri-ink); flex-direction: row; gap: 0.35rem; font-size: 0.78rem; box-shadow: 0 6px 14px rgba(98, 51, 217, .3); }
 .tab[aria-current="page"] .ni { width: 20px; height: 20px; }
-.fab {
-  justify-self: center; width: 62px; height: 62px; margin-top: -2.2rem; border-radius: 50%; border: 5px solid var(--bg);
-  background: var(--head); color: #fff; box-shadow: var(--shadow-lg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-}
-.fab svg { width: 28px; height: 28px; margin-left: 3px; }
-.fab:active { transform: scale(0.96); }
 
 main {
   max-width: 36rem; margin: 0 auto;
@@ -571,7 +565,7 @@ legend.sec-title { padding: 0; }
 .avatar-badge { position: absolute; right: -8px; bottom: -6px; background: var(--surface); color: var(--ink); border-radius: 999px; padding: 0 0.35rem; font-size: 0.72rem; font-weight: 700; line-height: 1.5; box-shadow: var(--shadow); white-space: nowrap; }
 
 /* ---------- bottom bar: every slot the same size in every language ---------- */
-.bottom-nav { grid-template-columns: repeat(2, minmax(0, 1fr)) 64px repeat(3, minmax(0, 1fr)); gap: 0.15rem; padding-left: 0.5rem; padding-right: 0.5rem; }   /* v1.9.0: six items */
+.bottom-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.3rem; padding-left: 0.6rem; padding-right: 0.6rem; }   /* v1.12.0: Home, Progress, Relax, Settings */
 .tab, .tab[aria-current="page"] { flex-direction: column; gap: 3px; width: 100%; min-width: 0; height: 56px; min-height: 56px; padding: 0 2px; font-size: 0.7rem; box-shadow: none; }
 .tab .ni, .tab[aria-current="page"] .ni { width: 23px; height: 23px; flex: none; }
 .tab .tl { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
@@ -909,16 +903,6 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 @media print { #screen-puzzle { display: none; } }
 
 /* ---------- v1.10.0: K–6 study mode (NSW scope and sequence) ---------- */
-.study-card { display: flex; align-items: center; gap: 0.85rem; width: 100%; margin: 0.9rem 0 0.2rem; padding: 0.85rem 1rem; text-align: left;
-  min-height: var(--tap); border: 1.5px solid var(--hair); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink);
-  box-shadow: var(--shadow); font: inherit; cursor: pointer; }
-.study-card:hover { border-color: var(--pri-2); }
-.study-card-ic { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 1.5rem; background: var(--ok-soft); }
-.study-card-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
-.study-card-t { font-weight: 700; }
-.study-card-s { font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
-.study-card-go { flex: 0 0 auto; font-size: 1.6rem; color: var(--muted); }
-.study-topic-btn { margin-top: 0.4rem; }
 .study-years-f { border: 0; padding: 0; margin: 0.8rem 0 0.4rem; min-width: 0; }
 .study-year-h { margin: 1rem 0 0.2rem; }
 .study-strand { margin-top: 0.9rem; }
@@ -950,7 +934,7 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .study-tip { margin: 0.9rem 0 0; padding: 0.6rem 0.8rem; border-radius: var(--radius-sm); background: var(--warn-soft); }
 .study-actions { display: grid; gap: 0.6rem; margin: 1.2rem 0 0.5rem; }
 .study-actions p { margin: 0; }
-@media print { .study-card, .study-topic-btn { display: none; } }
+
 
 /* ---------- What's new and Release history (v1.11.0) ---------- */
 #newsDlg { display: none; flex-direction: column; max-height: min(85vh, 40rem); }
@@ -964,8 +948,35 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .news-list b { display: block; }
 .news-list span { color: var(--muted); font-size: 0.92rem; }
 .news-show-v { margin-top: 0.6rem; min-height: 44px; }
-.news-btn .ri { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -5px; }
+.set-svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; padding: 7px; }
 /* R1.1: the header's round buttons take a little less room on phones (still 44 px to tap), so the greeting keeps its
    width; on the narrowest phones the wave goes and the name stays */
 @media (max-width: 400px) { .top-actions { gap: 0.3rem; } .top { gap: 0.4rem; } .round-btn { width: 44px; min-width: 44px; height: 44px; } .hello { gap: 0.5rem; } }
 @media (max-width: 340px) { .hello-wave { display: none; } .hello-name { font-size: 0.94rem; } .avatar { width: 38px; height: 38px; } .top-actions { gap: 0.2rem; } }
+
+/* ---------- v1.12.0 W4: Home starts with Study / Practice / Test; each tile has its own soft colour ---------- */
+.modes-f, .subject-f { margin-bottom: 1rem; }
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; }
+.modes .tile-box { min-height: 112px; padding: 0.75rem 0.3rem; }
+.modes .tile-label { font-size: 0.95rem; }
+.modes .tile-sub { font-size: 0.7rem; }
+.tile-study .tile-box { background: #e9f9f1; } .tile-practice .tile-box { background: #f1ebff; } .tile-test .tile-box { background: #fff4dc; }
+.tile-study .tile-icon, .tile-practice .tile-icon, .tile-test .tile-icon { background: rgba(255, 255, 255, .75); }
+.tile-sel .tile-icon { background: #fef3c7; } .tile-comp .tile-icon { background: #ffe4e6; }
+.modes .tile input:checked + .tile-box::after { top: 6px; right: 6px; width: 20px; height: 20px; font-size: 0.7rem; }
+@media (prefers-color-scheme: dark) {
+  .tile-study .tile-box { background: #12342a; } .tile-practice .tile-box { background: #2a2150; } .tile-test .tile-box { background: #3a2d10; }
+  .tile-study .tile-icon, .tile-practice .tile-icon, .tile-test .tile-icon { background: rgba(255, 255, 255, .1); }
+}
+.subject-f .tile-box { min-height: 104px; }
+.field-row.one { grid-template-columns: 1fr; }
+/* Settings, open to everyone: one row per item; the parent part below it needs the PIN */
+.settings-list { padding: 0.35rem; display: grid; gap: 0.2rem; }
+.set-row { display: flex; align-items: center; gap: 0.8rem; width: 100%; min-height: 52px; padding: 0.4rem 0.7rem; border: 0; border-radius: 14px; background: none; color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.set-row:hover { background: var(--surface-2); }
+.set-row:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.set-ic { flex: none; width: 36px; height: 36px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: var(--pri-soft); color: var(--pri); font-weight: 700; }
+.subject-f .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.set-row > span:not(.set-ic):not(.set-go) { flex: 1; }
+.set-go { color: var(--muted); font-size: 1.4rem; }
+.parent-head { margin-top: 1.4rem; }

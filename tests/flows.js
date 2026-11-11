@@ -43,6 +43,17 @@ async function typePin(page) {
   }
 }
 
+/* v1.12.0 W4: Settings is a tab open to everyone. The parent part opens with the PIN (Unlock); when the parent is
+   already unlocked it is open at once. The guided tour is a row in Settings. */
+async function openParent(page) {
+  await page.click('#navParent');
+  if (await page.isVisible('#parentUnlock')) await page.click('#parentUnlock');
+}
+async function openTour(page) {
+  await page.click('#navParent');
+  await page.click('#tourBtn');
+}
+
 async function run(site) {
   let pass = 0, fail = 0;
   const check = (name, ok, detail) => { ok ? pass++ : fail++; if (!ok) console.log('FAIL flows:', name, detail === undefined ? '' : detail); };
@@ -76,9 +87,9 @@ async function run(site) {
     // 2. Parent: create a PIN, open Parent settings; the old "students can open methods" switch is gone.
     await flow('parent', async () => {
       const { context, page } = await freshPage(browser, site);
-      await page.click('#parentBtn');
+      await openParent(page);
       await typePin(page);
-      check('parent: PIN opens Parent settings', await visible(page, '#screen-parent'));
+      check('parent: PIN opens Parent settings', (await visible(page, '#parentArea')) && !(await visible(page, '#parentLocked')));
       check('F.8 no switch that opens methods for students', (await page.locator('#methodsToggle').count()) === 0);
       await context.close();
     });
@@ -89,7 +100,7 @@ async function run(site) {
         'sp.pin': JSON.stringify({ salt: 'x', hash: 'y' }), 'sp.history.p1': '[{"n":1,"correct":1}]',
         'sp.ai': '{"provider":"claude","key":"made-up-test-key"}', 'sp.lang': 'en', 'other-app.data': 'keep'
       });
-      await page.click('#parentBtn');
+      await openParent(page);
       check('F.1 Forgot PIN is offered', await visible(page, '#pinForgot'));
       await Promise.all([page.waitForEvent('load'), page.click('#pinForgot')]);
       const keys = await page.evaluate(() => Object.keys(localStorage).sort());
@@ -169,9 +180,9 @@ async function run(site) {
     });
     await flow('F.13 button size', async () => {
       const { context, page } = await freshPage(browser, site);
-      // v1.11.0 W3: the Get started banner is gone; Start practice and the ▶ button are the two ways to start
-      const h = await page.evaluate(() => [document.querySelector('#startBtn'), document.querySelector('#fabStart')].map(b => b.getBoundingClientRect().height));
-      check('F.13 Start practice and ▶ are at least 44 px tall', h.every(x => x >= 44), h);
+      // v1.12.0 W4: Start practice is the one way to start (no ▶ in the bottom bar); it and every tab are at least 44 px tall
+      const h = await page.evaluate(() => [document.querySelector('#startBtn'), ...document.querySelectorAll('.bottom-nav .tab')].map(b => b.getBoundingClientRect().height));
+      check('F.13 Start practice and the four tabs are at least 44 px tall', h.length === 5 && h.every(x => x >= 44), h);
       await context.close();
     });
 
@@ -250,7 +261,7 @@ async function run(site) {
           { date: t0 + 864e5, subject: 'maths', year: 4, topic: 'dec', diff: 2, n: 5, correct: 3, stars: 1, byTopic: { dec: [3, 5] }, wrong: [] }]),
         'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }, { date: t0, kind: 'firstTry', subject: 'maths', year: 4, diff: 2, n: 5 }])
       });
-      await page.click('#parentBtn');
+      await openParent(page);
       await typePin(page);
       const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#csvExport')]);
       const file = path.join(os.tmpdir(), 'Student_Practice-tests', 'progress.csv');
@@ -265,7 +276,7 @@ async function run(site) {
       await page.click('#profileAddBtn');
       await page.locator('.profile-edit .btn.ghost').click();
       await page.click('#profileClose');
-      await page.click('#parentBtn');
+      await openParent(page);
       await page.setInputFiles('#csvImport', file);
       await page.waitForTimeout(300);
       const p2 = await page.evaluate(() => ({ h: JSON.parse(localStorage.getItem('sp.history.p2') || '[]').length, b: JSON.parse(localStorage.getItem('sp.badges.p2') || '[]').length, pr: JSON.parse(localStorage.getItem('sp.profiles')).list.find(x => x.id === 'p2') }));
@@ -292,7 +303,7 @@ async function run(site) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, Rec.COLUMNS.join(',') + '\r\nsession,,,,,,,,,,,,,,"' + JSON.stringify(crafted).replace(/"/g, '""') + '"\r\n');
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
-      await page.click('#parentBtn');
+      await openParent(page);
       await typePin(page);
       await page.setInputFiles('#csvImport', file);
       await page.waitForTimeout(300);
@@ -500,7 +511,7 @@ async function run(site) {
         'session,2026-03-04T09:00:00Z,,,,maths,5,zzz,3,5,4,,,,',        // unknown topic: mixed
         badge({ date: Date.parse('2026-03-01T09:00:00Z'), kind: 'perfect', subject: 'sel', paper: 'x' })   // unknown paper: skipped
       ].join('\r\n') + '\r\n');
-      await page.click('#parentBtn');
+      await openParent(page);
       await typePin(page);
       page.once('dialog', d => { page.confirmText = d.message(); });   // freshPage's own handler accepts it
       await page.setInputFiles('#csvImport', file);
@@ -525,14 +536,14 @@ async function run(site) {
       const tourOpen = () => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
       await page.waitForTimeout(300);
       check('tour: opens on the first visit', await tourOpen());
-      check('tour: starts at step 1 of 12', (await page.textContent('#tourStep')) === 'Step 1 of 12', await page.textContent('#tourStep'));
+      check('tour: starts at step 1 of 11', (await page.textContent('#tourStep')) === 'Step 1 of 11', await page.textContent('#tourStep'));
       check('tour: Back is hidden on step 1', !(await page.isVisible('#tourBack')));
       // walk every step: the highlight surrounds its part, the box stays on screen, nothing scrolls sideways, no raw keys
       const problems = [];
-      for (let k = 1; k <= 12; k++) {   // v1.9.0: 12 steps (Games tab)
+      for (let k = 1; k <= 11; k++) {   // v1.12.0: 11 steps (Study / Practice / Test; no ? or lock in the header)
         await page.waitForTimeout(400);   // the highlight slides to its part in 0.25 s
         const r = await page.evaluate(() => {
-          const sels = [null, '#profileBtn', '#langBtn', '#parentBtn', '#subjectChips', '#practiceOptions', '#startBtn', '#printHome', '.tab[data-go="progress"]', '#navGames', '#navParent', '#tourBtn'];
+          const sels = [null, '#profileBtn', '#langBtn', '#modeTiles', '#subjectChips', '#practiceOptions', '#startBtn', '#printHome', '.tab[data-go="progress"]', '#navGames', '#navParent'];
           const n = +/\d+/.exec(document.querySelector('#tourStep').textContent)[0], sel = sels[n - 1];
           const h = document.querySelector('.tour-hole').getBoundingClientRect(), p = document.querySelector('.tour-pop').getBoundingClientRect();
           const a = sel && document.querySelector(sel).getBoundingClientRect();
@@ -546,7 +557,7 @@ async function run(site) {
         if (r.side) problems.push(`step ${k} scrolls sideways`);
         if (/tour\./.test(r.text) || r.text.length < 10) problems.push(`step ${k} text "${r.text}"`);
         if (k === 2) { await page.click('#tourBack'); if (!/^Step 1 /.test(await page.textContent('#tourStep'))) problems.push('Back does not go to step 1'); await page.click('#tourNext'); }
-        if (k < 12) await page.click('#tourNext');
+        if (k < 11) await page.click('#tourNext');
       }
       check('tour: every step highlights its part, on screen', problems.length === 0, problems.join('; '));
       check('tour: the last step says Done and has no Skip', (await page.textContent('#tourNext')) === 'Done' && !(await page.isVisible('#tourSkip')));
@@ -556,15 +567,16 @@ async function run(site) {
       await page.reload({ waitUntil: 'load' });
       await page.waitForTimeout(300);
       check('tour: not shown again on the next visit', !(await tourOpen()));
-      // the ? button opens it again; Escape closes it and gives focus back to ?
-      await page.click('#tourBtn');
-      check('tour: ? opens it again at step 1', (await tourOpen()) && /^Step 1 /.test(await page.textContent('#tourStep')));
+      // Settings > Guided tour opens it again; Escape closes it, back on Settings, with focus on the Guided tour row
+      await openTour(page);
+      check('tour: Guided tour in Settings opens it again at step 1', (await tourOpen()) && /^Step 1 /.test(await page.textContent('#tourStep')));
       await page.keyboard.press('ArrowRight');
       check('tour: the right arrow key goes to the next step', /^Step 2 /.test(await page.textContent('#tourStep')));
       await page.keyboard.press('Escape');
       check('tour: Escape closes it', !(await tourOpen()));
-      check('tour: focus goes back to ?', (await page.evaluate(() => document.activeElement && document.activeElement.id)) === 'tourBtn');
-      check('tour: ? has a name for screen readers', (await page.getAttribute('#tourBtn', 'aria-label')) === 'Show the guide');
+      check('tour: Escape goes back to Settings', await visible(page, '#screen-parent'));
+      check('tour: focus goes back to the Guided tour row', (await page.evaluate(() => document.activeElement && document.activeElement.id)) === 'tourBtn');
+      check('tour: the row reads Guided tour', (await page.textContent('#tourBtn [data-i18n]')) === 'Guided tour', await page.textContent('#tourBtn'));
       // Chinese
       await page.click('#langBtn');
       await page.click('#tourBtn');
@@ -572,11 +584,12 @@ async function run(site) {
       await page.click('#tourSkip');
       check('tour: Skip closes it', !(await tourOpen()));
       await page.click('#langBtn');
-      // never during a set: ? is hidden while a quiz is open, and back on Home
+      // never during a set: the bottom bar (and so Settings and its guide) is hidden while a quiz is open, and back on Home
+      await page.click('.tab[data-go="home"]');
       await page.click('#startBtn');
-      check('tour: ? is hidden during a set', !(await page.isVisible('#tourBtn')));
+      check('tour: Settings cannot be opened during a set', !(await page.isVisible('#navParent')));
       await page.click('#quitBtn');
-      check('tour: ? is back on Home', await page.isVisible('#tourBtn'));
+      check('tour: the Settings tab is back on Home', await page.isVisible('#navParent'));
       check('tour: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
@@ -591,7 +604,7 @@ async function run(site) {
       await page.waitForTimeout(300);
       check('tour: not shown to an earlier user', !(await tourOpen()));
       check('tour: stored as seen for an earlier user', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"');
-      await page.click('#parentBtn');
+      await openParent(page);
       await Promise.all([page.waitForEvent('load'), page.click('#pinForgot')]);
       await page.waitForTimeout(300);
       check('tour: Forgot PIN reset keeps the tour as seen', (await page.evaluate(() => localStorage.getItem('sp.tour'))) === '"done"' && !(await tourOpen()));
@@ -605,7 +618,7 @@ async function run(site) {
       const tourOpen = page => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
       // walk the whole tour from ? and return each step's count, title and text
       const walk = async page => {
-        await page.click('#tourBtn');
+        await openTour(page);
         const out = [];
         for (let k = 0; k < 13 && (await tourOpen(page)); k++) {
           await page.waitForTimeout(300);   // v1.10.0: the highlight grows from 0 over 0.25 s; measured at once it read 0 on a busy machine (the same on v1.9.0)
@@ -615,12 +628,13 @@ async function run(site) {
         }
         return out;
       };
-      for (const [subject, btn, total] of [['maths', 'Start practice', 12], ['sel', 'Start test', 11], ['comp', 'Start paper', 11]]) {
-        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ subject }) });
+      // v1.12.0: Practice 11 steps; Test has no practice options (10); Study has no subject tiles and no Print (9)
+      for (const [subject, btn, total, extra] of [['maths', 'Start practice', 11], ['sel', 'Start test', 10], ['comp', 'Start paper', 10], ['study', 'Read the lesson', 9, { subject: 'maths', mode: 'study' }]]) {
+        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings(extra || { subject }) });
         const steps = await walk(page);
         const start = steps.find(s => s.title === 'Start') || {};
         check(`R1.1 ${subject}: ${total} steps`, steps.length === total && steps[0].step === `Step 1 of ${total}`, steps.length + ' / ' + (steps[0] || {}).step);
-        check(`R1.1 ${subject}: practice options step only when shown`, steps.some(s => s.title === 'Set up your practice') === (subject === 'maths'));
+        check(`R1.1 ${subject}: practice options step only when shown`, steps.some(s => s.title === 'Set up your practice') === (subject === 'maths' || subject === 'study'));
         check(`R1.1 ${subject}: Start step names the button "${btn}"`, (start.text || '').startsWith(`Tap ${btn} to begin`) && (await page.textContent('#startBtn')) === btn, start.text);
         check(`R1.1 ${subject}: every step but the first highlights something`, steps.slice(1).every(s => s.hole > 0), steps.map(s => s.hole).join(','));
         if (subject === 'sel') {
@@ -661,7 +675,8 @@ async function run(site) {
         const { context, page, errors } = await freshPage(browser, site, null, null, {
           tour: true, route: r => (r.request().url().endsWith('/js/tour.js') ? r.fulfill({ status: 404, body: '' }) : r.continue()) });
         await page.waitForTimeout(300);
-        await page.click('#tourBtn');
+        await openTour(page);
+        await page.click('.tab[data-go="home"]');
         check('R1.3 no tour.js: Home still works', await visible(page, '#startBtn'));
         check('R1.3 no tour.js: no page errors', errors.length === 0, errors.join(' | '));
         await context.close();
@@ -669,8 +684,9 @@ async function run(site) {
       {
         const { context, page, errors } = await freshPage(browser, site, null, () => { delete HTMLDialogElement.prototype.showModal; }, { tour: true });
         await page.waitForTimeout(300);
-        await page.click('#tourBtn');
+        await openTour(page);
         check('R1.3 no showModal: no tour dialog left behind', (await page.locator('#tourDlg').count()) === 0);
+        await page.click('.tab[data-go="home"]');
         check('R1.3 no showModal: Home still works', await visible(page, '#startBtn'));
         check('R1.3 no showModal: no page errors', errors.length === 0, errors.join(' | '));
         await context.close();
@@ -682,32 +698,19 @@ async function run(site) {
     await flow('v1.8.0 tour R2 fixes', async () => {
       const tourOpen = page => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
       {
+        // v1.12.0: the guide opens from Settings (the only place it is), shows Home, and goes back to Settings
         const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
-        await page.click('#startBtn');
-        await page.click('#finishBtn');
-        const score = await page.textContent('#resScore');
-        await page.click('#tourBtn');
-        check('R2.1 ? on Results: the tour shows Home', (await tourOpen(page)) && (await visible(page, '#screen-home')));
+        await openTour(page);
+        check('R2.1 guide from Settings: the tour shows Home', (await tourOpen(page)) && (await visible(page, '#screen-home')));
         await page.keyboard.press('Escape');
-        check('R2.1 Escape: back on Results', (await visible(page, '#screen-results')) && !(await visible(page, '#screen-home')));
-        check('R2.1 Escape: same score and review', (await page.textContent('#resScore')) === score && (await page.locator('#resList > li').count()) === 5, score);
+        check('R2.1 Escape: back on Settings', (await visible(page, '#screen-parent')) && !(await visible(page, '#screen-home')));
         await page.click('#tourBtn');
         for (let k = 0; k < 12 && (await tourOpen(page)); k++) await page.click('#tourNext');
-        check('R2.1 Done: back on Results', (await visible(page, '#screen-results')) && (await page.textContent('#resScore')) === score);
-        check('R2.1 Results: no page errors', errors.length === 0, errors.join(' | '));
-        await context.close();
-      }
-      {
-        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
-        await page.click('.tab[data-go="progress"]');
+        check('R2.1 Done: back on Settings', await visible(page, '#screen-parent'));
         await page.click('#tourBtn');
         await page.click('#tourSkip');
-        check('R2.1 ? on Progress: Skip goes back to Progress', await visible(page, '#screen-progress'));
-        await page.click('.tab[data-go="home"]');
-        await page.click('#tourBtn');
-        await page.click('#tourSkip');
-        check('R2.1 ? on Home: stays on Home', await visible(page, '#screen-home'));
-        check('R2.1 Progress: no page errors', errors.length === 0, errors.join(' | '));
+        check('R2.1 Skip: back on Settings', await visible(page, '#screen-parent'));
+        check('R2.1 Settings: no page errors', errors.length === 0, errors.join(' | '));
         await context.close();
       }
       {
@@ -725,7 +728,7 @@ async function run(site) {
           'sp.pin': JSON.stringify({ salt: 'x', hash: 'y' }), 'sp.lang': '"en"', 'chords-x': '1'
         }, null, { tour: true });
         await page.waitForTimeout(300);
-        await page.click('#parentBtn');
+        await openParent(page);
         await Promise.all([page.waitForEvent('load'), page.click('#pinForgot')]);
         await page.waitForTimeout(300);
         const ls = await page.evaluate(() => Object.fromEntries(['sp.lang', 'sp.moved', 'sp.tour', 'sp.pin', 'sp.settings.p1', 'chords-x'].map(k => [k, localStorage.getItem(k)])));
@@ -754,17 +757,18 @@ async function run(site) {
       const answerOf = q => q.split(' × ').map(Number).reduce((a, b) => a * b);
       const press = async keys => { for (const k of keys) await page.click(`#gamePad [data-k="${k}"]`); };
       await run(500);
-      check('game: a Games tab is in the bottom bar, after Students', await page.evaluate(() => {
+      // v1.12.0 W4: the tab is Relax (Terry: "relax (replace games)"), after Progress
+      check('game: a Relax tab is in the bottom bar, after Progress', await page.evaluate(() => {
         const tabs = [...document.querySelectorAll('.bottom-nav > button')].map(b => b.id || b.dataset.go);
-        return tabs.indexOf('navGames') === tabs.indexOf('navStudents') + 1;
+        return tabs.indexOf('navGames') === tabs.indexOf('progress') + 1;
       }));
-      check('game: the tab reads "Games" and is named "Mini games"', (await page.textContent('#navGames')).trim() === 'Games' && (await page.getAttribute('#navGames', 'aria-label')) === 'Mini games');
+      check('game: the tab reads and is named "Relax"', (await page.textContent('#navGames')).trim() === 'Relax' && (await page.getAttribute('#navGames', 'aria-label')) === 'Relax');
       await page.click('#navGames');
       check('game: the tab opens the list of mini games', (await shown('#screen-games')) && /Times-table balloons/.test(await page.textContent('#gameList')));
-      check('game: the Games tab is marked as the current page', (await page.getAttribute('#navGames', 'aria-current')) === 'page');
+      check('game: the Relax tab is marked as the current page', (await page.getAttribute('#navGames', 'aria-current')) === 'page');
       await page.click('#play-balloons');
       check('game: Play shows the start card', (await shown('#gameIntro')) && (await shown('#gameGo')));
-      check('game: no bottom bar and no ? during the game', !(await shown('.bottom-nav')) && !(await shown('#tourBtn')));
+      check('game: no bottom bar during the game', !(await shown('.bottom-nav')));
       await page.click('#gameGo');
       await run(1000);
       const first = await game();
@@ -811,8 +815,8 @@ async function run(site) {
       for (let s = 0; s < 45; s++) { await run(1000); most = Math.max(most, (await game()).balloons); }
       check('game: more balloons at once later on', most >= 3, 'most ' + most);
       check('game: the clock counts down', Number(await page.textContent('#gameTime')) <= 12, await page.textContent('#gameTime'));
-      // the header (profile, language, parent lock) is hidden, so nothing there can end the round; the keypad is on screen
-      check('game: the header is hidden during a round', !(await shown('#parentBtn')) && !(await shown('#profileBtn')));
+      // the header (profile, language) is hidden, so nothing there can end the round; the keypad is on screen
+      check('game: the header is hidden during a round', !(await shown('#langBtn')) && !(await shown('#profileBtn')));
       check('game: the whole keypad is on screen', await page.evaluate(() => document.querySelector('#gamePad').getBoundingClientRect().bottom <= innerHeight));
       await run(15000);
       check('game: after one minute the round ends', (await shown('#gameOver')) && (await page.locator('#gameField .bl').count()) === 0);
@@ -838,7 +842,7 @@ async function run(site) {
       check('game: the bottom bar is back', await shown('.bottom-nav'));
       // Chinese
       await page.click('#langBtn');
-      check('game: Chinese tab and title', (await page.textContent('#navGames')).trim() === '小游戏' && /乘法气球/.test(await page.textContent('#gameList')));
+      check('game: Chinese tab and title', (await page.textContent('#navGames')).trim() === '放松' && /乘法气球/.test(await page.textContent('#gameList')));
       check('game: fits a 375 px screen', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       check('game: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
@@ -892,8 +896,8 @@ async function run(site) {
       await page.click('#play-sudoku');
       const levels = await page.evaluate(() => [...document.querySelectorAll('#pzLevels button')].map(b => b.id));
       check('sudoku: the start card offers easy, medium and hard', JSON.stringify(levels) === '["pzGo-easy","pzGo-medium","pzGo-hard"]', JSON.stringify(levels));
-      check('sudoku: no bottom bar, header or ? during the game', !(await shown('.bottom-nav')) && !(await shown('#profileBtn')) && !(await shown('#tourBtn')));
-      check('sudoku: the Games tab stays current', (await page.getAttribute('#navGames', 'aria-current')) === 'page');
+      check('sudoku: no bottom bar or header during the game', !(await shown('.bottom-nav')) && !(await shown('#profileBtn')));
+      check('sudoku: the Relax tab stays current', (await page.getAttribute('#navGames', 'aria-current')) === 'page');
       await page.click('#pzGo-easy');
       let g = await grid();
       check('sudoku: easy is 4 × 4 with 8 squares to fill', g.length === 16 && g.filter(v => !v).length === 8 && (await page.textContent('#pzScore')) === '8', JSON.stringify(g));
@@ -1440,8 +1444,14 @@ async function run(site) {
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 3, view }) },
         null, { context: { viewport: { width: W, height: H }, ...(phone ? { isMobile: true, hasTouch: true } : {}) } });
       const wide = () => page.evaluate(() => document.documentElement.scrollWidth - (window.visualViewport ? visualViewport.width : innerWidth));
-      check(`R9 ${W}: Home shows the study card for maths`, await page.locator('#studyCard').isVisible());
-      await page.click('#studyCard');
+      // v1.12.0 W4: Study is a tile on Home with its own year (Kindergarten to Year 6) and topic; Read the lesson opens it
+      await page.click('.tile-study');
+      check(`R9 ${W}: Study on Home offers the student's year, Kindergarten to Year 6, and Read the lesson`, (await page.locator('#yearSel').inputValue()) === '3' && (await page.locator('#yearSel option').count()) === 7 && (await page.textContent('#startBtn')) === 'Read the lesson', await page.locator('#yearSel').inputValue());
+      check(`R9 ${W}: Study hides the subject, school, difficulty, count and Print`, !(await page.isVisible('#subjectBox')) && !(await page.isVisible('#schoolField')) && !(await page.isVisible('#diffSel')) && !(await page.isVisible('#countSel')) && !(await page.isVisible('#printHome')));
+      const homeTopic = await page.locator('#topicSel').inputValue();
+      await page.click('#startBtn');
+      check(`R9 ${W}: Read the lesson opens the topic chosen on Home`, (await page.locator('#studyLesson').isVisible()) && (await page.textContent('#lessonH')).includes(await page.evaluate(k => window.I18N.t('topic.' + k), homeTopic)), homeTopic + ' / ' + (await page.textContent('#lessonH')));
+      await page.click('#studyLesson .study-back');
       check(`R9 ${W}: the study screen opens on the student's year with the list of topics`, (await page.locator('#screen-study').isVisible()) && (await page.locator('#studyYears input:checked').getAttribute('value')) === '3' && (await page.locator('.study-topic').count()) === 11, String(await page.locator('.study-topic').count()));
       check(`R9 ${W}: topics are grouped by strand`, (await page.locator('#studyTopics h4').count()) === 3);
       check(`R9 ${W}: the year chips include Kindergarten, named for screen readers`, (await page.locator('#studyYears input').count()) === 7 && (await page.locator('#studyYears input').first().getAttribute('aria-label')) === 'Kindergarten');
@@ -1488,11 +1498,13 @@ async function run(site) {
       check(`R9 ${W}: Practise starts a Kindergarten set on that topic`, saved.year === 0 && saved.topic === 'k6add' && shown === 5 && (hooked === null || hooked === shown) && onTopic, JSON.stringify({ year: saved.year, topic: saved.topic, shown, hooked, topics }));
       await page.click('#quitBtn');
       await page.waitForSelector('#screen-home:not([hidden])');
-      check(`R9 ${W}: Home now shows Kindergarten and the topic, with a link back to its lesson`, (await page.locator('#yearSel').inputValue()) === '0' && (await page.locator('#topicSel').inputValue()) === 'k6add' && (await page.locator('#studyTopicBtn').isVisible()), await page.locator('#yearSel').inputValue());
+      check(`R9 ${W}: Home is back in Practice with Kindergarten and the topic`, (await page.locator('#modeTiles input[value="practice"]').isChecked()) && (await page.locator('#yearSel').inputValue()) === '0' && (await page.locator('#topicSel').inputValue()) === 'k6add', await page.locator('#yearSel').inputValue());
       const opts = await page.locator('#topicSel option').evaluateAll(o => o.map(x => x.value));
       check(`R9 ${W}: Home lists the Kindergarten topics`, opts.includes('k6add') && opts.includes('k6shape') && !opts.includes('frac'), opts.join(','));
       await page.click('#langBtn');
-      await page.click('#studyTopicBtn');
+      await page.click('.tile-study');
+      await page.selectOption('#topicSel', 'k6add');
+      await page.click('#startBtn');
       check(`R9 ${W}: the lesson is in Chinese after switching language`, /[一-鿿]/.test(await page.textContent('#studyLesson')));
       check(`R9 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
       await context.close();
@@ -1503,7 +1515,11 @@ async function run(site) {
       check('R9: Kindergarten is the first year for maths', (await page.locator('#yearSel option').first().getAttribute('value')) === '0');
       await page.locator('label:has(input[name="subject"][value="ga"])').click();
       check('R9: General ability has no Kindergarten and moves to Year 1', !(await page.locator('#yearSel option').evaluateAll(o => o.map(x => x.value))).includes('0') && (await page.locator('#yearSel').inputValue()) === '1', await page.locator('#yearSel').inputValue());
-      check('R9: the study card is hidden for General ability', !(await page.locator('#studyCard').isVisible()));
+      // v1.12.0 W4: Study has no subject choice (maths, Kindergarten to Year 6); Practice keeps General ability for later
+      await page.click('.tile-study');
+      check('R9: Study has no subject tiles and starts at Kindergarten', !(await page.isVisible('#subjectBox')) && (await page.locator('#yearSel option').first().getAttribute('value')) === '0');
+      await page.click('.tile-practice');
+      check('W4: back in Practice, General ability is still chosen', await page.locator('#subjectChips input[value="ga"]').isChecked());
       check('R9 maths only: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
@@ -1516,7 +1532,7 @@ async function run(site) {
       const v = await appVersion(page);
       check('v1.11 What\'s new: opens on its own for a browser that used an earlier version', await isOpen(page));
       check('v1.11 What\'s new: the title names this version', (await page.textContent('#newsTitle')).includes(v), await page.textContent('#newsTitle'));
-      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 3, await page.locator('#newsBody li').count());
+      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 4, await page.locator('#newsBody li').count());
       const sizes = await page.evaluate(() => ['#newsShow', '#newsClose'].map(s => document.querySelector(s).getBoundingClientRect().height));
       check('v1.11 What\'s new: Show me and Got it are at least 44 px tall', sizes.every(h => h >= 44), sizes);
       check('v1.11 What\'s new: nothing is stored until it is closed', (await page.evaluate(() => localStorage.getItem('sp.news'))) === null);
@@ -1532,8 +1548,8 @@ async function run(site) {
       await page.click('#newsShow');
       check('v1.11 Show me: the dialog closes and the guided tour opens', !(await isOpen(page)) && (await page.locator('#tourDlg').count()) === 1);
       const titles = [];
-      for (let k = 0; k < 3 && (await page.locator('#tourDlg').count()); k++) { titles.push(await page.textContent('#tourTitle')); await page.click('#tourNext'); }
-      const want = await page.evaluate(() => ['news', 'levels', 'start'].map(id => window.I18N.t('rel.' + self.APP_VERSION + '.' + id + 'T')));
+      for (let k = 0; k < 4 && (await page.locator('#tourDlg').count()); k++) { titles.push(await page.textContent('#tourTitle')); await page.click('#tourNext'); }
+      const want = await page.evaluate(() => ['modes', 'icons', 'settings', 'relax'].map(id => window.I18N.t('rel.' + self.APP_VERSION + '.' + id + 'T')));
       check('v1.11 Show me: one step per new item, in order', JSON.stringify(titles) === JSON.stringify(want), JSON.stringify(titles));
       check('v1.11 Show me: the tour ends on Home, and What\'s new is remembered', (await page.locator('#tourDlg').count()) === 0 && (await visible(page, '#screen-home')) && !!(await page.evaluate(() => localStorage.getItem('sp.news'))));
       check('v1.11 Show me: no page errors', errors.length === 0, errors.join(' | '));
@@ -1547,43 +1563,47 @@ async function run(site) {
       // a browser that last saw v1.10.0 gets everything after it, each under its own version heading
       ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.10.0"' }, null, { news: true }));
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 2 && heads[0].includes(await appVersion(page)) && heads[1].includes('1.10.1'), JSON.stringify(heads));
+      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 3 && heads[0].includes(await appVersion(page)) && heads[1].includes('1.11.0') && heads[2].includes('1.10.1'), JSON.stringify(heads));
       // R1.2: one Show me only (the one at the bottom), never one per version as well
       check('v1.11 skipped versions: a single Show me', (await page.locator('#newsBody .news-show-v').count()) === 0 && (await page.locator('#newsShow').isVisible()), String(await page.locator('#newsBody .news-show-v').count()));
       // R1.6: Escape closes it and remembers this version, like Got it
+      // R2.2 (v1.11.0): the dialog's close event stores the version a moment after the key; wait for it (up to 3 s)
       await page.keyboard.press('Escape');
-      check('v1.11 What\'s new: Escape closes it and remembers this version', !(await isOpen(page)) && (await page.evaluate(() => JSON.parse(localStorage.getItem('sp.news')))) === (await appVersion(page)));
+      const vNow = await appVersion(page);
+      const remembered = await page.waitForFunction(v => { try { return JSON.parse(localStorage.getItem('sp.news')) === v; } catch (e) { return false; } }, vNow, { timeout: 3000 }).then(() => true, () => false);
+      check('v1.11 What\'s new: Escape closes it and remembers this version', !(await isOpen(page)) && remembered, await page.evaluate(() => localStorage.getItem('sp.news')));
       await page.reload({ waitUntil: 'load' });
       check('v1.11 What\'s new: not shown again after Escape', !(await isOpen(page)));
       await context.close();
       // R1.6: a browser that already saw a later version (Test, then Production) gets nothing, and keeps the later version
-      ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.12.0"' }, null, { news: true }));
-      check('v1.11 later version seen: no What\'s new, and the stored version is not lowered', !(await isOpen(page)) && (await page.evaluate(() => localStorage.getItem('sp.news'))) === '"1.12.0"', await page.evaluate(() => localStorage.getItem('sp.news')));
+      ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"99.0.0"' }, null, { news: true }));
+      check('v1.11 later version seen: no What\'s new, and the stored version is not lowered', !(await isOpen(page)) && (await page.evaluate(() => localStorage.getItem('sp.news'))) === '"99.0.0"', await page.evaluate(() => localStorage.getItem('sp.news')));
       await context.close();
     });
     // v1.11.0 W1b: Release history is its own button, for anyone (a first visit too), every version from v1.10.0 on.
-    // R2 (R1.1): the button is at the end of Home, not in the header, and the student's greeting is not cut off
+    // R2 (R1.1): the student's greeting is not cut off. v1.12.0 W4: the button is a row in Settings (open to everyone)
     for (const [W, H] of [[375, 812], [320, 568]]) await flow(`v1.11 Release history ${W}×${H}`, async () => {
       const { context, page, errors } = await freshPage(browser, site, null, null, { context: { viewport: { width: W, height: H } } });
       const wide = () => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-      const top = await page.evaluate(() => ['#profileBtn', '#tourBtn', '#langBtn', '#parentBtn'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
+      const top = await page.evaluate(() => ['#profileBtn', '#langBtn'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; }));
       check(`v1.11 ${W}: the header fits its buttons, each at least 44 px tall`, top.every(([l, r, h]) => l >= 0 && r <= W && h >= 44) && (await wide()) <= 0, JSON.stringify(top));
       const hello = () => page.evaluate(() => { const h = document.querySelector('#helloText'); return { text: h.textContent, sw: h.scrollWidth, cw: h.clientWidth }; });
       let g = await hello();
       check(`v1.11 ${W}: the greeting is shown whole, not cut off`, /Student 1/.test(g.text) && g.sw <= g.cw + 1, JSON.stringify(g));
-      check(`v1.11 ${W}: Release history is on Home, not in the header`, (await page.locator('#screen-home #newsBtn').count()) === 1 && (await page.locator('header #newsBtn').count()) === 0 && (await page.textContent('#newsBtn')).trim() === 'Release history');
+      check(`v1.11 ${W}: Release history is in Settings, not on Home or in the header`, (await page.locator('#screen-parent #newsBtn').count()) === 1 && (await page.locator('#screen-home #newsBtn, header #newsBtn').count()) === 0 && (await page.textContent('#newsBtn [data-i18n]')) === 'Release history');
+      await page.click('#navParent');
       const nb = await page.locator('#newsBtn').boundingBox();
       check(`v1.11 ${W}: the Release history button is at least 44 px tall`, nb && nb.height >= 44, JSON.stringify(nb));
       await page.click('#newsBtn');
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 3 && heads[0].includes(await appVersion(page)) && heads[2].includes('1.10.0'), JSON.stringify(heads));
+      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 4 && heads[0].includes(await appVersion(page)) && heads[3].includes('1.10.0'), JSON.stringify(heads));
       check(`v1.11 ${W}: the newest version is marked as this version`, (await page.locator('#newsBody .news-ver').first().locator('.news-cur').count()) === 1);
-      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 2);
+      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 3);
       const box = await page.evaluate(() => { const r = document.querySelector('#newsDlg').getBoundingClientRect(); return [r.top, r.bottom, innerHeight]; });
       check(`v1.11 ${W}: the dialog fits the screen (its list scrolls)`, box[0] >= 0 && box[1] <= box[2], JSON.stringify(box));
       check(`v1.11 ${W}: Close is reachable`, await page.locator('#newsClose').isVisible());
       // Show me for v1.10.0, then back to the history
-      await page.locator('#newsBody .news-ver').nth(2).locator('.news-show-v').click();
+      await page.locator('#newsBody .news-ver').nth(3).locator('.news-show-v').click();
       check(`v1.11 ${W}: Show me for v1.10.0 starts on its first item`, (await page.textContent('#tourTitle')) === (await page.evaluate(() => window.I18N.t('rel.1.10.0.studyT'))), await page.textContent('#tourTitle'));
       await page.click('#tourSkip');
       check(`v1.11 ${W}: after Show me the history opens again`, await isOpen(page));
@@ -1593,6 +1613,7 @@ async function run(site) {
       await page.click('#langBtn');
       g = await hello();
       check(`v1.11 ${W}: the greeting is shown whole in Chinese`, /学生 1/.test(g.text) && g.sw <= g.cw + 1, JSON.stringify(g));
+      await page.click('#navParent');
       await page.click('#newsBtn');
       check(`v1.11 ${W}: in Chinese`, (await page.textContent('#newsTitle')) === '版本历史' && /[一-鿿]/.test(await page.textContent('#newsBody')) && (await page.textContent('#newsClose')) === '关闭');
       check(`v1.11 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
@@ -1607,9 +1628,79 @@ async function run(site) {
       check('v1.11 Home: the screen keeps a heading for screen readers', (await page.textContent('#homeH')) === 'Home');
       await page.click('#langBtn');
       check('v1.11 levels in Chinese', JSON.stringify(await page.locator('#diffSel option').allTextContents()) === JSON.stringify(['基础', '进阶', '挑战', '竞赛']), JSON.stringify(await page.locator('#diffSel option').allTextContents()));
-      await page.click('#fabStart');
-      check('v1.11 Home: ▶ starts the set', await visible(page, '#screen-quiz'));
+      await page.click('#startBtn');
+      check('v1.11 Home: Start practice starts the set', await visible(page, '#screen-quiz'));
       check('v1.11 levels and Home: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v1.11.0 R2.1 (carried): the greeting is whole at the widths where it was cut off, now that the header has one button
+    await flow('R2.1 greeting widths', async () => {
+      for (const W of [341, 344, 350, 356]) {
+        const { context, page, errors } = await freshPage(browser, site, null, null, { context: { viewport: { width: W, height: 700 } } });
+        const g = await page.evaluate(() => { const h = document.querySelector('#helloText'), w = document.querySelector('.hello-wave'), r = w && w.getBoundingClientRect(); return { text: h.textContent, sw: h.scrollWidth, cw: h.clientWidth, wave: !!r && r.width > 0, waveIn: !r || r.right <= innerWidth, side: document.documentElement.scrollWidth > innerWidth }; });
+        check(`R2.1 ${W}: the greeting is shown whole, the wave fits, no sideways scroll`, /Student 1/.test(g.text) && g.sw <= g.cw + 1 && g.waveIn && !g.side, JSON.stringify(g));
+        check(`R2.1 ${W}: no page errors`, errors.length === 0, errors.join(' | '));
+        await context.close();
+      }
+    });
+
+    // v1.12.0 W4 (Terry 2026-11-11): Home starts with Study, Practice or Test; one Start; four tabs; Settings for everyone
+    await flow('v1.12 Home modes and Settings', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
+      const on = sel => page.locator(sel).first().isVisible();
+      const values = sel => page.locator(sel).evaluateAll(i => i.map(x => x.value).join());
+      const tabs = () => page.locator('.bottom-nav > button .tl').allTextContents();
+      check('v1.12 four tabs: Home, Progress, Relax, Settings', JSON.stringify(await tabs()) === JSON.stringify(['Home', 'Progress', 'Relax', 'Settings']), JSON.stringify(await tabs()));
+      check('v1.12 header: only the language button beside the student', (await page.locator('.top-actions button').count()) === 1 && (await on('#langBtn')));
+      const modes = await page.locator('#modeTiles label').allTextContents();
+      check('v1.12 three mode tiles, each with a short subtitle', modes.length === 3 && /Study.*Read a lesson/.test(modes[0]) && /Practice/.test(modes[1]) && /Test.*Timed/.test(modes[2]), JSON.stringify(modes));
+      check('v1.12 Practice is chosen, with Maths and General Ability only', (await page.locator('#modeTiles input[value="practice"]').isChecked()) && (await values('#subjectChips input')) === 'maths,ga');
+      check('v1.12 Practice: difficulty, count and Print are shown, Start practice', (await on('#diffSel')) && (await on('#countSel')) && (await on('#printHome')) && (await page.textContent('#startBtn')) === 'Start practice');
+      check('v1.12 Home: no level note, source line, study card or second Start', (await page.locator('#subjectNote, #sourceLine, #studyCard, #studyTopicBtn, #optionsTitle, #fabStart, #navStudents, #parentBtn').count()) === 0);
+      const opts = await page.locator('#topicSel option').allTextContents();
+      check('v1.12 every topic in the list starts with a picture', opts.length > 3 && opts.every(o => /^[^\p{L}\p{N}\s]+ \S/u.test(o)), JSON.stringify(opts));
+      // Test: Selective and Competition, no difficulty or count
+      await page.click('.tile-test');
+      check('v1.12 Test: Selective and Competition only', (await values('#subjectChips input')) === 'sel,comp' && (await page.locator('#subjectChips input[value="sel"]').isChecked()));
+      check('v1.12 Test: no difficulty or count, Start test', !(await on('#diffSel')) && !(await on('#countSel')) && (await page.textContent('#startBtn')) === 'Start test');
+      await page.click('.tile-comp');
+      check('v1.12 Test: Competition, Start paper', (await page.textContent('#startBtn')) === 'Start paper');
+      await page.click('.tile-practice');
+      check('v1.12 back to Practice: Maths again', await page.locator('#subjectChips input[value="maths"]').isChecked());
+      await page.click('.tile-test');
+      check('v1.12 back to Test: Competition is remembered', await page.locator('#subjectChips input[value="comp"]').isChecked());
+      // Study
+      await page.click('.tile-study');
+      check('v1.12 Study: no subject tiles, Read the lesson', !(await on('#subjectBox')) && (await page.textContent('#startBtn')) === 'Read the lesson');
+      for (const m of ['study', 'practice', 'test']) {
+        await page.setViewportSize({ width: 320, height: 640 });
+        await page.click('.tile-' + m);
+        check(`v1.12 ${m} at 320 px: no sideways scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      }
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.click('.tile-practice');
+      await page.reload({ waitUntil: 'load' });
+      check('v1.12 the mode is remembered after a reload', await page.locator('#modeTiles input[value="practice"]').isChecked());
+      // Settings: open to everyone, the parent part behind the PIN
+      await page.click('#navParent');
+      check('v1.12 Settings opens without the PIN', await on('#screen-parent'));
+      check('v1.12 Settings: Guided tour, Release history and Students for everyone', (await on('#tourBtn')) && (await on('#newsBtn')) && (await on('#studentsBtn')));
+      check('v1.12 Settings: the parent part is locked', (await on('#parentLocked')) && !(await on('#parentArea')) && (await page.textContent('#parentIcon')) === '🔒');
+      await page.click('#studentsBtn');
+      check('v1.12 Settings: Students opens the student list', await page.locator('#profileDlg').evaluate(d => d.open));
+      await page.click('#profileClose');
+      await page.click('#parentUnlock');
+      await typePin(page);
+      check('v1.12 Settings: the PIN opens the parent part', (await on('#parentArea')) && !(await on('#parentLocked')) && (await page.textContent('#parentIcon')) === '🔓');
+      await page.click('#lockBtn');
+      check('v1.12 Settings: Lock closes the parent part and stays in Settings', (await on('#screen-parent')) && (await on('#parentLocked')) && !(await on('#parentArea')));
+      await page.click('#langBtn');
+      const zh = await page.evaluate(() => ['nav.home', 'nav.progress', 'nav.games', 'nav.settings'].map(k => window.I18N.t(k)));
+      check('v1.12 tabs in Chinese, Relax is 放松', JSON.stringify(await tabs()) === JSON.stringify(zh) && zh[2] === '放松', JSON.stringify(await tabs()));
+      await page.click('.tab[data-go="home"]');
+      check('v1.12 mode tiles in Chinese', /学习/.test(await page.textContent('#modeTiles')) && /练习/.test(await page.textContent('#modeTiles')) && /考试/.test(await page.textContent('#modeTiles')));
+      check('v1.12 Home modes and Settings: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
   } finally {

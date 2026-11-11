@@ -947,6 +947,33 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     }
     assert.ok(noon > 5, 'only ' + noon);
   });
+  t('R10.1: the Kindergarten AI brief has no grade-level, multi-step or olympiad difficulty at any level', () => {
+    const names = K6.topicsFor(0).map(k => [k, k]);
+    const seen = new Set();
+    for (const topic of ['mixed', 'k6add']) for (const d of [1, 2, 3, 4]) {
+      const p = AI.buildPrompt('maths', 0, topic, d, 5, names);
+      assert.ok(!/two or three steps|multi-step and non-routine|OLYMPIAD|AMO|AIMO|AMC|China \/ Singapore|TUTORING-CENTRE/.test(p), topic + ' d' + d + ': ' + p);
+      const line = (p.match(/^Difficulty: (.*)$/m) || [])[1];
+      assert.ok(line && /Kindergarten/.test(line) && /one step/.test(line) && /within (10|20)/.test(line), topic + ' d' + d + ': ' + line);
+      seen.add(line);
+    }
+    assert.strictEqual(seen.size, 4, 'each level has its own Kindergarten line');
+    const y1 = AI.buildPrompt('maths', 1, 'mixed', 2, 5, K6.topicsFor(1).map(k => [k, k]));
+    assert.ok(/two or three steps/.test(y1), 'Year 1 keeps the grade-level difficulty');
+    assert.ok(/OLYMPIAD/.test(AI.buildPrompt('maths', 1, 'mixed', 4, 5, K6.topicsFor(1).map(k => [k, k]))), 'Year 1 Challenge unchanged');
+  });
+  t('R10.2: 12-hour time methods are right at 12 pm (hour stays 12) and at 00 (written 12 am), and say the take-away sum otherwise', () => {
+    let noon = 0, midnight = 0;
+    for (let i = 0; i < 6000; i++) for (const y of [5, 6]) {
+      const q = G.SUBJECTS.maths.ktime.fn(y, 2); if (!q || !/12-hour/.test(q.q.en)) continue;
+      const h = +q.q.en.match(/Write (\d\d):/)[1];
+      assert.ok(!/12 is after 12/.test(q.sol.en) && !/12 大于 12/.test(q.sol.zh), q.sol.en);
+      if (h === 12) { noon++; assert.ok(/stays 12/.test(q.sol.en) && /pm/.test(q.sol.en) && /中午/.test(q.sol.zh), q.sol.en); }
+      else if (h === 0) { midnight++; assert.ok(/midnight/.test(q.sol.en) && /12:\d\d am/.test(q.sol.en) && /午夜/.test(q.sol.zh), q.sol.en); }
+      else if (h > 12) assert.ok(q.sol.en.includes(`${h} − 12 = ${h - 12}`), q.sol.en);
+    }
+    assert.ok(noon > 5 && midnight > 5, 'noon ' + noon + ', midnight ' + midnight);
+  });
   t('R9.4: the long-number flow also needs a box a finger can swipe, and checks hidden and clip fail', () => {
     const flows = require('fs').readFileSync(require('path').join(__dirname, 'flows.js'), 'utf8');
     assert.ok(/getComputedStyle\(f\)\.overflowX/.test(flows) && /\['hidden', 'clip'\]/.test(flows));

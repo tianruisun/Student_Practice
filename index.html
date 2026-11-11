@@ -42,81 +42,30 @@
     <section id="screen-home" class="screen" aria-labelledby="homeH">
       <h2 id="homeH" class="sr-only" data-i18n="nav.home">Home</h2>
 
-      <!-- v1.12.0 W4: first what to do (Study / Practice / Test), then the subject for it, then the options -->
-      <fieldset class="modes-f">
-        <legend class="sr-only" data-i18n="mode.legend">What do you want to do?</legend>
-        <div class="modes" id="modeTiles"></div>
-      </fieldset>
-
-      <fieldset id="subjectBox" class="subject-f">
-        <legend class="sr-only" data-i18n="home.subject">Subject</legend>
-        <div class="tiles" id="subjectChips"></div>
-      </fieldset>
-
-      <div id="practiceOptions" class="card form-card">
-        <div class="field-row" id="schoolYearRow">
-          <div class="field" id="schoolField">
-            <label class="label" for="schoolSel" data-i18n="home.school">School</label>
-            <select id="schoolSel" class="combo"></select>
-          </div>
-          <div class="field">
-            <label class="label" for="yearSel" data-i18n="home.year">Year level</label>
-            <select id="yearSel" class="combo"></select>
-          </div>
-        </div>
-        <div class="field">
-          <label class="label" for="topicSel" data-i18n="home.topic">Topic</label>
-          <select id="topicSel" class="combo"></select>
-        </div>
-        <!-- difficulty and number of questions: Practice only (Terry, v1.12.0) -->
-        <div id="practiceOnly">
-          <div class="field">
-            <label class="label" for="diffSel" data-i18n="home.diff">Difficulty</label>
-            <select id="diffSel" class="combo"></select>
-            <p class="muted small note" id="diffNote" data-i18n="home.diffNote"></p>
-          </div>
-          <div class="field">
-            <label class="label" for="countSel" data-i18n="home.count">Number of questions</label>
-            <select id="countSel" class="combo"></select>
-            <input type="number" id="countCustom" class="combo-num" min="1" max="50" inputmode="numeric" data-i18n-aria="home.countCustomLabel" data-i18n-placeholder="home.countCustomLabel" hidden>
-          </div>
-        </div>
+      <!-- v1.12.0 W6 (Terry chose Option B): Home never changes. The week, four big cards, Carry on and badges;
+           a card opens a sheet with that card's options and its Start button. -->
+      <div id="weekCard" class="week-card">
+        <div class="week-head"><h3 class="week-title" data-i18n="home.week">This week</h3><span class="week-streak" id="weekStreak"></span></div>
+        <ol class="week-days" id="weekDays" aria-hidden="true"></ol>
+        <p class="sr-only" id="weekSr"></p>
       </div>
 
-      <div id="selOptions" hidden>
-        <div class="card sel-card">
-          <h3 data-i18n="sel.heading">Mathematical Reasoning practice test</h3>
-          <ul class="rules">
-            <li data-i18n="sel.rule1"></li>
-            <li data-i18n="sel.rule2"></li>
-            <li data-i18n="sel.rule3"></li>
-            <li data-i18n="sel.rule4"></li>
-            <li data-i18n="sel.rule5"></li>
-          </ul>
-        </div>
-        <div class="field">
-          <label class="label" for="selLenSel" data-i18n="sel.length">Test length</label>
-          <select id="selLenSel" class="combo"></select>
-        </div>
+      <div id="modeCards" class="mode-cards" role="group" data-i18n-aria="mode.legend" aria-label="What do you want to do?">
+        <button type="button" id="cardStudy" class="mode-card m-study" data-mode="study"><span class="mc-ic" aria-hidden="true"></span><span class="mc-t" data-i18n="mode.study"></span><span class="mc-s" data-i18n="mode.study.sub"></span><span class="mc-go" aria-hidden="true">›</span></button>
+        <button type="button" id="cardPractice" class="mode-card m-practice" data-mode="practice"><span class="mc-ic" aria-hidden="true"></span><span class="mc-t" data-i18n="mode.practice"></span><span class="mc-s" data-i18n="mode.practice.sub"></span><span class="mc-go" aria-hidden="true">›</span></button>
+        <button type="button" id="cardTest" class="mode-card m-test" data-mode="test"><span class="mc-ic" aria-hidden="true"></span><span class="mc-t" data-i18n="mode.test"></span><span class="mc-s" data-i18n="mode.test.sub"></span><span class="mc-go" aria-hidden="true">›</span></button>
+        <button type="button" id="cardRelax" class="mode-card m-relax" data-mode="relax"><span class="mc-ic" aria-hidden="true"></span><span class="mc-t" data-i18n="nav.games"></span><span class="mc-s" data-i18n="mode.relax.sub"></span><span class="mc-go" aria-hidden="true">›</span></button>
       </div>
 
-      <div id="compOptions" hidden>
-        <div class="card sel-card">
-          <h3 data-i18n="comp.heading">Competition paper</h3>
-          <ul class="rules" id="compRules"></ul>
-        </div>
-        <div class="field">
-          <label class="label" for="compPaperSel" data-i18n="comp.paper">Paper</label>
-          <select id="compPaperSel" class="combo"></select>
-        </div>
-        <div class="field">
-          <label class="label" for="compLenSel" data-i18n="sel.length">Test length</label>
-          <select id="compLenSel" class="combo"></select>
-        </div>
+      <div id="carryBox" class="home-part" hidden>
+        <h3 class="home-sec" data-i18n="home.carry">Carry on</h3>
+        <button type="button" id="carryOn" class="carry"></button>
       </div>
 
-      <button type="button" id="startBtn" class="btn primary big" data-i18n="home.start">Start practice</button>
-      <button type="button" id="printHome" class="btn secondary"><span aria-hidden="true">🖨️</span> <span data-i18n="print.home">Print a worksheet (A4)</span></button>
+      <div id="badgeBox" class="home-part" hidden>
+        <div class="home-sec"><h3 data-i18n="home.badges">Badges</h3><button type="button" id="badgesAll" class="link-btn" data-i18n="home.seeAll">See all</button></div>
+        <ul id="homeBadges" class="home-badges"></ul>
+      </div>
     </section>
 
     <!-- LOADING -->
@@ -366,6 +315,86 @@
       </div>
       <button type="button" id="pinForgot" class="link small" data-i18n="pin.forgot">Forgot PIN?</button>
     </form>
+  </dialog>
+
+  <!-- v1.12.0 W6: the options for the card that was tapped, and its Start button -->
+  <dialog id="setupDlg" class="sheet" aria-labelledby="setupTitle">
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <span class="sheet-ic" id="setupIcon" aria-hidden="true"></span>
+      <div class="sheet-tt"><h3 id="setupTitle">Practice</h3><p class="muted small" id="setupSub"></p></div>
+      <button type="button" id="setupClose" class="sheet-x" data-i18n-aria="sheet.close" aria-label="Close"><span aria-hidden="true">✕</span></button>
+    </div>
+      <fieldset id="subjectBox" class="subject-f">
+        <legend class="sr-only" data-i18n="home.subject">Subject</legend>
+        <div class="tiles" id="subjectChips"></div>
+      </fieldset>
+
+      <div id="practiceOptions" class="card form-card">
+        <div class="field-row" id="schoolYearRow">
+          <div class="field" id="schoolField">
+            <label class="label" for="schoolSel" data-i18n="home.school">School</label>
+            <select id="schoolSel" class="combo"></select>
+          </div>
+          <div class="field">
+            <label class="label" for="yearSel" data-i18n="home.year">Year level</label>
+            <select id="yearSel" class="combo"></select>
+          </div>
+        </div>
+        <p class="muted small note" id="studyNote" data-i18n="study.k6note" hidden>Lessons are for Kindergarten to Year 6.</p>
+        <div class="field">
+          <label class="label" for="topicSel" data-i18n="home.topic">Topic</label>
+          <select id="topicSel" class="combo"></select>
+        </div>
+        <!-- difficulty and number of questions: Practice only (Terry, v1.12.0) -->
+        <div id="practiceOnly">
+          <div class="field">
+            <label class="label" for="diffSel" data-i18n="home.diff">Difficulty</label>
+            <select id="diffSel" class="combo"></select>
+          </div>
+          <div class="field">
+            <label class="label" for="countSel" data-i18n="home.count">Number of questions</label>
+            <select id="countSel" class="combo"></select>
+            <input type="number" id="countCustom" class="combo-num" min="1" max="50" inputmode="numeric" data-i18n-aria="home.countCustomLabel" data-i18n-placeholder="home.countCustomLabel" hidden>
+          </div>
+          <p class="muted small note" id="diffNote" data-i18n="home.diffNote"></p>
+        </div>
+      </div>
+
+      <div id="selOptions" hidden>
+        <div class="card sel-card">
+          <h3 data-i18n="sel.heading">Mathematical Reasoning practice test</h3>
+          <ul class="rules">
+            <li data-i18n="sel.rule1"></li>
+            <li data-i18n="sel.rule2"></li>
+            <li data-i18n="sel.rule3"></li>
+            <li data-i18n="sel.rule4"></li>
+            <li data-i18n="sel.rule5"></li>
+          </ul>
+        </div>
+        <div class="field">
+          <label class="label" for="selLenSel" data-i18n="sel.length">Test length</label>
+          <select id="selLenSel" class="combo"></select>
+        </div>
+      </div>
+
+      <div id="compOptions" hidden>
+        <div class="card sel-card">
+          <h3 data-i18n="comp.heading">Competition paper</h3>
+          <ul class="rules" id="compRules"></ul>
+        </div>
+        <div class="field">
+          <label class="label" for="compPaperSel" data-i18n="comp.paper">Paper</label>
+          <select id="compPaperSel" class="combo"></select>
+        </div>
+        <div class="field">
+          <label class="label" for="compLenSel" data-i18n="sel.length">Test length</label>
+          <select id="compLenSel" class="combo"></select>
+        </div>
+      </div>
+
+      <button type="button" id="startBtn" class="btn primary big" data-i18n="home.start">Start practice</button>
+      <button type="button" id="printHome" class="btn secondary"><span aria-hidden="true">🖨️</span> <span data-i18n="print.home">Print a worksheet (A4)</span></button>
   </dialog>
 
   <dialog id="profileDlg" aria-labelledby="profileTitle">

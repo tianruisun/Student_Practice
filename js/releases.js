@@ -1,25 +1,27 @@
 /* Release notes (v1.11.0): what each version added, newest first, from v1.10.0 on (Terry, 2026-11-11).
    The words live in js/i18n.js: 'rel.<version>.<id>T' is an item's title and 'rel.<version>.<id>' says how to use it.
-   show: an optional CSS selector on Home that "Show me" highlights for that item.
+   show: an optional CSS selector on Home that "Show me" highlights for that item (v1.12.0: the options are in a sheet,
+   so an item about them points at the card that opens it).
    Add the new version at the top of this list in every release that changes something a student or parent can see. */
 self.RELEASES = [
   { v: '1.12.0', items: [
-    { id: 'modes', show: '#modeTiles' },
-    { id: 'icons', show: '#topicSel' },
+    { id: 'modes', show: '#modeCards' },
+    { id: 'week', show: '#weekCard' },
+    { id: 'icons', show: '#cardPractice' },
     { id: 'settings', show: '#navParent' },
     { id: 'relax', show: '#navGames' }
   ] },
   { v: '1.11.0', items: [
     { id: 'news', show: '#navParent' },
-    { id: 'levels', show: '#diffSel' },
-    { id: 'start', show: '#startBtn' }
+    { id: 'levels', show: '#cardPractice' },
+    { id: 'start', show: '#cardPractice' }
   ] },
   { v: '1.10.1', items: [
     { id: 'checks' }
   ] },
   { v: '1.10.0', items: [
-    { id: 'study', show: '#modeTiles' },
-    { id: 'kinder', show: '#yearSel' },
+    { id: 'study', show: '#cardStudy' },
+    { id: 'kinder', show: '#cardStudy' },
     { id: 'games', show: '#navGames' },
     { id: 'submit' }
   ] }

@@ -156,18 +156,20 @@
 
   /* subject tiles: big cards with an icon (radio buttons underneath, so they work with keyboards and screen readers) */
   /* drawn icons (not emoji) so every tile looks the same size on every device */
-  const SVG = d => `<svg viewBox="0 0 32 32" aria-hidden="true">${d}</svg>`;
+  /* v1.12.0 W6: bigger, more colourful icons, each drawn in the same 48-unit box with its own soft background, so the
+     cards and tiles line up (Terry: "icon needs to be a bit bigger ... icon are not aligned") */
+  const SVG48 = d => `<svg viewBox="0 0 48 48" aria-hidden="true">${d}</svg>`;
   const SUBJECT_ICON = {
-    maths: SVG('<rect x="3" y="3" width="26" height="26" rx="7" fill="#7c4dff"/><path d="M9.5 11h6M12.5 8v6M18 11h5M9.5 21.5l5-5M14.5 21.5l-5-5M18 19h5M18 23h5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>'),
-    ga: SVG('<path d="M16 3.5a9 9 0 0 0-5.2 16.3c.9.7 1.4 1.6 1.4 2.7V24h7.6v-1.5c0-1.1.5-2 1.4-2.7A9 9 0 0 0 16 3.5z" fill="#38bdf8"/><path d="M12.6 26.5h6.8M13.6 29h4.8" stroke="#0369a1" stroke-width="2.2" stroke-linecap="round"/><path d="M12.5 13.5l2.5 2.5 4.5-5" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
-    sel: SVG('<rect x="6" y="5" width="20" height="24" rx="4" fill="#f59e0b"/><rect x="11" y="2.5" width="10" height="5.5" rx="2" fill="#b45309"/><path d="M10.5 14h11M10.5 19h11M10.5 24h6" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>'),
-    comp: SVG('<path d="M10 4h12v8a6 6 0 0 1-12 0z" fill="#f43f5e"/><path d="M10 6.5H5.5a4.5 4.5 0 0 0 4.8 5.5M22 6.5h4.5a4.5 4.5 0 0 1-4.8 5.5" stroke="#f43f5e" stroke-width="2.2" fill="none"/><path d="M16 18v5" stroke="#be123c" stroke-width="2.6"/><rect x="10" y="23.5" width="12" height="5" rx="1.8" fill="#be123c"/><path d="M16 7.5l1.1 2.2 2.4.3-1.8 1.7.5 2.4-2.2-1.2-2.2 1.2.5-2.4-1.8-1.7 2.4-.3z" fill="#fde68a"/>')
+    maths: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ddd3ff"/><rect x="9" y="9" width="13" height="13" rx="4" fill="#6d4ae8"/><rect x="26" y="9" width="13" height="13" rx="4" fill="#ff5c8d"/><rect x="9" y="26" width="13" height="13" rx="4" fill="#2fb36d"/><rect x="26" y="26" width="13" height="13" rx="4" fill="#ffb02e"/><path d="M15.5 12.5v6M12.5 15.5h6M29.5 15.5h6M12.5 32.5h6M27.8 30.8l3.4 3.4M31.2 30.8l-3.4 3.4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'),
+    ga: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#cfeeff"/><path d="M24 9a10 10 0 0 0-6 18c1 1 2 2 2 4h8c0-2 1-3 2-4a10 10 0 0 0-6-18z" fill="#ffcf3a"/><rect x="19" y="33" width="10" height="5" rx="2" fill="#2d8ad8"/><path d="M24 31v-7l-3-3M24 24l3-3" stroke="#e08a00" stroke-width="1.8" fill="none" stroke-linecap="round"/>'),
+    sel: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffe2b8"/><rect x="12" y="9" width="24" height="30" rx="4" fill="#fff"/><path d="M17 16h14M17 21h14M17 26h9" stroke="#f0b670" stroke-width="2" stroke-linecap="round"/><circle cx="33" cy="33" r="7" fill="#f08a1c"/><path d="m30 33 2 2 4-4" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/>'),
+    comp: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#fff0b8"/><path d="M16 10h16v8a8 8 0 0 1-16 0z" fill="#ffb800"/><path d="M16 13h-4a4 4 0 0 0 4 6M32 13h4a4 4 0 0 1-4 6" stroke="#ffb800" stroke-width="2.4" fill="none"/><rect x="21" y="26" width="6" height="6" fill="#e09a00"/><rect x="15" y="32" width="18" height="6" rx="2" fill="#6d4ae8"/><path d="m24 12 1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z" fill="#fff"/>')
   };
-  /* v1.12.0 W4: Study / Practice / Test, drawn like the subject icons */
   const MODE_ICON = {
-    study: SVG('<path d="M4 7.5c3.6-1.6 7.6-1.6 12 .8v18c-4.4-2.4-8.4-2.4-12-.8z" fill="#34d399"/><path d="M28 7.5c-3.6-1.6-7.6-1.6-12 .8v18c4.4-2.4 8.4-2.4 12-.8z" fill="#10b981"/><path d="M7.5 12.5c2.3-.6 4.6-.4 6.5.6M7.5 17c2.3-.6 4.6-.4 6.5.6M18 13.1c1.9-1 4.2-1.2 6.5-.6M18 17.6c1.9-1 4.2-1.2 6.5-.6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>'),
-    practice: SVG('<rect x="4" y="4" width="24" height="24" rx="7" fill="#7c4dff"/><path d="M10 16.5l4 4 8-9" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'),
-    test: SVG('<circle cx="16" cy="17.5" r="11" fill="#f59e0b"/><rect x="13" y="2.5" width="6" height="3.5" rx="1.5" fill="#b45309"/><path d="M16 11v7l4.5 3" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>')
+    study: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#c9f0da"/><path d="M10 15c5-2 10-2 14 1v20c-4-3-9-3-14-1z" fill="#2fb36d"/><path d="M38 15c-5-2-10-2-14 1v20c4-3 9-3 14-1z" fill="#53cf8b"/><path d="M14 20h6M14 24h6M28 20h6M28 24h6" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>'),
+    practice: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ddd3ff"/><rect x="11" y="10" width="21" height="27" rx="4" fill="#fff"/><path d="M15 17h12M15 22h9" stroke="#b7a6f5" stroke-width="2" stroke-linecap="round"/><path d="m15 29 3 3 6-7" stroke="#6d4ae8" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="m33 16 5 5-11 11-6 1 1-6z" fill="#ffb02e"/><path d="m33 16 5 5" stroke="#e8483f" stroke-width="3"/>'),
+    test: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffe2b8"/><rect x="21" y="7" width="6" height="5" rx="1.5" fill="#f08a1c"/><circle cx="24" cy="27" r="13" fill="#fff" stroke="#f08a1c" stroke-width="3"/><path d="M24 27V19" stroke="#e8483f" stroke-width="2.6" stroke-linecap="round"/><path d="M24 27l5 3" stroke="#3b2f86" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="27" r="1.8" fill="#3b2f86"/>'),
+    relax: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffd0e1"/><ellipse cx="20" cy="20" rx="8" ry="10" fill="#ff5c8d"/><ellipse cx="30" cy="23" rx="7" ry="9" fill="#ffb02e"/><path d="M20 30v8M30 32v6" stroke="#9a8fbf" stroke-width="1.4"/><ellipse cx="17" cy="16" rx="2" ry="3" fill="#fff" opacity=".6"/>')
   };
   /* an emoji in front of each topic in the topic list (Terry, v1.12.0: "okay for your suggestion for now") */
   const TOPIC_ICON = {
@@ -237,18 +239,86 @@
 
   /* v1.12.0 W4: first what to do. Test = the timed papers (subject sel or comp); Study = the K–6 maths lessons;
      Practice = everything else. Each remembers its own subject, so switching back and forth keeps the choice. */
-  const MODES = ['study', 'practice', 'test'];
   const homeMode = st => (isTimed(st.subject) ? 'test' : st.mode === 'study' && window.ScopeK6 ? 'study' : 'practice');
   function setMode(m) {
     const st = S.settings, cur = homeMode(st);
     if (m === cur) return;
-    if (cur === 'practice') st.pracSubject = st.subject;
+    // each mode keeps its own subject, and Practice its own topic, so going back gives the same choice (R1.1)
+    if (cur === 'practice') { st.pracSubject = st.subject; st.pracTopic = st.topic; }
     if (cur === 'test') st.testSubject = st.subject;
     st.mode = m;
     if (m === 'study') st.subject = 'maths';
-    else if (m === 'practice') st.subject = ['maths', 'ga'].includes(st.pracSubject) ? st.pracSubject : 'maths';
-    else st.subject = ['sel', 'comp'].includes(st.testSubject) ? st.testSubject : 'sel';
+    else if (m === 'practice') {
+      st.subject = ['maths', 'ga'].includes(st.pracSubject) ? st.pracSubject : 'maths';
+      if (typeof st.pracTopic === 'string') st.topic = st.pracTopic;
+    } else st.subject = ['sel', 'comp'].includes(st.testSubject) ? st.testSubject : 'sel';
   }
+
+  /* ---------- v1.12.0 W6 (Option B): Home never changes; a card opens the sheet ---------- */
+  const dayKey = d => { const x = new Date(d); return x.getFullYear() + '-' + (x.getMonth() + 1) + '-' + x.getDate(); };
+  function renderHomeTop() {
+    const h = (store.get(histKey(), []) || []).filter(x => x && typeof x === 'object' && Number.isFinite(x.date));
+    // this week, Monday to Sunday, and the days in a row up to today (or up to yesterday, if not yet today)
+    const done = new Set(h.map(x => dayKey(x.date))), now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const ol = $('#weekDays'); ol.innerHTML = '';
+    let inWeek = 0;
+    for (let k = 0; k < 7; k++) {
+      const d = new Date(monday); d.setDate(monday.getDate() + k);
+      const on = done.has(dayKey(d)), isToday = d.getTime() === today.getTime();
+      if (on) inWeek++;
+      const li = el('li', 'wd' + (on ? ' on' : '') + (isToday ? ' today' : '')); li.append(el('i'), el('span', '', t('day.' + (k + 1)))); ol.append(li);
+    }
+    let run = 0; const d = new Date(today);
+    if (!done.has(dayKey(d))) d.setDate(d.getDate() - 1);
+    while (done.has(dayKey(d))) { run++; d.setDate(d.getDate() - 1); }
+    $('#weekStreak').textContent = run ? t(run === 1 ? 'home.streak1' : 'home.streak', { n: run }) : t('home.streak0');
+    $('#weekStreak').classList.toggle('none', !run);
+    $('#weekSr').textContent = t('home.weekSr', { n: inWeek });
+    // the four cards: their icons (the words come from data-i18n)
+    document.querySelectorAll('#modeCards .mode-card').forEach(b => { b.querySelector('.mc-ic').innerHTML = MODE_ICON[b.dataset.mode]; });
+    $('#modeCards').dataset.mode = homeMode(S.settings);
+    // Carry on: the last set, to start it again with the same choices
+    const last = h[h.length - 1];
+    const carry = last && (['maths', 'ga'].includes(last.subject || 'maths') ? YEARS.includes(last.year) : isTimed(last.subject));
+    $('#carryBox').hidden = !carry;
+    if (carry) {
+      const b = $('#carryOn'), timed = isTimed(last.subject), n = last.n || 0, c = last.correct || 0;
+      const ic = el('span', 'carry-ic'); ic.innerHTML = SUBJECT_ICON[last.subject || 'maths'] || SUBJECT_ICON.maths;
+      const tx = el('span', 'carry-t');
+      tx.append(el('b', '', timed ? t('subject.' + last.subject) : topicLabel(last.topic) + ' · ' + yearLabel(last.year)),
+        el('small', '', t('home.lastTime', { c, n })));
+      const bar = el('span', 'carry-bar'); const fill = el('i'); fill.style.width = (n ? Math.round(100 * c / n) : 0) + '%'; bar.append(fill); tx.append(bar);
+      b.replaceChildren(ic, tx, el('span', 'carry-go', '›'));
+      b.querySelector('.carry-go').setAttribute('aria-hidden', 'true');
+      b.onclick = () => openSetup(timed ? 'test' : 'practice', st => {
+        st.subject = last.subject || 'maths';
+        if (!timed) { st.year = last.year; st.yearPicked = true; st.topic = last.topic; }
+      });
+    }
+    // badges this student has, one per kind with how many
+    const list = (store.get(Profiles.badgeKey(), []) || []).filter(x => x && Records.KINDS.includes(x.kind));
+    $('#badgeBox').hidden = !list.length;
+    const ul = $('#homeBadges'); ul.innerHTML = '';
+    Records.KINDS.forEach(k => {
+      const n = list.filter(x => x.kind === k).length;
+      if (!n) return;
+      const li = el('li', 'hb'); li.append(el('span', 'hb-ic', KIND_ICON[k]), el('span', 'hb-t', t('badge.kind.' + k)), el('span', 'hb-n', '×' + n));
+      ul.append(li);
+    });
+  }
+  /* open the sheet for a card; prep changes the settings after the mode is set (Carry on) */
+  function openSetup(m, prep) {
+    const st = S.settings;
+    setMode(m);
+    if (prep) prep(st);
+    saveSettings();
+    renderHome();
+    const dlg = $('#setupDlg');
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+  }
+  const closeSetup = () => { if ($('#setupDlg').open) $('#setupDlg').close(); };
 
   function renderHome() {
     const st = S.settings;
@@ -256,11 +326,16 @@
     if (![1, 2, 3, 4].includes(st.diff)) st.diff = 2;
     if (!YEARS.includes(st.year)) st.year = 6;
     if (st.year === 0 && st.subject === 'ga') st.year = 1;   // Kindergarten is for maths only
-    if (st.topic !== 'mixed' && !topicKeys(st.subject, st.year).includes(st.topic)) st.topic = 'mixed';
     const mode = homeMode(st);
+    // the Practice topic is checked only in Practice: Test and Study do not use it, so it is kept for later (R1.1)
+    if (mode === 'practice' && st.topic !== 'mixed' && !topicKeys(st.subject, st.year).includes(st.topic)) st.topic = 'mixed';
     if (mode === 'study') st.subject = 'maths';
-    tiles($('#modeTiles'), 'mode', MODES.map(m => [m, t('mode.' + m), MODE_ICON[m], t('mode.' + m + '.sub')]), mode, v => { setMode(v); saveSettings(); renderHome(); });
+    renderHomeTop();
+    $('#setupIcon').innerHTML = MODE_ICON[mode];
+    $('#setupTitle').textContent = t('mode.' + mode);
+    $('#setupSub').textContent = t('mode.' + mode + '.sub');
     $('#subjectBox').hidden = mode === 'study';
+    $('#studyNote').hidden = mode !== 'study';   // R1.3: Study is Kindergarten to Year 6, said where the year is chosen
     if (mode !== 'study') {
       const subs = mode === 'test' ? ['sel', 'comp'] : ['maths', 'ga'];
       tiles($('#subjectChips'), 'subject', subs.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); });
@@ -1693,18 +1768,17 @@
     { target: null, title: 'tour.welcomeT', text: 'tour.welcome' },
     { target: '#profileBtn', title: 'tour.profileT', text: 'tour.profile' },
     { target: '#langBtn', title: 'tour.langT', text: 'tour.lang' },
-    { target: '#modeTiles', title: 'tour.modeT', text: 'tour.mode' },
-    { target: '#subjectChips', title: 'tour.subjectT', text: 'tour.subject' },
-    { target: '#practiceOptions', title: 'tour.optionsT', text: 'tour.options' },
-    { target: '#startBtn', title: 'tour.startT', text: 'tour.start' },
-    { target: '#printHome', title: 'tour.printT', text: 'tour.print' },
+    { target: '#weekCard', title: 'tour.weekT', text: 'tour.week' },
+    { target: '#modeCards', title: 'tour.modeT', text: 'tour.mode' },
+    { target: '#carryBox', title: 'tour.carryT', text: 'tour.carry' },
+    { target: '#badgeBox', title: 'tour.badgesT', text: 'tour.badges' },
     { target: '.tab[data-go="progress"]', title: 'tour.progressT', text: 'tour.progress' },
     { target: '#navGames', title: 'tour.gamesT', text: 'tour.games' },
     { target: '#navParent', title: 'tour.settingsT', text: 'tour.settings' }
   ];
   function startTour() {
     if (!window.Tour || S.screen === 'quiz' || S.screen === 'loading' || window.Tour.running) return;   // tour.js failed to load: no tour
-    document.querySelectorAll('dialog[open]').forEach(d => d.close());   // a student dialog left open would sit on top
+    document.querySelectorAll('dialog[open]').forEach(d => d.close());   // a student dialog (or the options sheet) would sit on top
     // the tour shows Home; afterwards go back to where the user was (Results cannot be reopened any other way)
     const from = S.screen, opener = document.activeElement;
     if (from !== 'home') go('home');
@@ -1712,11 +1786,9 @@
     const back = () => {
       if (from !== 'home' && S.screen === 'home') { go(from); if (opener && opener.isConnected && opener !== document.body) opener.focus({ preventScroll: true }); } else window.scrollTo(0, 0);
     };
-    /* the steps describe the Home screen as it is now: a part hidden in this mode (subjects in Study, options in Test,
-       Print in Study) is left out, and the Start button has its own name */
+    // the steps describe Home as it is now: Carry on and Badges only when the student has them
     const shownNow = sel => { const n = document.querySelector(sel); return !!n && n.getClientRects().length > 0; };
-    const steps = TOUR.filter(s => !s.target || s.target.startsWith('.tab') || shownNow(s.target))
-      .map(s => (s.target === '#startBtn' ? Object.assign({}, s, { vars: { btn: $('#startBtn').textContent } }) : s));
+    const steps = TOUR.filter(s => !s.target || s.target.startsWith('.tab') || shownNow(s.target));
     if (!window.Tour.run(steps, { t, onEnd: () => { store.set(K.tour, 'done'); back(); } })) back();
   }
 
@@ -1817,6 +1889,7 @@
   $('#parentUnlock').addEventListener('click', async () => { draftProvider = null; delete $('#aiKey').dataset.touched; if (await unlockParent()) $('#parentArea').scrollIntoView({ block: 'start' }); });
   $('#startBtn').addEventListener('click', () => {
     const st = S.settings;
+    closeSetup();
     if (homeMode(st) === 'study') openStudy(st.studyTopic, studyYearOf(st)); else startQuiz(st);
   });
   $('#quitBtn').addEventListener('click', () => {
@@ -1829,7 +1902,16 @@
   $('#viewSingle').addEventListener('click', () => setView('single'));
   $('#viewPages').addEventListener('click', () => setView('pages'));
   $('#printQuiz').addEventListener('click', () => { const Q = S.quiz; if (Q) openPrint(Q.questions, Q.settings); });
-  $('#printHome').addEventListener('click', printFromHome);
+  $('#printHome').addEventListener('click', () => { closeSetup(); printFromHome(); });
+  // v1.12.0 W6: the four cards, the sheet's close button, a tap outside it, See all
+  document.querySelectorAll('#modeCards .mode-card').forEach(b => b.addEventListener('click', () => (b.dataset.mode === 'relax' ? go('games') : openSetup(b.dataset.mode))));
+  $('#setupClose').addEventListener('click', closeSetup);
+  $('#setupDlg').addEventListener('click', e => {
+    if (e.target !== e.currentTarget) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    if (e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right) closeSetup();
+  });
+  $('#badgesAll').addEventListener('click', () => go('progress'));
   $('#printResults').addEventListener('click', () => { const Q = S.quiz; if (Q) openPrint(Q.questions, Q.settings); });
   $('#printForm').addEventListener('submit', doPrint);
   $('#printCancel').addEventListener('click', () => $('#printDlg').close());

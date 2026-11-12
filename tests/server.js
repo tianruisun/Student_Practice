@@ -39,7 +39,8 @@ async function befriend(ta, tb, nameB, nameA) {
   assert.strictEqual((await call('POST', 'friends/add', { who: nameB }, { token: ta })).body.status, 'sent');
   assert.strictEqual((await call('POST', 'friends/answer', { username: nameA, accept: true }, { token: tb })).status, 200);
 }
-const QS = [{ q: { en: '1+1', zh: '1+1' }, answer: '2', type: 'num', topic: 'add' }, { q: { en: '2+2', zh: '2+2' }, answer: '4', type: 'num', topic: 'add' }];
+const QS = [{ q: { en: '1+1', zh: '1+1' }, answer: '2', value: 2, type: 'input', topic: 'add' },
+  { q: { en: '2+2?', zh: '2+2?' }, choices: [{ en: '3' }, { en: '4' }], correct: 1, type: 'mc', topic: 'add' }];
 const SET = { subject: 'maths', year: 5, topic: 'k6frac', diff: 2, count: 2 };
 
 /* ---------- sign-up ---------- */
@@ -226,6 +227,92 @@ t('progress over the size limit refused', async () => {
   assert.strictEqual((await call('PUT', 'progress', { data: { x: 'y'.repeat(950000) } }, { token: tok })).status, 413);
 });
 t('progress needs sign-in', async () => { fresh(); assert.strictEqual((await call('GET', 'progress')).status, 401); });
+/* R1.1: two devices on one account */
+t('R1.1 a save from an older copy is refused (stale, 409) with the server copy, and nothing is written', async () => {
+  fresh(); const phone = await signUp('anan'), tablet = (await call('POST', 'login', { username: 'anan', password: 'secret-pass' })).body.token;
+  const p1 = await call('PUT', 'progress', { data: { keys: { history: [{ date: 1 }] } }, base: 0 }, { token: phone });
+  assert.strictEqual(p1.status, 200); assert.ok(p1.body.updated > 0);
+  const t1 = await call('PUT', 'progress', { data: { keys: { history: [{ date: 2 }] } }, base: 0 }, { token: tablet });
+  assert.strictEqual(t1.status, 409); assert.strictEqual(t1.body.error, 'stale');
+  assert.deepStrictEqual(t1.body.data, { keys: { history: [{ date: 1 }] } }); assert.strictEqual(t1.body.updated, p1.body.updated);
+  assert.deepStrictEqual((await call('GET', 'progress', undefined, { token: phone })).body.data.keys.history, [{ date: 1 }]);
+  // the tablet merges and saves on top of the copy it was given
+  const t2 = await call('PUT', 'progress', { data: { keys: { history: [{ date: 1 }, { date: 2 }] } }, base: t1.body.updated }, { token: tablet });
+  assert.strictEqual(t2.status, 200); assert.ok(t2.body.updated > p1.body.updated, 'updated always moves on');
+  assert.strictEqual((await call('PUT', 'progress', { data: { keys: {} } }, { token: phone })).status, 409, 'no base on an existing copy');
+});
+t('R1.1 two saves in the same millisecond still get different versions', async () => {
+  fresh(); const tok = await signUp('anan');
+  const a = await call('PUT', 'progress', { data: { x: 1 }, base: 0 }, { token: tok });
+  const b = await call('PUT', 'progress', { data: { x: 2 }, base: a.body.updated }, { token: tok });
+  assert.strictEqual(b.status, 200); assert.notStrictEqual(a.body.updated, b.body.updated);
+  assert.strictEqual((await call('PUT', 'progress', { data: { x: 3 }, base: a.body.updated }, { token: tok })).status, 409);
+});
+t('R1.4 at most 300 saves of the records per account in a day', async () => {
+  fresh(); const tok = await signUp('anan'); let base = 0, last;
+  for (let i = 0; i < 300; i++) { last = await call('PUT', 'progress', { data: { i }, base }, { token: tok }); assert.strictEqual(last.status, 200, 'save ' + (i + 1)); base = last.body.updated; }
+  assert.strictEqual((await call('PUT', 'progress', { data: { i: 301 }, base }, { token: tok })).status, 429);
+  const other = await signUp('leo'); assert.strictEqual((await call('PUT', 'progress', { data: { y: 1 }, base: 0 }, { token: other })).status, 200, 'another account is not affected');
+  later(24 * 60 * MIN + 1); assert.strictEqual((await call('PUT', 'progress', { data: { i: 302 }, base }, { token: tok })).status, 200);
+});
+/* R1.3: one address (a school) */
+t('R1.3 a school on one address: 200 right sign-ins in 15 minutes all succeed', async () => {
+  fresh(); await signUp('anan', 'a@example.com', 'password-1');
+  for (let i = 0; i < 200; i++) assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' }, { ip: '10.0.0.1' })).status, 200, 'sign-in ' + (i + 1));
+});
+t('R1.3 60 wrong passwords from one address stop that address only, and right ones are capped at 600', async () => {
+  fresh(); await signUp('anan', 'a@example.com', 'password-1');
+  for (let i = 0; i < 60; i++) await call('POST', 'login', { username: 'u' + (i % 30) + 'x', password: 'wrong-pass' }, { ip: '10.0.0.2' });
+  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' }, { ip: '10.0.0.2' })).status, 429);
+  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' }, { ip: '10.0.0.3' })).status, 200);
+  const H2 = H; assert.strictEqual(H2.LOGIN_IP_ALL, 600); assert.strictEqual(H2.LOGIN_IP_FAIL, 60);
+});
+t('R1.3 a class signing up from one address: 100 codes in an hour are sent', async () => {
+  fresh();
+  for (let i = 0; i < 100; i++) assert.strictEqual((await call('POST', 'code', { email: 'kid' + i + '@example.com' }, { ip: '10.0.0.4' })).status, 200, 'code ' + (i + 1));
+  assert.strictEqual(H.CODE_IP, 150);
+});
+/* R1.9 */
+t('R1.9 friends/add counts every try, found or not (60 a day)', async () => {
+  fresh(); const a = await signUp('anan'); await signUp('leo');
+  for (let i = 0; i < 60; i++) assert.strictEqual((await call('POST', 'friends/add', { who: 'ZZZZZ' + (i % 9 + 1) }, { token: a })).body.error, 'no_user');
+  assert.strictEqual((await call('POST', 'friends/add', { who: 'leo' }, { token: a })).status, 429);
+});
+/* R1.2 */
+t('R1.2 a set with questions the app cannot draw is refused (bad_set)', async () => {
+  fresh(); const a = await signUp('anan'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
+  const bad = [[{ type: 'input' }], [{ q: { en: 'x' }, topic: 'add', type: 'mc', choices: [{ en: 'a' }], correct: 0 }], [{ q: { en: 'x' }, topic: 'add', type: 'input', answer: '2' }],
+    [{ q: 'x', topic: 'add', type: 'input', value: 2, answer: '2' }], [{ q: { en: 'x' }, topic: 'add', type: 'mc', choices: [{ en: 'a' }, { en: 'b' }], correct: 2 }],
+    [{ q: { en: 'x' }, topic: 'add', type: 'input', value: 2, answer: '2', fig: 'x' }], [{ q: { en: 'x' }, topic: 'add', type: 'essay', value: 2, answer: '2' }], ['x']];
+  for (const qs of bad) {
+    const r = await call('POST', 'challenges', { to: 'leo', settings: SET, questions: qs, score: { ok: qs.map(() => true) } }, { token: a });
+    assert.strictEqual(r.status, 400, JSON.stringify(qs)); assert.strictEqual(r.body.error, 'bad_set', JSON.stringify(qs));
+  }
+  assert.strictEqual((await call('GET', 'challenges', undefined, { token: b })).body.challenges.length, 0);
+});
+t('R1.2 every question the app makes passes the check (all years, subjects, topics and levels)', async () => {
+  for (const f of ['gen-core', 'gen-maths', 'gen-word', 'gen-junior', 'gen-senior', 'gen-charts', 'gen-olympiad', 'gen-amo', 'gen-ga', 'gen-k6', 'scope-k6', 'lessons-k2', 'lessons-36']) require('../js/' + f + '.js');
+  const G = globalThis.Gen; let n = 0; const bad = [];
+  for (const y of G.YEARS) for (const sub of ['maths', 'ga']) {
+    let topics = []; try { topics = ['mixed'].concat(G.topicsFor(sub, y)); } catch (e) { continue; }
+    for (const tp of topics) for (const d of [1, 2, 3, 4]) {
+      let s; try { s = G.generateSet(sub, y, tp, d, 5); } catch (e) { continue; }
+      for (const q of s) { n++; if (!H.questionOk(q)) bad.push(q); }
+    }
+  }
+  assert.ok(n > 3000, 'questions checked: ' + n); assert.deepStrictEqual(bad.slice(0, 1), []);
+});
+t('R1.2 the app (js/app.js) and the server use the same rules', async () => {
+  const fs = require('fs'), path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+  const from = src.indexOf('  const isObj = v =>'), to = src.indexOf('  function startChallenge(');
+  assert.ok(from > 0 && to > from);
+  const appOk = new Function(src.slice(from, to) + '\nreturn questionOk;')();
+  const samples = [QS[0], QS[1], { type: 'input' }, { q: { en: 'x' }, topic: 'a', type: 'mc', choices: [{ en: 'a' }], correct: 0 }, { q: { en: 'x', zh: 3 }, topic: 'a', type: 'input', value: 1, answer: '1' },
+    { q: { en: 'x' }, topic: 'a', type: 'input', value: 1, answer: 1, unit: 'cm', tol: 0.1, fig: { type: 'bar' }, sol: { en: 's' } }, { q: { en: 'x' }, topic: 'a', type: 'input', value: NaN, answer: '1' },
+    { q: { en: 'x' }, topic: 'a', type: 'mc', choices: [{ en: 'a' }, { en: 'b' }, { en: 'c' }, { en: 'd' }, { en: 'e' }, { en: 'f' }], correct: 0 }, null, [], 'q'];
+  for (const s of samples) assert.strictEqual(appOk(s), H.questionOk(s), JSON.stringify(s));
+});
 
 /* ---------- friends ---------- */
 t('friend request by username waits for acceptance', async () => {

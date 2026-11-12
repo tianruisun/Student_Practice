@@ -40,7 +40,7 @@
   const signedIn = () => !!(F.auth && F.auth.token);
 
   /* ---------- server calls ---------- */
-  class ApiError extends Error { constructor(code, status) { super(code); this.code = code; this.status = status; } }
+  class ApiError extends Error { constructor(code, status, data) { super(code); this.code = code; this.status = status; this.data = data; } }
   async function api(method, path, body) {
     const headers = { 'Content-Type': 'application/json' };
     if (F.auth && F.auth.token) headers.Authorization = 'Bearer ' + F.auth.token;
@@ -53,7 +53,7 @@
     if (!res.ok || !data) {
       const code = (data && data.error) || (res.status === 404 || res.status === 405 ? 'not_set_up' : 'server');
       if (code === 'signed_out' && signedIn()) sessionEnded();
-      throw new ApiError(code, res.status);
+      throw new ApiError(code, res.status, data);
     }
     return data;
   }
@@ -67,11 +67,17 @@
   /* ---------- the account's records ---------- */
   const keysOf = id => ({ history: A.K.history + '.' + id, settings: A.K.settings + '.' + id, badges: A.K.badges + '.' + id, games: A.K.games + '.' + id, plan: A.K.plan + '.' + id });
   const PROFILE_FIELDS = ['schoolYear', 'schoolYearSet', 'dob'];
-  function collect(id) {
+  /* this device's records of a profile, as they are */
+  function read(id) {
     const keys = keysOf(id), data = { v: 1, keys: {}, profile: {} };
     for (const [name, k] of Object.entries(keys)) { const v = A.store.get(k, null); if (v !== null) data.keys[name] = v; }
     const pr = A.Profiles.list.find(x => x.id === id) || {};
     PROFILE_FIELDS.forEach(f => { if (pr[f] !== undefined) data.profile[f] = pr[f]; });
+    return data;
+  }
+  /* the copy sent to the server */
+  function collect(id) {
+    const data = read(id);
     // keep within the server's limit: drop the stored wrong questions of the oldest sets first (the scores stay)
     let text = JSON.stringify(data);
     const h = data.keys.history;
@@ -90,17 +96,64 @@
   // records worth moving: sets, badges, games and the plan (settings alone are only choices, so they do not count)
   const hasRecords = id => Object.entries(keysOf(id)).filter(([name]) => name !== 'settings').map(([, k]) => k).some(k => { const v = A.store.get(k, null); return v !== null && !(Array.isArray(v) && !v.length); });
 
-  async function upload() {
+  /* R1.1 (v2.0.0): one account on two devices. Each save names the server copy it was made from (F.auth.synced, the
+     server's `updated`); when another device has saved since, the server answers 'stale' with its copy, this device
+     merges it into its own records (Records.mergeAccount, with F.auth.base = the records both last agreed on, so a
+     removal on either side stays removed) and saves again. The app also reads the server copy when it comes back to the
+     screen (pull), so a phone and a tablet see each other's sets. */
+  let queue = Promise.resolve(), uploading = 0;
+  function upload() {   // one save at a time; a change made during a save is saved after it
+    uploading++;
+    const p = queue.then(doUpload).catch(() => false).finally(() => { uploading--; });
+    queue = p;
+    return p;
+  }
+  async function doUpload() {
     clearTimeout(F.syncTimer); F.syncTimer = 0;
     if (!signedIn() || !F.auth.profile) return true;
     // never send an empty copy over the account's records: the profile must still be on this device
     if (!A.Profiles.list.some(x => x.id === F.auth.profile)) return false;
-    try { await api('PUT', 'progress', { data: collect(F.auth.profile) }); F.lastSync = Date.now(); F.syncFailed = false; return true; }
-    catch (e) { F.syncFailed = true; return false; }
+    for (let i = 0; i < 3; i++) {
+      const id = F.auth.profile, data = collect(id);
+      try {
+        const r = await api('PUT', 'progress', { data, base: F.auth.synced || 0 });
+        if (!F.auth || F.auth.profile !== id) return false;
+        // still unsaved when a change came in during this save (its own save is waiting on the timer)
+        F.auth.synced = r.updated; F.auth.base = window.Records.baseOf(data); F.auth.dirty = !!F.syncTimer; saveAuth();
+        F.lastSync = Date.now(); F.syncFailed = false;
+        return true;
+      } catch (e) {
+        if (e.code === 'stale' && e.data && F.auth && F.auth.profile === id) { absorb(e.data.data, e.data.updated); continue; }
+        F.syncFailed = true; return false;
+      }
+    }
+    F.syncFailed = true; return false;
+  }
+  /* the server copy into this device's records: merged, never simply replaced. Returns true when this device has
+     records the server copy does not (so they still need saving). */
+  function absorb(server, updated) {
+    const id = F.auth.profile, local = read(id);
+    const merged = server ? window.Records.mergeAccount(local, server, F.auth.base || null) : local;
+    restore(id, merged);
+    F.auth.synced = updated || 0; F.auth.base = window.Records.baseOf(server); saveAuth();
+    if (A.S.screen !== 'quiz' && A.S.screen !== 'loading') A.reload();
+    return JSON.stringify(merged.keys) !== JSON.stringify((server && server.keys) || {});
+  }
+  /* read the server copy (when the app comes back to the screen); merge and save when another device has saved */
+  async function pull() {
+    if (!signedIn() || !F.auth.profile || uploading) return;
+    try {
+      const r = await api('GET', 'progress');
+      if (!signedIn() || !F.auth.profile || uploading) return;
+      if ((r.updated || 0) === (F.auth.synced || 0)) return;
+      if (absorb(r.data, r.updated) || F.auth.dirty) upload();
+    } catch (e) { /* offline: the next save merges */ }
   }
   /* app.js calls this after every store.set: the account's own keys are saved to the server a few seconds later */
   function changed(key) {
-    if (!signedIn() || !F.auth.profile || !key.endsWith('.' + F.auth.profile)) return;
+    if (!F.auth || !F.auth.profile || !key.endsWith('.' + F.auth.profile)) return;
+    if (!F.auth.dirty) { F.auth.dirty = true; saveAuth(); }   // R1.8: unsaved records on this device
+    if (!signedIn()) return;
     clearTimeout(F.syncTimer);
     F.syncTimer = setTimeout(upload, SYNC_MS);
   }
@@ -109,16 +162,20 @@
 
   /* after sign-in or sign-up: link a profile on this device to the account and fill it from the server */
   async function linkAccount(token, me, isNew) {
-    F.auth = { token, me, profile: null };
+    // the same account signed in here before (its session ended by itself): what both copies agreed on then
+    const before = F.auth && F.auth.me && F.auth.me.username === me.username ? F.auth.base || null : null;
+    F.auth = { token, me, profile: null, synced: 0, base: null };
     saveAuth();
-    let server = null;
-    try { server = isNew ? null : (await api('GET', 'progress')).data; } catch (e) { server = null; }
+    let server = null, updated = 0;
+    try { if (!isNew) { const r = await api('GET', 'progress'); server = r.data; updated = r.updated || 0; } } catch (e) { server = null; }
     const P = A.Profiles;
     let pr = P.list.find(x => x.account === me.username);
     if (server) {
       // an empty student on this device (for example the one left after the last sign-out) becomes the account's
-      if (!pr) { const cur = P.active; pr = !cur.account && !hasRecords(cur.id) ? cur : P.addAccount(me.username); }
-      restore(pr.id, server);
+      if (!pr) { const cur = P.active; pr = !cur.account && !hasRecords(cur.id) ? cur : P.addAccount(me.username); restore(pr.id, server); }
+      // R1.1: records this device still holds for the account (made after its session ended) are merged, not replaced
+      else restore(pr.id, window.Records.mergeAccount(read(pr.id), server, before));
+      F.auth.synced = updated; F.auth.base = window.Records.baseOf(server);
     } else if (!pr) {
       const cur = P.active;
       // the records on this device may move into the new account: ask first (Terry 2026-11-12)
@@ -170,10 +227,17 @@
     }
     updateDot();
   }
-  /* the server no longer knows this session (signed out elsewhere, or 90 days): keep the records here, ask to sign in */
+  /* the server no longer knows this session (a password reset, signed out elsewhere, or 90 days).
+     R1.8: on a shared computer the next student must not see these records. When everything is saved on the server, the
+     account's profile leaves this device as with Sign out. Only records that are not saved yet (or a set in progress) keep
+     it here, so they are not lost: the next sign-in to that account merges them in. The username is never pre-filled. */
   function sessionEnded() {
     if (!F.auth) return;
-    F.auth.token = null; saveAuth();
+    const busy = A.S.screen === 'quiz' || A.S.screen === 'loading';
+    if (!F.auth.dirty && !F.syncTimer && !busy) {
+      dropLocal();
+      setTimeout(() => A.reload(), 0);
+    } else { F.auth.token = null; saveAuth(); }
     F.view = 'login'; F.err = t('acc.err.signed_out');
     updateDot();
   }
@@ -333,14 +397,13 @@
     }
     const v = F.view;
     if (v === 'login') {
-      const prev = F.auth && F.auth.me ? F.auth.me.username : '';
       wrap.append(form('fLogin', async () => {
         const username = val('fUser'), password = ($('#fPass') || {}).value || '';
         if (!username || !password) { F.err = t('acc.err.fill'); return; }
         const r = await api('POST', 'login', { username, password });
         await linkAccount(r.token, r.me, false);
       },
-      field('fUser', 'acc.username', 'text', { autocomplete: 'username', value: prev, autocapitalize: 'none', spellcheck: false, maxLength: 20 }),
+      field('fUser', 'acc.username', 'text', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 20 }),
       field('fPass', 'acc.password', 'password', { autocomplete: 'current-password', maxLength: 200 }),
       errLine(), submit('acc.signIn', 'fLoginGo')));
       wrap.append(btn(t('acc.forgot'), 'ghost small', () => { F.view = 'forgot'; F.err = ''; F.msg = ''; A.render(); focusLater('#fForgotUser'); }, 'fForgot'));
@@ -419,7 +482,6 @@
       field('fResetPass', 'acc.newPassword', 'password', { autocomplete: 'new-password', maxLength: 200, hint: 'acc.passwordHint' }),
       msgLine(), errLine(), submit('acc.saveNew', 'fResetGo')));
     }
-    wrap.append(el('p', 'f-hint f-why', t('acc.why')));
     return wrap;
   }
   /* on the Test site and on this PC the code comes back in the answer instead of by email */
@@ -705,10 +767,10 @@
       try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* ignore */ }
       setTimeout(() => A.go('friends'), 0);
     }
-    if (signedIn()) refresh();
+    if (signedIn()) { refresh(); pull(); }
     startPolling();
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') refresh();
+      if (document.visibilityState === 'visible') { refresh(); pull(); }   // R1.1: the other device's sets come in
       else if (F.syncTimer) upload();   // the app may be closed next: save now
     });
     window.addEventListener('pagehide', () => { if (F.syncTimer) upload(); });
@@ -716,7 +778,7 @@
   }
 
   window.Friends = {
-    init, render, results, homeBox, changed, finished, updateDot, refresh,
+    init, render, results, homeBox, changed, finished, updateDot, refresh, pull, upload,
     get signedIn() { return signedIn(); },
     get account() { return F.auth && F.auth.me ? F.auth.me.username : ''; },
     accountProfile: () => (F.auth ? F.auth.profile : null),

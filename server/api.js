@@ -22,6 +22,11 @@ const SESSION_DAYS = 90;
 const MAX_ACCOUNTS_PER_EMAIL = 5, MAX_FRIENDS = 50;
 const MAX_PROGRESS = 900000, MAX_SET = 200000;   // characters of JSON (a D1 row holds up to 2 MB)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // friend codes: no 0/O or 1/I
+/* R1.3, R1.4, R1.9 (v2.0.0): per-address and per-account caps */
+export const LOGIN_IP_FAIL = 60, LOGIN_IP_ALL = 600;    // per address in 15 minutes: wrong passwords / every sign-in
+export const CODE_IP = 150;                             // sign-up codes per address in an hour (a class signing up together)
+export const PUT_DAY = 300;                             // saves of the records per account in a day (D1 writes are shared)
+export const FRIEND_ADD_DAY = 60;                       // friends/add calls per account in a day, found or not
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, email TEXT NOT NULL, pw TEXT NOT NULL,
@@ -89,6 +94,11 @@ async function limit(db, key, max, windowMs, now) {
   return true;
 }
 const limitOr429 = async (db, key, max, windowMs, now) => { if (!(await limit(db, key, max, windowMs, now))) fail(429, 'too_many'); };
+/* true when key has already been used max times in its window (reads only, counts nothing) */
+async function full(db, key, max, now) {
+  const row = await db.prepare('SELECT n, reset FROM limits WHERE key = ?').bind(key).first();
+  return !!row && row.reset > now && row.n >= max;
+}
 
 /* ---------- email ---------- */
 const MAIL = {
@@ -167,7 +177,7 @@ const ROUTES = {
     if (n.n >= MAX_ACCOUNTS_PER_EMAIL) fail(400, 'email_full');
     await limitOr429(db, 'code:' + email, 1, MIN, now);
     await limitOr429(db, 'codeday:' + email, 10, DAY, now);
-    await limitOr429(db, 'codeip:' + ip, 30, 60 * MIN, now);
+    await limitOr429(db, 'codeip:' + ip, CODE_IP, 60 * MIN, now);
     const code = randomCode6();
     await db.prepare('INSERT OR REPLACE INTO codes (email, hash, expires, tries) VALUES (?, ?, ?, 0)').bind(email, await sha256(email + ':' + code), now + 10 * MIN).run();
     if (dev) return { ok: true, devCode: code };
@@ -196,14 +206,17 @@ const ROUTES = {
     const id = r.meta.last_row_id;
     return { token: await newSession(db, id, now), me: meOf({ name, email, avatar, code }) };
   },
+  /* R1.3: a school or a family shares one address, so the per-address guard counts only wrong passwords (60 in 15
+     minutes); every sign-in from one address, right or wrong, has a much higher cap (600 in 15 minutes) */
   'POST login': async ({ db, body, now, ip }) => {
     const name = normName(str(body.username, 40)), pw = typeof body.password === 'string' ? body.password : '';
-    await limitOr429(db, 'loginip:' + ip, 60, 15 * MIN, now);
+    await limitOr429(db, 'loginall:' + ip, LOGIN_IP_ALL, 15 * MIN, now);
+    if (await full(db, 'loginip:' + ip, LOGIN_IP_FAIL, now)) fail(429, 'too_many');
+    if (await full(db, 'login:' + name, 10, now)) fail(429, 'too_many');
     const u = USERNAME.test(name) ? await db.prepare('SELECT * FROM users WHERE name = ?').bind(name).first() : null;
-    const lim = await db.prepare('SELECT n, reset FROM limits WHERE key = ?').bind('login:' + name).first();
-    if (lim && lim.reset > now && lim.n >= 10) fail(429, 'too_many');
     if (!u || pw.length > PW_MAX || !(await checkPassword(pw, u.pw))) {
       await limit(db, 'login:' + name, 10, 15 * MIN, now);   // only failures count
+      await limit(db, 'loginip:' + ip, LOGIN_IP_FAIL, 15 * MIN, now);
       fail(401, 'wrong_login');
     }
     await db.prepare('DELETE FROM sessions WHERE user_id = ? AND expires <= ?').bind(u.id, now).run();
@@ -266,12 +279,27 @@ const ROUTES = {
     const r = await db.prepare('SELECT data, updated FROM progress WHERE user_id = ?').bind(me.id).first();
     return r ? { data: JSON.parse(r.data), updated: r.updated } : { data: null, updated: 0 };
   },
+  /* R1.1: two devices on one account must not overwrite each other. A save says which copy it was made from
+     (base = the `updated` the device last had). When the server copy has changed since, nothing is written: the answer is
+     409 'stale' with the server copy, the device merges it into its own records and saves again. */
   'PUT progress': async ({ db, me, body, now }) => {
     if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) fail(400, 'bad_input');
     const text = JSON.stringify(body.data);
     if (text.length > MAX_PROGRESS) fail(413, 'too_big');
-    await db.prepare('INSERT OR REPLACE INTO progress (user_id, data, updated) VALUES (?, ?, ?)').bind(me.id, text, now).run();
-    return { ok: true, updated: now };
+    const base = Number.isInteger(body.base) && body.base >= 0 ? body.base : 0;
+    await limitOr429(db, 'put:' + me.id, PUT_DAY, DAY, now);
+    const stale = async () => {
+      const r = await db.prepare('SELECT data, updated FROM progress WHERE user_id = ?').bind(me.id).first();
+      fail(409, 'stale', r ? { data: JSON.parse(r.data), updated: r.updated } : { data: null, updated: 0 });
+    };
+    const cur = await db.prepare('SELECT updated FROM progress WHERE user_id = ?').bind(me.id).first();
+    if (cur && cur.updated !== base) await stale();
+    const updated = cur ? Math.max(now, cur.updated + 1) : now;   // always moves on, even within one millisecond
+    const r = cur
+      ? await db.prepare('UPDATE progress SET data = ?, updated = ? WHERE user_id = ? AND updated = ?').bind(text, updated, me.id, base).run()
+      : await db.prepare('INSERT OR IGNORE INTO progress (user_id, data, updated) VALUES (?, ?, ?)').bind(me.id, text, updated).run();
+    if (!r.meta.changes) await stale();   // another device saved in between
+    return { ok: true, updated };
   },
 
   /* friends: a request waits until the other student accepts */
@@ -287,6 +315,7 @@ const ROUTES = {
   },
   'POST friends/add': async ({ db, me, body, now }) => {
     const raw = str(body.who, 40).trim(), code = raw.toUpperCase().replace(/[-\s]/g, '');
+    await limitOr429(db, 'friendadd:' + me.id, FRIEND_ADD_DAY, DAY, now);   // R1.9: every try counts, found or not
     const u = (/^[A-Z2-9]{6}$/.test(code) ? await db.prepare('SELECT id, name FROM users WHERE code = ?').bind(code).first() : null) ||
       (USERNAME.test(normName(raw)) ? await db.prepare('SELECT id, name FROM users WHERE name = ?').bind(normName(raw)).first() : null);
     if (!u) fail(404, 'no_user');
@@ -328,6 +357,7 @@ const ROUTES = {
     if (!(await isFriend(db, me.id, u.id))) fail(403, 'not_friends');
     const settings = JSON.stringify(cleanSettings(body.settings));
     if (!Array.isArray(body.questions) || !body.questions.length || body.questions.length > 60) fail(400, 'bad_input');
+    if (!body.questions.every(questionOk)) fail(400, 'bad_set');   // R1.2: only questions the app can draw
     const questions = JSON.stringify(body.questions);
     if (questions.length > MAX_SET) fail(413, 'too_big');
     const score = JSON.stringify(cleanScore(body.score, body.questions.length));
@@ -369,6 +399,25 @@ function cleanSettings(s) {
   for (const k of ['year', 'diff', 'count']) if (s[k] !== undefined) out[k] = Number.isInteger(s[k]) && s[k] >= 0 && s[k] <= 100 ? s[k] : fail(400, 'bad_input');
   if (!out.subject) fail(400, 'bad_input');
   return out;
+}
+/* R1.2: a question of the shape the quiz screen draws (js/app.js cardEl, answerText, the review screens). The app checks
+   the same rules before it starts a friend's set (js/app.js questionOk), so a set from an older or broken client cannot
+   leave the friend on an empty quiz screen. */
+const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+const text2 = (v, max) => isObj(v) && typeof v.en === 'string' && v.en.length <= max && (v.zh === undefined || (typeof v.zh === 'string' && v.zh.length <= max));
+export function questionOk(q) {
+  if (!isObj(q) || !text2(q.q, 4000) || typeof q.topic !== 'string' || q.topic.length > 40) return false;
+  if (q.fig !== undefined && q.fig !== null && !(isObj(q.fig) && typeof q.fig.type === 'string')) return false;
+  if (q.sol !== undefined && q.sol !== null && !text2(q.sol, 8000)) return false;
+  if (q.type === 'mc') {
+    return Array.isArray(q.choices) && q.choices.length >= 2 && q.choices.length <= 5 && q.choices.every(c => text2(c, 1000)) &&
+      Number.isInteger(q.correct) && q.correct >= 0 && q.correct < q.choices.length;
+  }
+  if (q.type === 'input') {
+    return Number.isFinite(q.value) && (typeof q.answer === 'string' || Number.isFinite(q.answer)) &&
+      (q.unit === undefined || q.unit === null || typeof q.unit === 'string') && (q.tol === undefined || q.tol === null || Number.isFinite(q.tol));
+  }
+  return false;
 }
 function cleanScore(s, n) {
   if (!s || typeof s !== 'object') fail(400, 'bad_input');

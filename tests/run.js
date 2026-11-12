@@ -262,6 +262,58 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
 /* v1.7.0: badges, suggested year, progress file (js/records.js) */
 {
   const Rec = require('../js/records.js');
+  /* v2.0.0 R1.1: one account on two devices */
+  {
+    const set = (date, extra) => Object.assign({ date, subject: 'maths', n: 5, correct: 4, wrong: [] }, extra);
+    const doc = (history, more) => ({ v: 1, keys: Object.assign({ history }, more || {}), profile: {} });
+    const dates = d => d.keys.history.map(h => h.date);
+    t('R1.1 merge: each device\'s new sets are kept, in date order, none twice', () => {
+      const common = [set(1)], b = Rec.baseOf(doc(common));
+      const m = Rec.mergeAccount(doc([set(1), set(3)]), doc([set(1), set(2)]), b);
+      assert.deepStrictEqual(dates(m), [1, 2, 3]);
+    });
+    t('R1.1 merge: a set removed on one device (in the base) stays removed', () => {
+      const b = Rec.baseOf(doc([set(1), set(2)]));
+      assert.deepStrictEqual(dates(Rec.mergeAccount(doc([set(2)]), doc([set(1), set(2), set(3)]), b)), [2, 3]);
+      assert.deepStrictEqual(dates(Rec.mergeAccount(doc([set(1), set(2), set(4)]), doc([]), b)), [4], 'progress cleared on the other device');
+    });
+    t('R1.1 merge without a base joins both copies', () => {
+      assert.deepStrictEqual(dates(Rec.mergeAccount(doc([set(5)]), doc([set(1), set(5)]), null)), [1, 5]);
+    });
+    t('R1.1 merge: at most 100 sets and 500 badges, the newest kept', () => {
+      const m = Rec.mergeAccount(doc(Array.from({ length: 80 }, (_, i) => set(i * 2))), doc(Array.from({ length: 80 }, (_, i) => set(i * 2 + 1))), null);
+      assert.strictEqual(m.keys.history.length, 100); assert.strictEqual(m.keys.history[99].date, 159);
+    });
+    t('R1.1 merge: badges by date, kind and level', () => {
+      const bd = (date, kind) => ({ date, kind, subject: 'maths', year: 4, diff: 2 });
+      const m = Rec.mergeAccount(doc([], { badges: [bd(1, 'perfect'), bd(3, 'speed')] }), doc([], { badges: [bd(1, 'perfect'), bd(2, 'firstTry')] }), null);
+      assert.deepStrictEqual(m.keys.badges.map(b => b.kind), ['perfect', 'firstTry', 'speed']);
+    });
+    t('R1.1 merge: plan items by id; a removed one stays removed; ticked days are joined', () => {
+      const it = (id, done) => ({ id, day: '2026-11-12', kind: 'study', topic: 'k6frac', every: 7, done });
+      const b = Rec.baseOf(doc([], { plan: [it('a'), it('b')] }));
+      const m = Rec.mergeAccount(doc([], { plan: [it('a', ['2026-11-12']), it('c')] }), doc([], { plan: [it('a', ['2026-11-19']), it('b'), it('d')] }), b);
+      assert.deepStrictEqual(m.keys.plan.map(x => x.id).sort(), ['a', 'c', 'd']);
+      assert.deepStrictEqual(m.keys.plan.find(x => x.id === 'a').done, ['2026-11-12', '2026-11-19']);
+    });
+    t('R1.1 merge: a question reviewed on either device stays reviewed', () => {
+      const w = r => ({ q: { en: 'x' }, reviewed: r });
+      const m = Rec.mergeAccount(doc([set(1, { wrong: [w(false), w(true)] })]), doc([set(1, { wrong: [w(true), w(false)] })]), null);
+      assert.deepStrictEqual(m.keys.history[0].wrong.map(x => !!x.reviewed), [true, true]);
+    });
+    t('R1.1 merge: games keep the best score (highest) and the best time (lowest), and the most plays', () => {
+      const a = { balloons: { best: 30, plays: 4, last: 10, date: 5 }, sudoku: { easy: { best: 90000, plays: 2, last: 90000, date: 1 } } };
+      const s = { balloons: { best: 25, plays: 6, last: 25, date: 9 }, sudoku: { easy: { best: 80000, plays: 1, last: 80000, date: 2 }, hard: { best: 300000, plays: 1 } }, money: { best: 3, plays: 1 } };
+      const g = Rec.mergeAccount(doc([], { games: a }), doc([], { games: s }), null).keys.games;
+      assert.deepStrictEqual(g.balloons, { best: 30, plays: 6, last: 25, date: 9 });
+      assert.deepStrictEqual([g.sudoku.easy.best, g.sudoku.easy.plays, g.sudoku.hard.best, g.money.best], [80000, 2, 300000, 3]);
+    });
+    t('R1.1 merge: this device\'s settings and profile win; the other copy fills what is missing', () => {
+      const m = Rec.mergeAccount({ keys: { settings: { year: 5 } }, profile: { schoolYear: 5 } }, { keys: { settings: { year: 8 } }, profile: { schoolYear: 8, dob: '2016-03' } }, null);
+      assert.deepStrictEqual([m.keys.settings.year, m.profile.schoolYear, m.profile.dob], [5, 5, '2016-03']);
+      assert.deepStrictEqual(Rec.mergeAccount({ keys: {} }, { keys: { settings: { year: 8 } } }, null).keys.settings, { year: 8 });
+    });
+  }
   const base = { subject: 'maths', year: 4, diff: 2, n: 10, correct: 10, firstTry: 10, seconds: 100 };
   t('badges: all three for a fast, first-try, perfect set', () => assert.deepStrictEqual(Rec.awardsFor(base), ['perfect', 'firstTry', 'speed']));
   t('badges: none below 100%', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, correct: 9 }), []));
@@ -1129,8 +1181,19 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('W8: every error the server can send has words in both languages', () => {
     const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
     const codes = new Set([...api.matchAll(/fail\(\d+, '(\w+)'/g)].map(m => m[1]));
-    ['bad_input', 'bad_origin', 'no_route'].forEach(c => codes.delete(c));   // not reachable from the app's own forms
+    // R1.5 (v2.0.0): bad_input and no_route have words too; bad_origin goes to a page on another site, never to the app
+    codes.delete('bad_origin');
+    assert.ok(codes.has('bad_input') && codes.has('no_route') && codes.has('bad_set') && codes.has('stale'));
     assert.deepStrictEqual([...codes].filter(c => !S.en['acc.err.' + c] || !S.zh['acc.err.' + c]), []);
+  });
+  t('R1.6: no always-visible "why an account" paragraph under the account panel', () => {
+    assert.ok(!('acc.why' in S.en) && !('acc.why' in S.zh) && !/f-why/.test(fr + fs.readFileSync(path.join(root, 'css/style.css'), 'utf8')));
+  });
+  t('R1.8: the sign-in box never fills in the username of an earlier session', () => {
+    assert.ok(!/value: prev/.test(fr) && !/const prev = F\.auth/.test(fr));
+  });
+  t('R1.2: startChallenge refuses a set that fails questionOk', () => {
+    assert.ok(/if \(!Array\.isArray\(questions\) \|\| !questions\.length \|\| questions\.length > 60 \|\| !questions\.every\(questionOk\)\)/.test(app));
   });
   t('W8: no English letters in the Chinese account words, except names, codes and numbers in braces', () => {
     const bad = Object.keys(S.zh).filter(k => /^(acc|fr|rel\.2\.0\.0)\./.test(k)).filter(k => /[A-Za-z]{2,}/.test(S.zh[k].replace(/\{\w+\}/g, '')));

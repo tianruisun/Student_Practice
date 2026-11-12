@@ -1947,14 +1947,29 @@ async function run(site) {
       [SETTINGS]: settings({ year: 5 })
     });
     /* answer every question of the set on screen (Pages view); wrong: the question numbers (0-based) to get wrong */
+    // R1.7 (v2.0.0): under load a click or a fill could be lost (the flows suite once gave A 2/5 instead of 4/5). Each
+    // answer is now read back from the page and entered again until it is there, before Finish; a run that still cannot
+    // enter it fails here, by name, instead of as a wrong score five checks later.
     const answerSet = async (page, wrong = []) => {
       if ((await page.getAttribute('#viewPages', 'aria-pressed')) !== 'true') await page.click('#viewPages');
+      await page.waitForFunction(() => document.querySelectorAll('#qList .qcard').length > 1 || (window.__testAnswers() || []).length === 1);
       const answers = await page.evaluate(() => window.__testAnswers());
-      for (let i = 0; i < answers.length; i++) {
-        if (i % 5 === 0 && i > 0) await page.click('#nextPage');
-        const a = answers[i];
-        if (a.type === 'mc') { const n = await page.locator('#qc' + i + ' .choice').count(); await page.locator('#qc' + i + ' .choice').nth(wrong.includes(i) ? (a.correct + 1) % n : a.correct).click(); }
-        else await page.fill('#ans' + i, wrong.includes(i) ? '987654321' : String(a.answer));
+      const want = answers.map((a, i) => (a.type === 'mc' ? null : wrong.includes(i) ? '987654321' : String(a.answer)));
+      const pick = async (i, a) => { const n = await page.locator('#qc' + i + ' .choice').count(); return wrong.includes(i) ? (a.correct + 1) % n : a.correct; };
+      const isThere = async (i, a) => (a.type === 'mc'
+        ? page.locator('#qc' + i + ' .choice').nth(await pick(i, a)).getAttribute('aria-checked').then(v => v === 'true')
+        : page.inputValue('#ans' + i).then(v => v === want[i]));
+      for (let p = 0; p * 5 < answers.length; p++) {
+        if (p > 0) { await page.click('#nextPage'); await page.waitForSelector('#qc' + p * 5); }
+        for (let i = p * 5; i < Math.min(answers.length, p * 5 + 5); i++) {
+          const a = answers[i];
+          for (let k = 0; k < 4 && !(await isThere(i, a)); k++) {
+            if (k) console.log(`    (answerSet: question ${i + 1} entered again, try ${k + 1})`);
+            if (a.type === 'mc') await page.locator('#qc' + i + ' .choice').nth(await pick(i, a)).click();
+            else await page.fill('#ans' + i, want[i]);
+          }
+          if (!(await isThere(i, a))) throw new Error('answerSet: question ' + (i + 1) + ' could not be answered');
+        }
       }
       await page.click('#finishBtn');
       return answers;
@@ -2169,6 +2184,100 @@ async function run(site) {
         check('W8 offline: no page errors', errors.length === 0, errors.join(' | '));
         await dropAccount(saved.data.token, 'pass-' + name);
         await context.close();
+      });
+
+      /* R1.1 (v2.0.0): one account on a phone and a tablet */
+      const addSet = (page, date) => page.evaluate(d => {
+        const h = JSON.parse(localStorage.getItem('sp.history.p1') || '[]');
+        h.push({ date: d, subject: 'maths', year: 5, topic: 'mixed', diff: 2, n: 5, correct: 4, stars: 2, byTopic: {}, wrong: [] });
+        localStorage.setItem('sp.history.p1', JSON.stringify(h)); window.Friends.changed('sp.history.p1');
+      }, date);
+      const localDates = page => page.evaluate(() => (JSON.parse(localStorage.getItem('sp.history.p1') || '[]')).map(h => h.date));
+      const serverDates = async token => { const r = await apiCall('GET', 'progress', undefined, token); return ((r.data && r.data.data && r.data.data.keys.history) || []).map(h => h.date); };
+      await flow('v2.0 R1.1 one account on two devices keeps the records of both', async () => {
+        const name = tag(), pw = 'pass-' + name;
+        const A = await makeAccount(name, pw), A2 = (await apiCall('POST', 'login', { username: name, password: pw })).data;
+        const phone = await signedInPage(A), tablet = await signedInPage(A2);
+        const t0 = Date.now() - 3 * 3600e3;
+        await addSet(phone.page, t0); check('R1.1 the phone saves its set', await phone.page.evaluate(() => window.Friends.upload()));
+        await addSet(tablet.page, t0 + 1000); check('R1.1 the tablet saves its own set on top (merged, not replaced)', await tablet.page.evaluate(() => window.Friends.upload()));
+        check('R1.1 the server has both sets', JSON.stringify(await serverDates(A.token)) === JSON.stringify([t0, t0 + 1000]), JSON.stringify(await serverDates(A.token)));
+        await addSet(phone.page, t0 + 2000); await phone.page.evaluate(() => window.Friends.upload());
+        check('R1.1 the phone\'s next set adds to both, and the phone now has all three', JSON.stringify(await serverDates(A.token)) === JSON.stringify([t0, t0 + 1000, t0 + 2000]) && (await localDates(phone.page)).length === 3, JSON.stringify(await serverDates(A.token)));
+        await tablet.page.evaluate(() => window.Friends.pull());
+        check('R1.1 the tablet reads the phone\'s sets when it comes back to the screen', JSON.stringify(await localDates(tablet.page)) === JSON.stringify([t0, t0 + 1000, t0 + 2000]), JSON.stringify(await localDates(tablet.page)));
+        // a set made on the tablet while its session had ended is merged at the next sign-in, not overwritten
+        await tablet.page.evaluate(() => { const a = JSON.parse(localStorage.getItem('sp.auth')); a.token = null; localStorage.setItem('sp.auth', JSON.stringify(a)); });
+        await tablet.page.reload(); await tablet.page.waitForSelector('#helloText');
+        await addSet(tablet.page, t0 + 3000);
+        await tablet.page.click('.tab[data-go="friends"]');
+        await tablet.page.fill('#fUser', name); await tablet.page.fill('#fPass', pw); await tablet.page.click('#fLoginGo');
+        await tablet.page.waitForSelector('#fSignOut');
+        let after = [];
+        for (let i = 0; i < 20 && after.length < 4; i++) { after = await serverDates(A.token); if (after.length < 4) await tablet.page.waitForTimeout(250); }
+        check('R1.1 after signing in again, the set made meanwhile is added to the account', JSON.stringify(after) === JSON.stringify([t0, t0 + 1000, t0 + 2000, t0 + 3000]), JSON.stringify(after));
+        check('R1.1: no page errors', phone.errors.length === 0 && tablet.errors.length === 0, phone.errors.concat(tablet.errors).join(' | '));
+        await dropAccount(A.token, pw);
+        await phone.context.close(); await tablet.context.close();
+      });
+
+      /* R1.8 (v2.0.0): a session that ends by itself on a shared computer */
+      await flow('v2.0 R1.8 a session ended elsewhere takes the saved records off this device', async () => {
+        const name = tag(), pw = 'pass-' + name;
+        const A = await makeAccount(name, pw);
+        const { context, page, errors } = await signedInPage(A);
+        await addSet(page, Date.now() - 60e3); await page.evaluate(() => window.Friends.upload());
+        const r = await apiCall('POST', 'reset', { username: name });   // a password reset ends every session
+        await apiCall('POST', 'reset/finish', { token: r.data.devToken, password: pw + '2' });
+        await page.click('.tab[data-go="friends"]');
+        await page.evaluate(() => window.Friends.refresh());
+        await page.waitForSelector('#fLogin');
+        const left = await page.evaluate(() => ({ auth: localStorage.getItem('sp.auth'), prof: JSON.parse(localStorage.getItem('sp.profiles')), hist: localStorage.getItem('sp.history.p1') }));
+        check('R1.8 everything was saved, so the account and its records leave this device', left.auth === null && left.hist === null && !left.prof.list.some(p => p.account), JSON.stringify(left));
+        check('R1.8 the sign-in box is empty (no earlier username)', (await page.inputValue('#fUser')) === '');
+        check('R1.8 it says to sign in again', await errShown(page, 'Please sign in again.'), await page.textContent('#fErr'));
+        // unsaved records stay (they would be lost otherwise) until that account signs in again
+        const B = await makeAccount(tag(), 'pass-b-' + name);
+        const p2 = await signedInPage(B);
+        await addSet(p2.page, Date.now() - 30e3);   // its save waits 4 s; the session ends before that
+        await apiCall('POST', 'logout', {}, B.token);
+        await p2.page.click('.tab[data-go="friends"]');
+        await p2.page.evaluate(() => window.Friends.refresh());
+        await p2.page.waitForSelector('#fLogin');
+        const kept = await p2.page.evaluate(() => (JSON.parse(localStorage.getItem('sp.history.p1') || '[]')).length);
+        check('R1.8 records not saved yet are kept on the device', kept === 1, String(kept));
+        check('R1.8: no page errors', errors.length === 0 && p2.errors.length === 0, errors.concat(p2.errors).join(' | '));
+        await dropAccount((await apiCall('POST', 'login', { username: name, password: pw + '2' })).data.token, pw + '2');
+        await dropAccount((await apiCall('POST', 'login', { username: B.me.username, password: 'pass-b-' + name })).data.token, 'pass-b-' + name);
+        await context.close(); await p2.context.close();
+      });
+
+      /* R1.2 (v2.0.0): a set the app cannot draw */
+      await flow('v2.0 R1.2 a friend\'s set the app cannot draw is refused in words', async () => {
+        const na = tag(), nb = tag();
+        const A = await makeAccount(na, 'pass-' + na, 1), B = await makeAccount(nb, 'pass-' + nb, 2);
+        await apiCall('POST', 'friends/add', { who: nb }, A.token);
+        await apiCall('POST', 'friends/answer', { username: na, accept: true }, B.token);
+        const good = [{ q: { en: '1 + 1 = ?', zh: '1 + 1 = ?' }, type: 'input', value: 2, answer: '2', topic: 'add' }];
+        const sent = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', year: 5, topic: 'mixed', diff: 2, count: 1 }, questions: good, score: { ok: [true] } }, A.token);
+        const refused = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', count: 1 }, questions: [{ type: 'input' }], score: { ok: [true] } }, A.token);
+        check('R1.2 the server refuses a set with a question of the wrong shape', refused.status === 400 && refused.data.error === 'bad_set', JSON.stringify(refused));
+        const pb = await signedInPage(B);
+        // an older or broken client could still have stored one: the answer is changed on its way to the app
+        await pb.page.route('**/api/challenges/' + sent.data.id, async route => {
+          const res = await route.fetch(); const body = await res.json(); body.questions = [{ type: 'input' }];
+          await route.fulfill({ response: res, json: body });
+        });
+        await pb.page.click('.tab[data-go="friends"]');
+        await pb.page.waitForSelector('#fTabCh');
+        await pb.page.click('#fTabCh');
+        await pb.page.getByRole('button', { name: 'Do it' }).click();
+        await pb.page.waitForFunction(() => /cannot be opened/.test(document.querySelector('#toast').textContent));
+        const st = await pb.page.evaluate(() => ({ quiz: !document.querySelector('#screen-quiz').hidden, friends: !document.querySelector('#screen-friends').hidden, nav: document.querySelector('.bottom-nav').getBoundingClientRect().height }));
+        check('R1.2 the friend stays on Friends with the bottom bar, and the toast says why', !st.quiz && st.friends && st.nav > 40 && (await pb.page.textContent('#toast')) === 'This set cannot be opened in this version of the app. Ask your friend to send a new one.', JSON.stringify(st));
+        check('R1.2: no page errors', pb.errors.length === 0, pb.errors.join(' | '));
+        await dropAccount(A.token, 'pass-' + na); await dropAccount(B.token, 'pass-' + nb);
+        await pb.context.close();
       });
     }
 

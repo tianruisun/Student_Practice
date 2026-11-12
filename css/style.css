@@ -1129,7 +1129,6 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .f-field input:focus, .f-field select:focus { border-color: var(--pri); outline: 3px solid color-mix(in srgb, var(--pri) 25%, transparent); }
 #fCode { font-size: 1.4rem; letter-spacing: 0.3em; font-weight: 700; }
 .f-hint { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: anywhere; }
-.f-why { margin-top: 0.9rem; text-align: center; }
 .f-err { margin: 0.3rem 0 0; color: var(--bad); font-weight: 600; font-size: 0.88rem; }
 .f-msg { margin: 0.3rem 0 0; color: var(--ok); font-weight: 600; font-size: 0.88rem; }
 .f-dev { margin: 0; padding: 0.4rem 0.6rem; border-radius: 10px; background: var(--warn-soft); font-size: 0.85rem; }

@@ -260,7 +260,68 @@
   const sessionKey = h => [h.date, h.subject, h.n, h.correct].join('|');
   const badgeKey = b => [b.date, b.kind || 'perfect', levelOf(b)].join('|');
 
-  const api = { KINDS, MIN_QUESTIONS, SPEED_SECONDS, awardsFor, levelOf, collection, suggestYear, yearByAge, COLUMNS, toCSV, parseCSV, fromCSV, merge, sessionKey, badgeKey };
+  /* ---------- an account's records on two devices (v2.0.0 R1.1) ----------
+     data: { v, keys: { history, settings, badges, games, plan }, profile } as js/friends.js sends it.
+     A three-way merge: `base` lists the record keys both copies last agreed on (baseOf), so a record that is in one copy
+     and not in the other was either added there (kept) or removed on the other side (dropped, when base has it).
+     Without a base (null) nothing counts as removed: the two copies are simply joined. */
+  const LISTS = { history: [sessionKey, 100], badges: [badgeKey, 500], plan: [p => String(p && p.id), 300] };
+  const arr = v => (Array.isArray(v) ? v.filter(x => x && typeof x === 'object') : []);
+  function baseOf(data) {
+    const k = (data && data.keys) || {}, out = {};
+    for (const [name, [keyOf]] of Object.entries(LISTS)) out[name] = arr(k[name]).map(keyOf);
+    return out;
+  }
+  function join3(local, server, base, keyOf) {
+    const was = base ? new Set(base) : new Set(), L = new Map(), S = new Map(), out = [];
+    arr(local).forEach(x => L.set(keyOf(x), x));
+    arr(server).forEach(x => S.set(keyOf(x), x));
+    for (const [k, x] of L) { if (S.has(k)) out.push(both(x, S.get(k))); else if (!was.has(k)) out.push(x); }
+    for (const [k, x] of S) if (!L.has(k) && !was.has(k)) out.push(x);
+    return out;
+  }
+  /* the same record on both devices: this device's copy, with what the other device added to it (reviewed questions,
+     ticked plan days) */
+  function both(a, b) {
+    const x = Object.assign({}, a);
+    if (Array.isArray(a.wrong) && Array.isArray(b.wrong) && a.wrong.length === b.wrong.length) x.wrong = a.wrong.map((w, i) => (b.wrong[i] && b.wrong[i].reviewed && w && !w.reviewed ? Object.assign({}, w, { reviewed: true }) : w));
+    if (Array.isArray(a.done) || Array.isArray(b.done)) x.done = [...new Set([...(a.done || []), ...(b.done || [])])].sort().slice(-60);
+    return x;
+  }
+  /* games: { id: { best, plays, last, date } } or, for the timed puzzles, { id: { level: { best (ms), … } } } */
+  function joinGame(a, b, lowerBetter) {
+    if (!isObj(a)) return b; if (!isObj(b)) return a;
+    const newer = (b.date || 0) > (a.date || 0) ? b : a;
+    const bests = [a.best, b.best].filter(v => Number.isFinite(v) && v > 0);
+    return Object.assign({}, newer, { best: bests.length ? (lowerBetter ? Math.min(...bests) : Math.max(...bests)) : (newer.best || 0), plays: Math.max(a.plays || 0, b.plays || 0) });
+  }
+  function joinGames(a, b) {
+    if (!isObj(a)) return isObj(b) ? b : undefined; if (!isObj(b)) return a;
+    const out = Object.assign({}, b, a);
+    for (const id of Object.keys(a)) {
+      if (!isObj(b[id])) continue;
+      const x = a[id], y = b[id];
+      if ('best' in x || 'best' in y) out[id] = joinGame(x, y, false);
+      else { out[id] = Object.assign({}, y, x); for (const lv of Object.keys(x)) if (isObj(y[lv])) out[id][lv] = joinGame(x[lv], y[lv], true); }
+    }
+    return out;
+  }
+  function mergeAccount(local, server, base) {
+    const lk = (local && local.keys) || {}, sk = (server && server.keys) || {}, keys = {};
+    for (const [name, [keyOf, cap]] of Object.entries(LISTS)) {
+      if (lk[name] === undefined && sk[name] === undefined) continue;
+      let l = join3(lk[name], sk[name], base && base[name], keyOf);
+      if (name !== 'plan') l.sort((x, y) => (x.date || 0) - (y.date || 0));
+      keys[name] = l.slice(-cap);
+    }
+    const settings = lk.settings !== undefined ? lk.settings : sk.settings;   // the choices made on the device in use
+    if (settings !== undefined) keys.settings = settings;
+    const games = joinGames(lk.games, sk.games);
+    if (games !== undefined) keys.games = games;
+    return { v: 1, keys, profile: Object.assign({}, (server && server.profile) || {}, (local && local.profile) || {}) };
+  }
+
+  const api = { KINDS, MIN_QUESTIONS, SPEED_SECONDS, awardsFor, levelOf, collection, suggestYear, yearByAge, COLUMNS, toCSV, parseCSV, fromCSV, merge, sessionKey, badgeKey, baseOf, mergeAccount };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.Records = api;
 })(typeof window !== 'undefined' ? window : globalThis);

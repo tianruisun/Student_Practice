@@ -620,16 +620,35 @@
   }
 
   /* v2.0.0: a friend's challenge, with exactly the questions the friend had */
+  /* R1.2 (v2.0.0): only a set whose every question has the shape cardEl draws is started; the server checks the same
+     rules (server/api.js questionOk). Returns false, with a toast in words, for any other set. */
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+  const text2 = (v, max) => isObj(v) && typeof v.en === 'string' && v.en.length <= max && (v.zh === undefined || (typeof v.zh === 'string' && v.zh.length <= max));
+  function questionOk(q) {
+    if (!isObj(q) || !text2(q.q, 4000) || typeof q.topic !== 'string' || q.topic.length > 40) return false;
+    if (q.fig !== undefined && q.fig !== null && !(isObj(q.fig) && typeof q.fig.type === 'string')) return false;
+    if (q.sol !== undefined && q.sol !== null && !text2(q.sol, 8000)) return false;
+    if (q.type === 'mc') return Array.isArray(q.choices) && q.choices.length >= 2 && q.choices.length <= 5 && q.choices.every(c => text2(c, 1000)) && Number.isInteger(q.correct) && q.correct >= 0 && q.correct < q.choices.length;
+    if (q.type === 'input') return Number.isFinite(q.value) && (typeof q.answer === 'string' || Number.isFinite(q.answer)) && (q.unit === undefined || q.unit === null || typeof q.unit === 'string') && (q.tol === undefined || q.tol === null || Number.isFinite(q.tol));
+    return false;
+  }
   function startChallenge(questions, settings, challenge) {
-    if (!Array.isArray(questions) || !questions.length) return toast(t('acc.err.server'));
+    if (!Array.isArray(questions) || !questions.length || questions.length > 60 || !questions.every(questionOk)) { toast(t('acc.err.bad_set'), 6000); return false; }
+    const before = S.screen;
     S.lastQuizSettings = Object.assign({}, S.settings, settings);
     S.quiz = {
       exam: false, questions, i: 0, page: 0, results: [], started: Date.now(),
       st: questions.map(() => ({ status: 'answering', tries: 0, given: [], sel: null, fbKey: '', draft: '' })),
       settings: Object.assign({ subject: 'maths', year: S.settings.year, diff: S.settings.diff, topic: 'mixed' }, settings), challenge
     };
-    go('quiz');
+    try { go('quiz'); }
+    catch (e) {   // a question that still cannot be drawn: back where the student was, with the bottom bar
+      console.warn('challenge set could not be drawn:', e);
+      S.quiz = null; go(before === 'quiz' ? 'friends' : before || 'friends'); toast(t('acc.err.bad_set'), 6000);
+      return false;
+    }
     focusCardInput(0);
+    return true;
   }
 
   /* reinforcement: n similar questions for each ticked review item */

@@ -6,8 +6,10 @@
 self.RELEASES = [
   { v: '1.12.0', items: [
     { id: 'modes', show: '#modeCards' },
-    { id: 'week', show: '#weekCard' },
+    { id: 'school', show: '#schoolSwitch' },
+    { id: 'plan', show: '#planBtn' },
     { id: 'icons', show: '#cardPractice' },
+    { id: 'friends', show: '#friendsBox' },
     { id: 'settings', show: '#navParent' },
     { id: 'relax', show: '#navGames' }
   ] },

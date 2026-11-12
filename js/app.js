@@ -42,7 +42,7 @@
     },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour', games: 'sp.games', news: 'sp.news' };
+  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour', games: 'sp.games', news: 'sp.news', plan: 'sp.plan' };
   /* This app's keys that are not a student's data: the language, the "moved" flag, the tour flag and (v1.11.0) the last
      version whose What's new this browser has seen. They do not make a
      browser look used (below), and a Forgot-PIN erase keeps them (eraseAll). One list, so the two cannot drift apart. */
@@ -81,11 +81,12 @@
       setKey() { return K.settings + '.' + P.active; },
       badgeKey() { return K.badges + '.' + P.active; },
       gameKey() { return K.games + '.' + P.active; },
+      planKey() { return K.plan + '.' + P.active; },
       select(id) { P.active = id; store.set(K.profiles, P); },
       add(name) { if (P.list.length >= MAX_PROFILES) return null; let n = 1; while (P.list.some(x => x.id === 'p' + n)) n++; const pr = { id: 'p' + n, name }; P.list.push(pr); P.active = pr.id; store.set(K.profiles, P); return pr; },
       // fields: name, schoolYear (0 = Kindergarten to 12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
       update(id, fields) { const pr = P.list.find(x => x.id === id); if (pr) { Object.assign(pr, fields); store.set(K.profiles, P); } },
-      remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
+      remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); store.del(K.plan + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
     };
   })();
   const histKey = () => Profiles.histKey();
@@ -115,7 +116,7 @@
     S.screen = screen;
     document.querySelectorAll('.screen').forEach(s => { s.hidden = s.id !== 'screen-' + screen; });
     document.querySelectorAll('.tab').forEach(b => {
-      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading', 'study'].includes(screen)) ||
+      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading', 'study', 'plan'].includes(screen)) ||
         (b.dataset.go === 'games' && (screen === 'game' || screen === 'puzzle'));
       if (cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
@@ -138,7 +139,7 @@
     const inGame = S.screen === 'game' || S.screen === 'puzzle';
     document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || inGame);
     document.body.classList.toggle('in-game', inGame);   // the header too: a round needs the whole screen on a small phone
-    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
+    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, plan: renderPlan, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
   }
 
   /* ---------- HOME ---------- */
@@ -171,6 +172,19 @@
     test: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffe2b8"/><rect x="21" y="7" width="6" height="5" rx="1.5" fill="#f08a1c"/><circle cx="24" cy="27" r="13" fill="#fff" stroke="#f08a1c" stroke-width="3"/><path d="M24 27V19" stroke="#e8483f" stroke-width="2.6" stroke-linecap="round"/><path d="M24 27l5 3" stroke="#3b2f86" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="27" r="1.8" fill="#3b2f86"/>'),
     relax: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffd0e1"/><ellipse cx="20" cy="20" rx="8" ry="10" fill="#ff5c8d"/><ellipse cx="30" cy="23" rx="7" ry="9" fill="#ffb02e"/><path d="M20 30v8M30 32v6" stroke="#9a8fbf" stroke-width="1.4"/><ellipse cx="17" cy="16" rx="2" ry="3" fill="#fff" opacity=".6"/>')
   };
+  /* v1.12.0 W7 (Terry: "里面的图像大一点 ... 再配上一些可爱的图"): a big picture on each card, the owl with today's plan,
+     an empty seat for each friend to come */
+  const ART96 = d => `<svg viewBox="0 0 96 96" aria-hidden="true">${d}</svg>`;
+  const MODE_ART = {
+    study: ART96('<ellipse cx="48" cy="84" rx="30" ry="5" fill="#000" opacity=".08"/><path d="M14 26c10-5 22-5 34 3v52c-12-8-24-8-34-3z" fill="#34c27b"/><path d="M82 26c-10-5-22-5-34 3v52c12-8 24-8 34-3z" fill="#2aa868"/><path d="M19 30c8-3 17-2 25 3v42c-8-5-17-6-25-3z" fill="#fff"/><path d="M77 30c-8-3-17-2-25 3v42c8-5 17-6 25-3z" fill="#f4fff8"/><g stroke="#9bdcb9" stroke-width="2.4" stroke-linecap="round"><path d="M24 40h14M24 47h14M24 54h10M58 40h14M58 47h14M58 54h10"/></g><circle cx="70" cy="18" r="7" fill="#ffd166"/><path d="M70 8v-3M80 18h3M77 11l2-2" stroke="#ffd166" stroke-width="2.4" stroke-linecap="round"/><circle cx="31" cy="64" r="3" fill="#ff7aa2"/><circle cx="65" cy="64" r="3" fill="#ff7aa2"/>'),
+    practice: ART96('<ellipse cx="46" cy="86" rx="28" ry="5" fill="#000" opacity=".08"/><rect x="18" y="14" width="50" height="66" rx="8" fill="#fff" stroke="#c9bdf5" stroke-width="3"/><rect x="30" y="9" width="26" height="11" rx="5" fill="#8f6bf0"/><path d="M27 36l5 5 9-10M27 56l5 5 9-10" stroke="#34c27b" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M47 37h12M47 57h10" stroke="#c9bdf5" stroke-width="3" stroke-linecap="round"/><g transform="rotate(38 70 50)"><rect x="64" y="22" width="12" height="48" rx="3" fill="#ffb03a"/><rect x="64" y="22" width="12" height="8" rx="3" fill="#ff7aa2"/><path d="M64 70h12l-6 11z" fill="#ffe0b3"/><path d="M68 77h4l-2 4z" fill="#3a2f55"/></g>'),
+    test: ART96('<ellipse cx="48" cy="88" rx="26" ry="5" fill="#000" opacity=".08"/><rect x="41" y="8" width="14" height="9" rx="3" fill="#f08a24"/><path d="M70 22l6-6" stroke="#f08a24" stroke-width="5" stroke-linecap="round"/><circle cx="48" cy="52" r="32" fill="#f39a2e"/><circle cx="48" cy="52" r="25" fill="#fff"/><g stroke="#f3c48a" stroke-width="2.4" stroke-linecap="round"><path d="M48 31v4M48 69v4M27 52h4M65 52h4"/></g><path d="M48 52V38" stroke="#3a2f55" stroke-width="4" stroke-linecap="round"/><path d="M48 52l10 7" stroke="#e8554e" stroke-width="3.5" stroke-linecap="round"/><circle cx="48" cy="52" r="4" fill="#3a2f55"/><circle cx="37" cy="60" r="2.6" fill="#ffb3c7"/>'),
+    relax: ART96('<path d="M38 52c-2 12 6 18 2 32M60 50c2 12-4 20 0 34" stroke="#b49ad8" stroke-width="2" fill="none"/><ellipse cx="37" cy="32" rx="17" ry="21" fill="#ff6f9c"/><ellipse cx="60" cy="34" rx="15" ry="19" fill="#ffb13d"/><path d="M33 53l4-3 4 3zM56 53l4-3 4 3z" fill="#e05585"/><ellipse cx="31" cy="24" rx="4" ry="7" fill="#fff" opacity=".55"/><ellipse cx="55" cy="27" rx="3.5" ry="6" fill="#fff" opacity=".55"/><path d="M70 14l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#ffd166"/><path d="M18 60l1.5 3.5 3.5 1.5-3.5 1.5L18 70l-1.5-3.5L13 65l3.5-1.5z" fill="#8f6bf0"/>')
+  };
+  const OWL = '<svg viewBox="0 0 80 80" aria-hidden="true"><ellipse cx="40" cy="74" rx="22" ry="4" fill="#000" opacity=".08"/><path d="M16 30c0-14 10-22 24-22s24 8 24 22v24c0 12-10 18-24 18S16 66 16 54z" fill="#8f6bf0"/><path d="M16 14l9 8M64 14l-9 8" stroke="#8f6bf0" stroke-width="7" stroke-linecap="round"/><ellipse cx="40" cy="54" rx="15" ry="14" fill="#cdbdfc"/><path d="M33 50q7 4 14 0M33 57q7 4 14 0" stroke="#a88ff5" stroke-width="2" fill="none"/><circle cx="30" cy="32" r="10" fill="#fff"/><circle cx="50" cy="32" r="10" fill="#fff"/><circle cx="31" cy="33" r="5" fill="#2a2340"/><circle cx="49" cy="33" r="5" fill="#2a2340"/><circle cx="32.5" cy="31.5" r="1.6" fill="#fff"/><circle cx="50.5" cy="31.5" r="1.6" fill="#fff"/><path d="M36 41l4 5 4-5z" fill="#ffb03a"/><path d="M22 18h36l-18-9z" fill="#2a2340"/><rect x="38" y="9" width="4" height="4" fill="#2a2340"/><path d="M58 18v8" stroke="#ffd166" stroke-width="2"/><circle cx="58" cy="27" r="2.4" fill="#ffd166"/><circle cx="24" cy="42" r="3" fill="#ff9ebd" opacity=".7"/><circle cx="56" cy="42" r="3" fill="#ff9ebd" opacity=".7"/></svg>';
+  const SEAT = '<svg viewBox="0 0 56 56" aria-hidden="true"><circle class="seat-bg" cx="28" cy="28" r="27"/><circle class="seat-fg" cx="28" cy="23" r="10"/><path class="seat-fg" d="M11 49q17-18 34 0z"/></svg>';
+  const PLAN_EMOJI = { maths: '✏️', ga: '💡', study: '📖', sel: '⏱️', comp: '🏆' };
+
   /* an emoji in front of each topic in the topic list (Terry, v1.12.0: "okay for your suggestion for now") */
   const TOPIC_ICON = {
     mixed: '🌟', place: '🔢', addsub: '➕', muldiv: '✖️', mental: '🧠', numth: '🔍', pattern: '🔁', frac: '🍕', dec: '🔸',
@@ -254,32 +268,173 @@
     } else st.subject = ['sel', 'comp'].includes(st.testSubject) ? st.testSubject : 'sel';
   }
 
-  /* ---------- v1.12.0 W6 (Option B): Home never changes; a card opens the sheet ---------- */
+  /* ---------- v1.12.0 W6/W7: Home never changes; a card opens the sheet ---------- */
   const dayKey = d => { const x = new Date(d); return x.getFullYear() + '-' + (x.getMonth() + 1) + '-' + x.getDate(); };
-  function renderHomeTop() {
-    const h = (store.get(histKey(), []) || []).filter(x => x && typeof x === 'object' && Number.isFinite(x.date));
-    // this week, Monday to Sunday, and the days in a row up to today (or up to yesterday, if not yet today)
-    const done = new Set(h.map(x => dayKey(x.date))), now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-    const ol = $('#weekDays'); ol.innerHTML = '';
-    let inWeek = 0;
-    for (let k = 0; k < 7; k++) {
-      const d = new Date(monday); d.setDate(monday.getDate() + k);
-      const on = done.has(dayKey(d)), isToday = d.getTime() === today.getTime();
-      if (on) inWeek++;
-      const li = el('li', 'wd' + (on ? ' on' : '') + (isToday ? ' today' : '')); li.append(el('i'), el('span', '', t('day.' + (k + 1)))); ol.append(li);
-    }
-    let run = 0; const d = new Date(today);
+  const dOnly = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const isoDay = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const fromIso = v => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof v === 'string' ? v : ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+  const locale = () => (lang() === 'zh' ? 'zh-CN' : 'en-AU');
+  const historyList = () => (store.get(histKey(), []) || []).filter(x => x && typeof x === 'object' && Number.isFinite(x.date));
+  // the days in a row up to today (or up to yesterday, if not yet today), by the phone's own date
+  function runDays() {
+    const done = new Set(historyList().map(x => dayKey(x.date))), d = dOnly(new Date());
+    let run = 0;
     if (!done.has(dayKey(d))) d.setDate(d.getDate() - 1);
     while (done.has(dayKey(d))) { run++; d.setDate(d.getDate() - 1); }
-    $('#weekStreak').textContent = run ? t(run === 1 ? 'home.streak1' : 'home.streak', { n: run }) : t('home.streak0');
-    $('#weekStreak').classList.toggle('none', !run);
-    $('#weekSr').textContent = t('home.weekSr', { n: inWeek });
-    // the four cards: their icons (the words come from data-i18n)
-    document.querySelectorAll('#modeCards .mode-card').forEach(b => { b.querySelector('.mc-ic').innerHTML = MODE_ICON[b.dataset.mode]; });
-    $('#modeCards').dataset.mode = homeMode(S.settings);
+    return run;
+  }
+
+  /* ---------- v1.12.0 W7: My plan (Terry: "calendar, 点击后出现full calendar, 提供用户自定义学习计划") ----------
+     A plan item is one thing to do on a day: a Practice set (Maths or General Ability, a topic and how many questions),
+     a K–6 lesson, or a Selective / Competition paper. "Every week" repeats it on the same weekday. A parent's item
+     (added while Parent settings are unlocked) needs the PIN to remove. Kept per student in sp.plan.<student>. */
+  const PLAN_KINDS = ['maths', 'ga', 'study', 'sel', 'comp'];
+  const planKey = () => Profiles.planKey();
+  const planList = () => { const l = store.get(planKey(), []); return Array.isArray(l) ? l.filter(x => x && typeof x === 'object' && typeof x.id === 'string' && fromIso(x.day) && PLAN_KINDS.includes(x.kind)) : []; };
+  const occurs = (it, d) => { const n = Math.round((d - fromIso(it.day)) / 864e5); return n === 0 || (it.every === 7 && n > 0 && n % 7 === 0); };
+  function planDone(it, d) {
+    if (it.kind === 'study') return Array.isArray(it.done) && it.done.includes(isoDay(d));
+    const k = dayKey(d);
+    return historyList().some(x => dayKey(x.date) === k && (x.subject || 'maths') === it.kind && (isTimed(it.kind) || it.topic === 'mixed' || x.topic === it.topic));
+  }
+  function planWhat(it) {
+    if (it.kind === 'study') return topicLabel(it.topic) + ' · ' + t('plan.lesson');
+    if (isTimed(it.kind)) return t('subject.' + it.kind);
+    return topicLabel(it.topic) + ' · ' + t('plan.nq', { n: it.count });
+  }
+  function startPlanItem(it) {
+    if (it.kind === 'study') return openSetup('study', st => { st.studyYear = it.year; st.studyTopic = it.topic; });
+    if (isTimed(it.kind)) return openSetup('test', st => { st.subject = it.kind; });
+    openSetup('practice', st => { st.subject = it.kind; st.year = it.year; st.yearPicked = true; st.topic = it.topic; st.count = it.count; });
+  }
+  // a lesson read from the sheet ticks today's plan item for that lesson
+  function markStudyDone(topic) {
+    const today = dOnly(new Date()), l = planList();
+    let changed = false;
+    l.forEach(it => { if (it.kind === 'study' && it.topic === topic && occurs(it, today) && !planDone(it, today)) { it.done = (Array.isArray(it.done) ? it.done : []).concat(isoDay(today)).slice(-60); changed = true; } });
+    if (changed) store.set(planKey(), l);
+  }
+  function openPlan() {
+    const today = dOnly(new Date());
+    S.calMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    S.calSel = isoDay(today);
+    go('plan');
+  }
+  function renderPlan() {
+    const today = dOnly(new Date()), loc = locale();
+    if (!(S.calMonth instanceof Date)) S.calMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    if (!fromIso(S.calSel)) S.calSel = isoDay(today);
+    const run = runDays();
+    $('#planRun').textContent = run ? t(run === 1 ? 'home.streak1' : 'home.streak', { n: run }) : t('home.streak0');
+    const m = S.calMonth;
+    $('#calMonth').textContent = m.toLocaleDateString(loc, { month: 'long', year: 'numeric' });
+    const grid = $('#calGrid'); grid.innerHTML = '';
+    for (let k = 1; k <= 7; k++) { const h = el('span', 'cal-dn', t('day.' + k)); h.setAttribute('aria-hidden', 'true'); grid.append(h); }
+    for (let k = 0; k < (m.getDay() + 6) % 7; k++) grid.append(el('span', 'cal-pad'));
+    const done = new Set(historyList().map(x => dayKey(x.date))), plans = planList();
+    const last = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+    for (let d = 1; d <= last; d++) {
+      const day = new Date(m.getFullYear(), m.getMonth(), d), iso = isoDay(day), isToday = day.getTime() === today.getTime();
+      const n = plans.filter(it => occurs(it, day)).length, on = done.has(dayKey(day));
+      const b = el('button', 'cal-d' + (on ? ' done' : '') + (n ? ' plan' : '') + (isToday ? ' today' : '') + (iso === S.calSel ? ' sel' : ''), String(d));
+      b.type = 'button'; b.dataset.day = iso;
+      b.setAttribute('aria-pressed', String(iso === S.calSel));
+      const parts = [day.toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long' })];
+      if (isToday) parts.push(t('plan.keyToday'));
+      if (on) parts.push(t('plan.keyDone'));
+      if (n) parts.push(t('plan.status', { n }));
+      b.setAttribute('aria-label', parts.join(', '));
+      b.addEventListener('click', () => { S.calSel = iso; renderPlan(); const f = document.querySelector('#calGrid [data-day="' + iso + '"]'); if (f) f.focus(); });
+      grid.append(b);
+    }
+    // the chosen day: what is planned, and a form to add to it (today and later days only)
+    const sel = fromIso(S.calSel), title = sel.toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long' });
+    $('#dayTitle').textContent = sel.getTime() === today.getTime() ? t('plan.dayToday', { d: title }) : title;
+    const ul = $('#dayList'); ul.innerHTML = '';
+    const items = plans.filter(it => occurs(it, sel));
+    $('#dayEmpty').hidden = items.length > 0;
+    items.forEach(it => {
+      const ok = planDone(it, sel), li = el('li', 'pi' + (ok ? ' done' : ''));
+      const ic = el('span', 'pi-ic', PLAN_EMOJI[it.kind]); ic.setAttribute('aria-hidden', 'true');
+      const tx = el('span', 'pi-t', planWhat(it)), meta = [];
+      if (it.every === 7) meta.push(t('plan.weekly'));
+      if (it.by === 'parent') meta.push('🔒 ' + t('plan.byParent'));
+      if (ok) meta.push('✓ ' + t('plan.keyDone'));
+      if (meta.length) tx.append(el('small', '', meta.join(' · ')));
+      const x = el('button', 'pi-x'); x.type = 'button'; x.innerHTML = '<span aria-hidden="true">✕</span>';
+      x.setAttribute('aria-label', t('plan.remove', { what: planWhat(it) }));
+      x.addEventListener('click', () => removePlan(it.id));
+      li.append(ic, tx, x); ul.append(li);
+    });
+    $('#planForm').hidden = sel < today;
+    if (sel >= today) renderPlanForm();
+  }
+  function renderPlanForm() {
+    const st = S.settings;
+    const f = S.planForm || (S.planForm = { what: ['maths', 'ga'].includes(st.pracSubject) ? st.pracSubject : 'maths', topic: null, count: 10, every: 0 });
+    const kinds = PLAN_KINDS.filter(k => k !== 'study' || window.ScopeK6);
+    if (!kinds.includes(f.what)) f.what = 'maths';
+    const kindLabel = k => (k === 'study' ? t('mode.study') : (isTimed(k) ? t('mode.test') : t('mode.practice')) + ' · ' + t('subject.' + k));
+    combo($('#planWhat'), kinds.map(k => [k, kindLabel(k)]), f.what, v => { f.what = v; f.topic = null; renderPlanForm(); });
+    const prac = f.what === 'maths' || f.what === 'ga';
+    const keys = f.what === 'study' ? ScopeK6.topicsFor(studyYearOf(st)) : prac ? topicOptions(f.what, planYear(f.what)).map(x => x[0]) : [];
+    $('#planTopicField').hidden = !keys.length;
+    if (keys.length) {
+      if (!keys.includes(f.topic)) f.topic = keys[0];
+      combo($('#planTopic'), keys.map(k => [k, topicLabel(k)]), f.topic, v => { f.topic = v; });
+    }
+    $('#planCountField').hidden = !prac;
+    combo($('#planCount'), COUNTS.map(n => [n, String(n)]), f.count, v => { f.count = +v; });
+    combo($('#planRepeat'), [[0, t('plan.once')], [7, t('plan.weekly')]], f.every, v => { f.every = +v; });
+    $('#planParentNote').hidden = !S.parent;
+  }
+  const planYear = kind => (kind === 'ga' && S.settings.year === 0 ? 1 : S.settings.year);
+  function addPlan() {
+    const st = S.settings, f = S.planForm;
+    if (!f || !fromIso(S.calSel)) return;
+    const it = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), day: S.calSel, every: f.every === 7 ? 7 : 0, kind: f.what, by: S.parent ? 'parent' : 'student' };
+    if (f.what === 'study') { it.year = studyYearOf(st); it.topic = f.topic; }
+    else if (!isTimed(f.what)) { it.year = planYear(f.what); it.topic = f.topic || 'mixed'; it.count = f.count; }
+    store.set(planKey(), planList().concat(it).slice(-300));
+    toast(t('plan.added'));
+    renderPlan();
+    $('#planAdd').focus();
+  }
+  async function removePlan(id) {
+    const it = planList().find(x => x.id === id);
+    if (!it) return;
+    if (it.by === 'parent' && !S.parent && !(await unlockParent())) return;   // a parent's plan needs the PIN
+    store.set(planKey(), planList().filter(x => x.id !== id));
+    toast(t('plan.removed'));
+    if (S.screen === 'plan') { renderPlan(); $('#dayTitle').setAttribute('tabindex', '-1'); $('#dayTitle').focus(); }
+  }
+
+  function renderHomeTop() {
+    const st = S.settings, now = new Date(), today = dOnly(now), school = schoolOf(st.year);
+    // Primary school or High school (Terry: "左边选择小学还是中学模式"), and the calendar for My plan
+    document.querySelectorAll('#schoolSwitch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.school === school)));
+    $('#planMon').textContent = now.toLocaleDateString(locale(), { month: 'short' });
+    $('#planDay').textContent = String(now.getDate());
+    const run = runDays();
+    $('#planStreak').textContent = run ? '🔥 ' + run : '';
+    $('#planStreak').hidden = !run;
+    // the owl with today's plan: the first thing not yet done today
+    $('#tpOwl').innerHTML = OWL;
+    const items = planList().filter(it => occurs(it, today)), next = items.find(it => !planDone(it, today));
+    const textKey = next ? 'plan.today' : items.length ? 'plan.todayDone' : 'plan.todayNone';
+    $('#todayText').textContent = t(textKey, next ? { what: planWhat(next) } : {});
+    const goKey = next ? 'plan.start' : items.length ? 'plan.see' : 'plan.make';
+    const tg = $('#todayGo'); tg.dataset.i18n = goKey; tg.textContent = t(goKey);
+    tg.onclick = () => (next ? startPlanItem(next) : openPlan());
+    // the four cards: big pictures; Study is Kindergarten to Year 6, so in High school it says it is coming
+    document.querySelectorAll('#modeCards .mode-card').forEach(b => { b.querySelector('.mc-ic').innerHTML = MODE_ART[b.dataset.mode]; });
+    const soon = school === 'high', sc = $('#cardStudy'), sub = sc.querySelector('.mc-s');
+    sc.classList.toggle('soon', soon);
+    if (soon) sc.setAttribute('aria-disabled', 'true'); else sc.removeAttribute('aria-disabled');
+    sub.dataset.i18n = soon ? 'mode.study.soon' : 'mode.study.sub'; sub.textContent = t(sub.dataset.i18n);
+    $('#modeCards').dataset.mode = homeMode(st);
     // Carry on: the last set, to start it again with the same choices
-    const last = h[h.length - 1];
+    const h = historyList(), last = h[h.length - 1];
     const carry = last && (['maths', 'ga'].includes(last.subject || 'maths') ? YEARS.includes(last.year) : isTimed(last.subject));
     $('#carryBox').hidden = !carry;
     if (carry) {
@@ -291,21 +446,14 @@
       const bar = el('span', 'carry-bar'); const fill = el('i'); fill.style.width = (n ? Math.round(100 * c / n) : 0) + '%'; bar.append(fill); tx.append(bar);
       b.replaceChildren(ic, tx, el('span', 'carry-go', '›'));
       b.querySelector('.carry-go').setAttribute('aria-hidden', 'true');
-      b.onclick = () => openSetup(timed ? 'test' : 'practice', st => {
-        st.subject = last.subject || 'maths';
-        if (!timed) { st.year = last.year; st.yearPicked = true; st.topic = last.topic; }
+      b.onclick = () => openSetup(timed ? 'test' : 'practice', st2 => {
+        st2.subject = last.subject || 'maths';
+        if (!timed) { st2.year = last.year; st2.yearPicked = true; st2.topic = last.topic; }
+        else if (last.subject === 'comp' && Competition.PAPERS[last.topic]) st2.compPaper = last.topic;   // R2.4: the same paper
       });
     }
-    // badges this student has, one per kind with how many
-    const list = (store.get(Profiles.badgeKey(), []) || []).filter(x => x && Records.KINDS.includes(x.kind));
-    $('#badgeBox').hidden = !list.length;
-    const ul = $('#homeBadges'); ul.innerHTML = '';
-    Records.KINDS.forEach(k => {
-      const n = list.filter(x => x.kind === k).length;
-      if (!n) return;
-      const li = el('li', 'hb'); li.append(el('span', 'hb-ic', KIND_ICON[k]), el('span', 'hb-t', t('badge.kind.' + k)), el('span', 'hb-n', '×' + n));
-      ul.append(li);
-    });
+    // friends: empty seats until practising together is ready (W5)
+    document.querySelectorAll('#friendsList .seat').forEach(li => { li.innerHTML = SEAT; });
   }
   /* open the sheet for a card; prep changes the settings after the mode is set (Carry on) */
   function openSetup(m, prep) {
@@ -315,7 +463,7 @@
     saveSettings();
     renderHome();
     const dlg = $('#setupDlg');
-    if (!dlg.open) dlg.showModal();
+    if (!dlg.open) { try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); } }
     dlg.scrollTop = 0;
   }
   const closeSetup = () => { if ($('#setupDlg').open) $('#setupDlg').close(); };
@@ -333,18 +481,18 @@
     renderHomeTop();
     $('#setupIcon').innerHTML = MODE_ICON[mode];
     $('#setupTitle').textContent = t('mode.' + mode);
-    $('#setupSub').textContent = t('mode.' + mode + '.sub');
+    $('#setupSub').textContent = mode === 'study' ? '' : t('mode.' + mode + '.sub');   // R2.3: the note by the year says K–6
+    $('#setupSub').hidden = mode === 'study';
     $('#subjectBox').hidden = mode === 'study';
     $('#studyNote').hidden = mode !== 'study';   // R1.3: Study is Kindergarten to Year 6, said where the year is chosen
     if (mode !== 'study') {
       const subs = mode === 'test' ? ['sel', 'comp'] : ['maths', 'ga'];
-      tiles($('#subjectChips'), 'subject', subs.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); });
+      tiles($('#subjectChips'), 'subject', subs.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); const c = document.querySelector('#subjectChips input:checked'); if (c) c.focus(); });
     }
     const isSel = st.subject === 'sel', isComp = st.subject === 'comp';
     $('#practiceOptions').hidden = isSel || isComp;
     $('#practiceOnly').hidden = mode !== 'practice';
-    $('#schoolField').hidden = mode === 'study';
-    $('#schoolYearRow').classList.toggle('one', mode === 'study');
+    $('#schoolYearRow').classList.add('one');   // W7: Primary school or High school is chosen on Home
     $('#printHome').hidden = mode === 'study';
     $('#selOptions').hidden = !isSel;
     $('#compOptions').hidden = !isComp;
@@ -366,9 +514,6 @@
     const school = schoolOf(st.year);
     // A year chosen here is the student's or parent's own choice: remembered, so a suggestion that appears later
     // (student details, an imported file) does not replace it (R6.1, v1.7.0).
-    combo($('#schoolSel'), ['primary', 'high'].map(k => [k, t('school.' + k)]), school, v => {
-      st.year = v === 'primary' ? Math.min(st.year, 6) : Math.max(st.year, 7); st.yearPicked = true; saveSettings(); renderHome();
-    });
     combo($('#yearSel'), (school === 'primary' ? Gen.PRIMARY.filter(y => y > 0 || st.subject === 'maths') : Gen.HIGH).map(y => [y, yearLabel(y)]), st.year, v => { st.year = +v; st.yearPicked = true; saveSettings(); renderHome(); });
     combo($('#topicSel'), topicOptions(st.subject, st.year), st.topic, v => { st.topic = v; saveSettings(); });
     combo($('#diffSel'), [1, 2, 3, 4].map(d => [d, t('diff.' + d)]), st.diff, v => { st.diff = +v; saveSettings(); });
@@ -1768,10 +1913,12 @@
     { target: null, title: 'tour.welcomeT', text: 'tour.welcome' },
     { target: '#profileBtn', title: 'tour.profileT', text: 'tour.profile' },
     { target: '#langBtn', title: 'tour.langT', text: 'tour.lang' },
-    { target: '#weekCard', title: 'tour.weekT', text: 'tour.week' },
+    { target: '#schoolSwitch', title: 'tour.schoolT', text: 'tour.school' },
+    { target: '#planBtn', title: 'tour.planT', text: 'tour.plan' },
+    { target: '#todayPlan', title: 'tour.todayT', text: 'tour.today' },
     { target: '#modeCards', title: 'tour.modeT', text: 'tour.mode' },
     { target: '#carryBox', title: 'tour.carryT', text: 'tour.carry' },
-    { target: '#badgeBox', title: 'tour.badgesT', text: 'tour.badges' },
+    { target: '#friendsBox', title: 'tour.friendsT', text: 'tour.friends' },
     { target: '.tab[data-go="progress"]', title: 'tour.progressT', text: 'tour.progress' },
     { target: '#navGames', title: 'tour.gamesT', text: 'tour.games' },
     { target: '#navParent', title: 'tour.settingsT', text: 'tour.settings' }
@@ -1890,7 +2037,7 @@
   $('#startBtn').addEventListener('click', () => {
     const st = S.settings;
     closeSetup();
-    if (homeMode(st) === 'study') openStudy(st.studyTopic, studyYearOf(st)); else startQuiz(st);
+    if (homeMode(st) === 'study') { markStudyDone(st.studyTopic); openStudy(st.studyTopic, studyYearOf(st)); } else startQuiz(st);
   });
   $('#quitBtn').addEventListener('click', () => {
     if (confirm(t(S.quiz && S.quiz.exam ? 'sel.quitConfirm' : 'quiz.quitConfirm'))) { stopTimer(); S.quiz = null; go('home'); }
@@ -1904,14 +2051,38 @@
   $('#printQuiz').addEventListener('click', () => { const Q = S.quiz; if (Q) openPrint(Q.questions, Q.settings); });
   $('#printHome').addEventListener('click', () => { closeSetup(); printFromHome(); });
   // v1.12.0 W6: the four cards, the sheet's close button, a tap outside it, See all
-  document.querySelectorAll('#modeCards .mode-card').forEach(b => b.addEventListener('click', () => (b.dataset.mode === 'relax' ? go('games') : openSetup(b.dataset.mode))));
+  document.querySelectorAll('#modeCards .mode-card').forEach(b => b.addEventListener('click', () => {
+    const m = b.dataset.mode;
+    if (m === 'relax') return go('games');
+    if (m === 'study' && schoolOf(S.settings.year) === 'high') return toast(t('mode.study.soonNote'));
+    openSetup(m);
+  }));
+  // v1.12.0 W7: Primary school or High school; each keeps its own year, so switching back gives the same year
+  document.querySelectorAll('#schoolSwitch button').forEach(b => b.addEventListener('click', () => {
+    const st = S.settings, v = b.dataset.school;
+    if (schoolOf(st.year) === v) return;
+    if (v === 'primary') { st.highYear = st.year; st.year = Gen.PRIMARY.includes(st.primaryYear) ? st.primaryYear : 6; }
+    else { st.primaryYear = st.year; st.year = Gen.HIGH.includes(st.highYear) ? st.highYear : 7; }
+    st.yearPicked = true; saveSettings(); renderHome(); b.focus();
+  }));
+  $('#planBtn').addEventListener('click', openPlan);
+  $('#planBack').addEventListener('click', () => go('home'));
+  $('#calPrev').addEventListener('click', () => moveMonth(-1));
+  $('#calNext').addEventListener('click', () => moveMonth(1));
+  function moveMonth(k) {
+    const m = S.calMonth || dOnly(new Date()), n = new Date(m.getFullYear(), m.getMonth() + k, 1), today = dOnly(new Date());
+    S.calMonth = n;
+    S.calSel = isoDay(n.getFullYear() === today.getFullYear() && n.getMonth() === today.getMonth() ? today : n);
+    renderPlan();
+  }
+  $('#planForm').addEventListener('submit', e => { e.preventDefault(); addPlan(); });
+  $('#inviteBtn').addEventListener('click', () => toast(t('friends.inviteSoon')));
   $('#setupClose').addEventListener('click', closeSetup);
   $('#setupDlg').addEventListener('click', e => {
     if (e.target !== e.currentTarget) return;
     const r = e.currentTarget.getBoundingClientRect();
     if (e.clientY < r.top || e.clientY > r.bottom || e.clientX < r.left || e.clientX > r.right) closeSetup();
   });
-  $('#badgesAll').addEventListener('click', () => go('progress'));
   $('#printResults').addEventListener('click', () => { const Q = S.quiz; if (Q) openPrint(Q.questions, Q.settings); });
   $('#printForm').addEventListener('submit', doPrint);
   $('#printCancel').addEventListener('click', () => $('#printDlg').close());

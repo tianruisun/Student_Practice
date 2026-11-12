@@ -490,8 +490,8 @@ t('i18n: no key defined twice in a language', () => {
   const S = box.I18N.STRINGS;
   const block = (/const TOUR = \[([\s\S]*?)\n\s*\];/.exec(app) || [])[1] || '';
   const steps = [...block.matchAll(/target: (?:null|'([^']+)'), title: '([\w.]+)', text: '([\w.]+)'/g)];
-  // v1.12.0 W6: the steps follow the new Home (the week, the four cards, Carry on, Badges); the options are in the sheet
-  t('tour: 10 steps found in app.js (v1.12.0 W6: week, cards, Carry on, Badges; no options, Start or Print)', () => assert.strictEqual(steps.length, 10));
+  // v1.12.0 W7: the steps follow the new Home (school, My plan, today's plan, the cards, Carry on, Friends); the options are in the sheet
+  t('tour: 12 steps found in app.js (v1.12.0 W7: school, My plan, today, cards, Carry on, Friends; no options, Start or Print)', () => assert.strictEqual(steps.length, 12));
   t('tour: every text is in English and Chinese', () => {
     const keys = steps.flatMap(m => [m[2], m[3]]).concat(['tour.step', 'tour.next', 'tour.back', 'tour.skip', 'tour.done']);
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.zh[k] === S.en[k]), []);
@@ -1048,18 +1048,33 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
       assert.ok(S.en[k] && S.zh[k] && S.en[k] !== S.zh[k], k);
   });
   /* v1.12.0 W6 (Terry chose Option B): four cards on Home; the options and Start in a sheet */
-  t('W6: Home has the week, four cards, Carry on and Badges, and no Start of its own', () => {
+  t('W7: Home has the school switch, My plan, today\'s plan, four cards, Carry on and Friends; no week, Badges or Start', () => {
     const home = (/<section id="screen-home"[\s\S]*?<\/section>/.exec(html) || [''])[0];
-    for (const id of ['weekCard', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'homeBadges']) assert.ok(home.includes('id="' + id + '"'), id);
-    assert.ok(!/id="startBtn"|id="diffSel"|id="modeTiles"/.test(home));
+    for (const id of ['schoolSwitch', 'planBtn', 'todayPlan', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'friendsBox', 'inviteBtn']) assert.ok(home.includes('id="' + id + '"'), id);
+    assert.ok(!/id="startBtn"|id="diffSel"|id="modeTiles"|id="weekCard"|id="badgeBox"|id="homeBadges"/.test(home));
+    assert.ok(!/id="schoolSel"|id="schoolField"/.test(html), 'the school is chosen on Home only');
+  });
+  t('W7: My plan has the month, the days and a form to add to the plan', () => {
+    const plan = (/<section id="screen-plan"[\s\S]*?<\/section>/.exec(html) || [''])[0];
+    for (const id of ['planBack', 'calPrev', 'calNext', 'calMonth', 'calGrid', 'dayTitle', 'dayList', 'planForm', 'planWhat', 'planTopic', 'planCount', 'planRepeat', 'planAdd']) assert.ok(plan.includes('id="' + id + '"'), id);
+  });
+  t('W7: English and Chinese are not mixed: Primary school / High school, 小学 / 中学', () => {
+    assert.strictEqual(S.en['school.primary'], 'Primary school'); assert.strictEqual(S.en['school.high'], 'High school');
+    assert.strictEqual(S.zh['school.primary'], '小学'); assert.strictEqual(S.zh['school.high'], '中学');
+  });
+  t('R2.1 (v1.12.0): the sheet opens without showModal', () => {
+    const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+    assert.ok(app.includes("try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }"));
   });
   t('W6: the sheet holds the subject, the options, Start and Print', () => {
     const sheet = (/<dialog id="setupDlg"[\s\S]*?<\/dialog>/.exec(html) || [''])[0];
     for (const id of ['subjectBox', 'practiceOptions', 'selOptions', 'compOptions', 'startBtn', 'printHome', 'setupClose', 'studyNote']) assert.ok(sheet.includes('id="' + id + '"'), id);
   });
   t('W6: the new words are in English and Chinese', () => {
-    const keys = ['mode.relax.sub', 'study.k6note', 'sheet.close', 'home.week', 'home.streak', 'home.streak1', 'home.streak0', 'home.weekSr', 'home.carry', 'home.lastTime', 'home.badges', 'home.seeAll',
-      'tour.weekT', 'tour.week', 'tour.carryT', 'tour.carry', 'tour.badgesT', 'tour.badges', 'day.1', 'day.2', 'day.3', 'day.4', 'day.5', 'day.6', 'day.7'];
+    const keys = ['mode.relax.sub', 'study.k6note', 'sheet.close', 'home.streak', 'home.streak1', 'home.streak0', 'home.carry', 'home.lastTime',
+      'plan.my', 'plan.open', 'plan.today', 'plan.todayNone', 'plan.todayDone', 'plan.start', 'plan.make', 'plan.add', 'plan.weekly', 'plan.byParent', 'mode.study.soon', 'mode.study.soonNote',
+      'friends.title', 'friends.soon', 'friends.invite', 'friends.note', 'friends.inviteSoon', 'tour.schoolT', 'tour.planT', 'tour.todayT', 'tour.friendsT',
+      'tour.carryT', 'tour.carry', 'day.1', 'day.2', 'day.3', 'day.4', 'day.5', 'day.6', 'day.7'];
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.en[k] === S.zh[k]), []);
   });
   t('R1.5 (v1.12.0): release history names no single Start button; R1.6: tour.open is gone', () => {

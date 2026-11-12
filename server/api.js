@@ -8,7 +8,7 @@
      DEV_CODES       '1' on the Test site only: the verification code and the reset token come back in the answer,
                      so Test works without an email service. Never honoured on a Production host.
    Stored per account: username, email, password hash, picture number, friend code, progress (the student's own app data),
-   friends and challenges. No real names. */
+   friends and the last 20 challenges of each student. No real names. */
 
 export const PROD_HOSTS = ['student-practice.pages.dev', 'tianruisun.github.io'];
 const ORIGINS = [/^https:\/\/([a-z0-9-]+\.)?student-practice\.pages\.dev$/, /^https:\/\/tianruisun\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -26,6 +26,9 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // friend codes: no 0/O
 export const LOGIN_IP_FAIL = 60, LOGIN_IP_ALL = 600;    // per address in 15 minutes: wrong passwords / every sign-in
 export const CODE_IP = 150;                             // sign-up codes per address in an hour (a class signing up together)
 export const PUT_DAY = 300;                             // saves of the records per account in a day (D1 writes are shared)
+/* W9 (v2.0.0, Terry chose Option A): a challenge not accepted in 24 hours goes; after accepting, both have 24 hours to
+   finish (a side that has not finished loses); each student keeps the last 20 challenges */
+export const CH_ACCEPT_MS = DAY, CH_PLAY_MS = DAY, CH_KEEP = 20;
 export const FRIEND_ADD_DAY = 60;                       // friends/add calls per account in a day, found or not
 
 const SCHEMA = [
@@ -41,10 +44,15 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS friends (from_id INTEGER NOT NULL, to_id INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL,
      PRIMARY KEY (from_id, to_id))`,
   `CREATE INDEX IF NOT EXISTS friends_to ON friends(to_id)`,
-  `CREATE TABLE IF NOT EXISTS challenges (id INTEGER PRIMARY KEY, from_id INTEGER NOT NULL, to_id INTEGER NOT NULL, created INTEGER NOT NULL,
-     settings TEXT NOT NULL, questions TEXT NOT NULL, a_score TEXT NOT NULL, b_score TEXT, done INTEGER)`,
-  `CREATE INDEX IF NOT EXISTS ch_from ON challenges(from_id)`,
-  `CREATE INDEX IF NOT EXISTS ch_to ON challenges(to_id)`
+  // W9: the R1/R2 table (the sender finished first) was only ever on the Test database; its rows cannot be played the new way
+  `DROP TABLE IF EXISTS challenges`,
+  /* a = the sender (from_id), b = the friend (to_id). status: sent → accepted or declined. *_start: when that side first
+     opened the set (the server counts the time from it); *_score: { c, n, ok[], time } once that side has finished */
+  `CREATE TABLE IF NOT EXISTS duels (id INTEGER PRIMARY KEY, from_id INTEGER NOT NULL, to_id INTEGER NOT NULL, created INTEGER NOT NULL,
+     settings TEXT NOT NULL, questions TEXT NOT NULL, status TEXT NOT NULL, accepted INTEGER,
+     a_start INTEGER, b_start INTEGER, a_score TEXT, b_score TEXT)`,
+  `CREATE INDEX IF NOT EXISTS duels_from ON duels(from_id)`,
+  `CREATE INDEX IF NOT EXISTS duels_to ON duels(to_id)`
 ];
 let schemaReady = null;   // one CREATE pass per database per isolate
 const ensureSchema = db => {
@@ -268,7 +276,7 @@ const ROUTES = {
       db.prepare('DELETE FROM resets WHERE user_id = ?').bind(me.id),
       db.prepare('DELETE FROM progress WHERE user_id = ?').bind(me.id),
       db.prepare('DELETE FROM friends WHERE from_id = ? OR to_id = ?').bind(me.id, me.id),
-      db.prepare('DELETE FROM challenges WHERE from_id = ? OR to_id = ?').bind(me.id, me.id),
+      db.prepare('DELETE FROM duels WHERE from_id = ? OR to_id = ?').bind(me.id, me.id),
       db.prepare('DELETE FROM users WHERE id = ?').bind(me.id)
     ]);
     return { ok: true };
@@ -350,7 +358,9 @@ const ROUTES = {
     return { ok: true };
   },
 
-  /* practise together (type B): the sender finishes a set, the friend gets the same questions, then both see both scores */
+  /* W9 challenges: the sender chooses the set and sends it; both can start at once; the friend accepts or declines.
+     The server keeps the time: from the first opening of the set (start) to the result. Higher accuracy wins, then the
+     shorter time; a side that has not finished 24 hours after accepting loses. */
   'POST challenges': async ({ db, me, body, now }) => {
     const u = await db.prepare('SELECT id, name FROM users WHERE name = ?').bind(normName(str(body.to, 40))).first();
     if (!u) fail(404, 'no_user');
@@ -360,34 +370,78 @@ const ROUTES = {
     if (!body.questions.every(questionOk)) fail(400, 'bad_set');   // R1.2: only questions the app can draw
     const questions = JSON.stringify(body.questions);
     if (questions.length > MAX_SET) fail(413, 'too_big');
-    const score = JSON.stringify(cleanScore(body.score, body.questions.length));
     await limitOr429(db, 'challenge:' + me.id, 30, DAY, now);
-    await db.prepare('DELETE FROM challenges WHERE (from_id = ? OR to_id = ?) AND created < ?').bind(me.id, me.id, now - 60 * DAY).run();
-    const r = await db.prepare('INSERT INTO challenges (from_id, to_id, created, settings, questions, a_score) VALUES (?, ?, ?, ?, ?, ?)').bind(me.id, u.id, now, settings, questions, score).run();
+    const r = await db.prepare(`INSERT INTO duels (from_id, to_id, created, settings, questions, status) VALUES (?, ?, ?, ?, ?, 'sent')`)
+      .bind(me.id, u.id, now, settings, questions).run();
+    await keepLast(db, me.id); await keepLast(db, u.id);
     return { id: r.meta.last_row_id };
   },
-  'GET challenges': async ({ db, me }) => {
-    const rows = (await db.prepare(`SELECT c.id, c.from_id, c.to_id, c.created, c.settings, c.a_score, c.b_score, c.done,
-        a.name AS a_name, a.avatar AS a_av, b.name AS b_name, b.avatar AS b_av
-      FROM challenges c JOIN users a ON a.id = c.from_id JOIN users b ON b.id = c.to_id
-      WHERE c.from_id = ? OR c.to_id = ? ORDER BY c.created DESC LIMIT 60`).bind(me.id, me.id).all()).results;
-    return { challenges: rows.map(r => challengeOut(r, me.id)) };
+  'GET challenges': async ({ db, me, now }) => {
+    await dropUnanswered(db, me.id, now);
+    const rows = (await db.prepare(`${DUEL_SELECT} WHERE c.from_id = ? OR c.to_id = ? ORDER BY c.id DESC LIMIT ${CH_KEEP}`).bind(me.id, me.id).all()).results;
+    return { challenges: rows.map(r => challengeOut(r, me.id, now)), now };
   },
-  'GET challenges/:id': async ({ db, me, id }) => {
-    const r = await db.prepare(`SELECT c.*, a.name AS a_name, a.avatar AS a_av, b.name AS b_name, b.avatar AS b_av
-      FROM challenges c JOIN users a ON a.id = c.from_id JOIN users b ON b.id = c.to_id WHERE c.id = ?`).bind(id).first();
-    if (!r || (r.from_id !== me.id && r.to_id !== me.id)) fail(404, 'no_challenge');
-    return Object.assign(challengeOut(r, me.id), { questions: JSON.parse(r.questions) });
+  'GET challenges/:id': async ({ db, me, id, now }) => {
+    return challengeOut(await duelOf(db, me, id, now), me.id, now);   // no questions: those come with start, which starts the clock
+  },
+  'POST challenges/:id/answer': async ({ db, me, id, body, now }) => {
+    const r = await duelOf(db, me, id, now);
+    if (r.to_id !== me.id) fail(404, 'no_challenge');
+    if (r.status !== 'sent') fail(409, r.status === 'declined' ? 'declined' : 'already_answered');
+    if (body.accept === true) await db.prepare(`UPDATE duels SET status = 'accepted', accepted = ? WHERE id = ? AND status = 'sent'`).bind(now, id).run();
+    else await db.prepare(`UPDATE duels SET status = 'declined' WHERE id = ? AND status = 'sent'`).bind(id).run();
+    return challengeOut(await duelOf(db, me, id, now), me.id, now);
+  },
+  'POST challenges/:id/start': async ({ db, me, id, now }) => {
+    const r = await duelOf(db, me, id, now), side = r.from_id === me.id ? 'a' : 'b';
+    canPlay(r, side, now);
+    if (r[side + '_start'] === null) await db.prepare(`UPDATE duels SET ${side}_start = ? WHERE id = ? AND ${side}_start IS NULL`).bind(now, id).run();
+    const fresh = await duelOf(db, me, id, now);
+    return Object.assign(challengeOut(fresh, me.id, now), { questions: JSON.parse(fresh.questions), started: fresh[side + '_start'], now });
   },
   'POST challenges/:id/result': async ({ db, me, id, body, now }) => {
-    const r = await db.prepare('SELECT to_id, questions, done FROM challenges WHERE id = ?').bind(id).first();
-    if (!r || r.to_id !== me.id) fail(404, 'no_challenge');
-    if (r.done) fail(409, 'already_done');
-    const score = JSON.stringify(cleanScore(body.score, JSON.parse(r.questions).length));
-    await db.prepare('UPDATE challenges SET b_score = ?, done = ? WHERE id = ? AND done IS NULL').bind(score, now, id).run();
-    return { ok: true };
+    const r = await duelOf(db, me, id, now), side = r.from_id === me.id ? 'a' : 'b';
+    canPlay(r, side, now);
+    if (r[side + '_start'] === null) fail(409, 'not_started');
+    const score = cleanScore(body.score, JSON.parse(r.questions).length);
+    score.time = now - r[side + '_start'];   // the server's clock, not the app's
+    const ch = await db.prepare(`UPDATE duels SET ${side}_score = ? WHERE id = ? AND ${side}_score IS NULL`).bind(JSON.stringify(score), id).run();
+    if (!ch.meta.changes) fail(409, 'already_done');
+    return challengeOut(await duelOf(db, me, id, now), me.id, now);
   }
 };
+
+const DUEL_SELECT = `SELECT c.*, a.name AS a_name, a.avatar AS a_av, b.name AS b_name, b.avatar AS b_av
+  FROM duels c JOIN users a ON a.id = c.from_id JOIN users b ON b.id = c.to_id`;
+/* one challenge of this student (404 for anyone else); one not accepted in 24 hours is gone */
+async function duelOf(db, me, id, now) {
+  await dropUnanswered(db, me.id, now);
+  const r = await db.prepare(DUEL_SELECT + ' WHERE c.id = ?').bind(id).first();
+  if (!r || (r.from_id !== me.id && r.to_id !== me.id)) fail(404, 'no_challenge');
+  return r;
+}
+const dropUnanswered = (db, uid, now) => db.prepare(`DELETE FROM duels WHERE (from_id = ? OR to_id = ?) AND status = 'sent' AND created < ?`).bind(uid, uid, now - CH_ACCEPT_MS).run();
+/* each student keeps the last 20: older ones go (for both sides) */
+const keepLast = (db, uid) => db.prepare(`DELETE FROM duels WHERE (from_id = ? OR to_id = ?) AND id NOT IN
+  (SELECT id FROM duels WHERE from_id = ? OR to_id = ? ORDER BY id DESC LIMIT ${CH_KEEP})`).bind(uid, uid, uid, uid).run();
+/* the time by which this challenge must be done: 24 hours after accepting (before that, the 24 hours to accept) */
+const deadlineOf = r => (r.status === 'accepted' ? r.accepted + CH_PLAY_MS : r.created + CH_ACCEPT_MS);
+function canPlay(r, side, now) {
+  if (r.status === 'declined') fail(409, 'declined');
+  if (side === 'b' && r.status !== 'accepted') fail(409, 'not_accepted');
+  if (r[side + '_score'] !== null) fail(409, 'already_done');
+  if (now > deadlineOf(r)) fail(409, 'too_late');
+}
+/* who won: higher accuracy, then the shorter time; a side that did not finish loses. 'a' | 'b' | 'draw' | 'none' */
+export function winnerOf(a, b) {
+  if (!a && !b) return 'none';
+  if (!a) return 'b';
+  if (!b) return 'a';
+  const pa = a.c / a.n, pb = b.c / b.n;
+  if (pa !== pb) return pa > pb ? 'a' : 'b';
+  const ta = Number.isFinite(a.time) ? a.time : Infinity, tb = Number.isFinite(b.time) ? b.time : Infinity;
+  return ta === tb ? 'draw' : ta < tb ? 'a' : 'b';
+}
 
 async function isFriend(db, a, b) {
   return !!(await db.prepare(`SELECT 1 FROM friends WHERE status = 'ok' AND ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))`).bind(a, b, b, a).first());
@@ -425,12 +479,22 @@ function cleanScore(s, n) {
   const time = Number.isFinite(s.time) && s.time >= 0 && s.time < 864e5 ? Math.round(s.time) : null;
   return { c: ok.filter(Boolean).length, n, ok, time };
 }
-function challengeOut(r, me) {
+/* a challenge as one student sees it: "me" and "them" instead of a and b. The friend's score shows only once this
+   student has finished or the challenge is over (before that only that the friend has finished), so nobody aims at it. */
+function challengeOut(r, me, now) {
   const mine = r.from_id === me;
+  const a = r.a_score ? JSON.parse(r.a_score) : null, b = r.b_score ? JSON.parse(r.b_score) : null;
+  const deadline = deadlineOf(r);
+  const over = r.status === 'declined' || (!!a && !!b) || (r.status === 'accepted' && now > deadline);
+  const w = over && r.status !== 'declined' ? winnerOf(a, b) : null;
+  const my = mine ? a : b, their = mine ? b : a;
   return {
-    id: r.id, created: r.created, mine, done: r.done || null,
+    id: r.id, created: r.created, mine, status: r.status, accepted: r.accepted || null, deadline, over,
+    winner: w === null ? null : w === 'none' || w === 'draw' ? w : (w === 'a') === mine ? 'me' : 'them',
     from: { username: r.a_name, avatar: r.a_av }, to: { username: r.b_name, avatar: r.b_av },
-    settings: JSON.parse(r.settings), a: JSON.parse(r.a_score), b: r.b_score ? JSON.parse(r.b_score) : null
+    started: !!(mine ? r.a_start : r.b_start),
+    settings: JSON.parse(r.settings),
+    me: my, them: their && !over && !my ? { done: true } : their
   };
 }
 

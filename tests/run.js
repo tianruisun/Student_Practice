@@ -1186,6 +1186,17 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(codes.has('bad_input') && codes.has('no_route') && codes.has('bad_set') && codes.has('stale'));
     assert.deepStrictEqual([...codes].filter(c => !S.en['acc.err.' + c] || !S.zh['acc.err.' + c]), []);
   });
+  t('W9: in a challenge there is no Check answer, and a clock counts the time used', () => {
+    const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+    assert.strictEqual(app.split('!Q.exam && !done && !Q.challenge)').length - 1, 2, 'both Check buttons are hidden in a challenge');
+    assert.ok(app.includes("if (!Q || Q.exam || Q.challenge || st.status === 'done') return;"), 'submitCard does nothing in a challenge');
+    assert.ok(app.includes("$('#timer').hidden = !Q.exam && !Q.challenge;") && app.includes('function tickChallengeClock'));
+  });
+  t('W9: the challenge texts exist in both languages; the old "do it first" texts are gone', () => {
+    for (const k of ['fr.challengeWith', 'fr.chSend', 'fr.acceptStart', 'fr.decline', 'fr.byTime', 'fr.byAccuracy', 'fr.noCheck', 'fr.leftH', 'fr.waitResult']) assert.ok(S.en[k] && S.zh[k], k);
+    for (const k of ['fr.howItWorks', 'fr.startSend', 'fr.doIt', 'fr.sentSet']) assert.ok(!(k in S.en) && !(k in S.zh), k);
+    assert.ok(!/sendPanel|startSend/.test(fr));
+  });
   t('R1.6: no always-visible "why an account" paragraph under the account panel', () => {
     assert.ok(!('acc.why' in S.en) && !('acc.why' in S.zh) && !/f-why/.test(fr + fs.readFileSync(path.join(root, 'css/style.css'), 'utf8')));
   });

@@ -479,8 +479,21 @@
     dlg.scrollTop = 0;
   }
   /* R3.8 (v1.12.0): close() where the browser has it, and the attribute the R2.1 fallback set where it does not */
+  /* W9 (v2.0.0, Option A): a challenge is set up in the same sheet as Practice: year, subject, topic, level, count */
+  function openChallenge(to) {
+    if (S.screen !== 'friends') go('friends');
+    S.challengeTo = to;
+    openSetup('practice');
+  }
+  function sendChallengeFrom(st, to) {
+    const subject = st.subject === 'ga' ? 'ga' : 'maths', count = Math.max(1, Math.min(50, st.count || 10));
+    const settings = { subject, year: st.year, topic: st.topic || 'mixed', diff: st.diff, count };
+    const questions = Gen.generateSet(subject, st.year, settings.topic, st.diff, count);
+    return window.Friends.sendChallenge(to, settings, questions);
+  }
   const closeSetup = () => {
     const d = $('#setupDlg');
+    S.challengeTo = null;
     if (!d.open && !d.hasAttribute('open')) return;
     try { d.close(); } catch (e) { /* no <dialog> API */ }
     d.removeAttribute('open');
@@ -518,9 +531,16 @@
     if (!['full', 'short'].includes(st.selLen)) st.selLen = 'full';
     combo($('#selLenSel'), ['full', 'short'].map(k => [k, t('sel.len.' + k)]), st.selLen, v => { st.selLen = v; saveSettings(); });
     // the key goes on the button too, so the language pass on another screen (render) keeps this name, not "Start practice"
-    const startKey = mode === 'study' ? 'study.open' : isSel ? 'sel.start' : isComp ? 'comp.start' : 'home.start';
+    const challenge = S.challengeTo && mode === 'practice' ? S.challengeTo : '';
+    const startKey = challenge ? 'fr.chSend' : mode === 'study' ? 'study.open' : isSel ? 'sel.start' : isComp ? 'comp.start' : 'home.start';
     $('#startBtn').dataset.i18n = startKey;
     $('#startBtn').textContent = t(startKey);
+    if (challenge) {   // W9: the same sheet, for a challenge to this friend
+      $('#setupTitle').textContent = t('fr.challengeWith', { name: challenge });
+      $('#setupSub').textContent = t('fr.chSub');
+      $('#setupSub').hidden = false;
+      $('#printHome').hidden = true;
+    }
     if (mode === 'study') {   // Kindergarten to Year 6 only: the year and the topic of the lesson
       const y = studyYearOf(st), keys = ScopeK6.topicsFor(y);
       if (!keys.includes(st.studyTopic)) st.studyTopic = keys[0];
@@ -632,12 +652,13 @@
     if (q.type === 'input') return Number.isFinite(q.value) && (typeof q.answer === 'string' || Number.isFinite(q.answer)) && (q.unit === undefined || q.unit === null || typeof q.unit === 'string') && (q.tol === undefined || q.tol === null || Number.isFinite(q.tol));
     return false;
   }
-  function startChallenge(questions, settings, challenge) {
+  function startChallenge(questions, settings, challenge, startedAt) {
     if (!Array.isArray(questions) || !questions.length || questions.length > 60 || !questions.every(questionOk)) { toast(t('acc.err.bad_set'), 6000); return false; }
     const before = S.screen;
     S.lastQuizSettings = Object.assign({}, S.settings, settings);
     S.quiz = {
-      exam: false, questions, i: 0, page: 0, results: [], started: Date.now(),
+      // W9: the clock started on the server when this student first opened the set; it does not start again
+      exam: false, questions, i: 0, page: 0, results: [], started: startedAt || Date.now(),
       st: questions.map(() => ({ status: 'answering', tries: 0, given: [], sel: null, fbKey: '', draft: '' })),
       settings: Object.assign({ subject: 'maths', year: S.settings.year, diff: S.settings.diff, topic: 'mixed' }, settings), challenge
     };
@@ -694,6 +715,7 @@
     if (Q.page >= pages) Q.page = pages - 1;
     const list = $('#qList'); list.innerHTML = '';
     const idx = v === 'single' ? [Q.i] : range(Q.page * PAGE, Math.min(n, (Q.page + 1) * PAGE));
+    if (Q.challenge) { const p = el('p', 'ch-note', t('fr.noCheck')); p.id = 'chNote'; list.append(p); }
     idx.forEach(i => list.append(cardEl(i)));
     renderChrome();
   }
@@ -705,13 +727,14 @@
     $('#qBar').style.width = (100 * done / n) + '%';
     $('#viewSingle').setAttribute('aria-pressed', String(v === 'single'));
     $('#viewPages').setAttribute('aria-pressed', String(v === 'pages'));
-    $('#timer').hidden = !Q.exam;
+    $('#timer').hidden = !Q.exam && !Q.challenge;
+    if (Q.challenge) tickChallengeClock();
     $('#pageNav').hidden = v !== 'pages';
     $('#prevPage').disabled = Q.page === 0;
     $('#nextPage').disabled = Q.page >= pages - 1;
     // practice and the timed test share the same navigation: move freely, finish at any time
     $('#examNav').hidden = false;
-    $('#finishBtn').textContent = t(Q.exam ? 'sel.finish' : 'quiz.finish');
+    $('#finishBtn').textContent = t(Q.exam ? 'sel.finish' : Q.challenge ? 'fr.handIn' : 'quiz.finish');
     {
       $('#examSingleNav').hidden = v !== 'single';
       $('#prevQ').disabled = Q.i === 0;
@@ -791,7 +814,7 @@
         if (again) again.focus();
       });
       card.append(box);
-      if (!Q.exam && !done) {
+      if (!Q.exam && !done && !Q.challenge) {   // W9: no Check answer in a challenge
         const chk = el('button', 'btn primary', t('quiz.check')); chk.type = 'button';
         chk.addEventListener('click', () => submitCard(i));
         card.append(chk);
@@ -813,13 +836,13 @@
         renderChrome();
       });
       form.append(lab, inp);
-      if (!Q.exam && !done) {
+      if (!Q.exam && !done && !Q.challenge) {
         const chk = el('button', 'btn primary', t('quiz.check')); chk.type = 'submit';
         form.append(chk);
       }
       form.addEventListener('submit', e => {
         e.preventDefault();
-        if (!Q.exam) return submitCard(i);
+        if (!Q.exam && !Q.challenge) return submitCard(i);
         if (view() === 'single' && Q.i < Q.questions.length - 1) { goToQuestion(Q.i + 1); focusCardInput(Q.i); }
       });
       card.append(form);
@@ -842,7 +865,7 @@
 
   function submitCard(i) {
     const Q = S.quiz, q = Q.questions[i], st = Q.st[i];
-    if (!Q || Q.exam || st.status === 'done') return;
+    if (!Q || Q.exam || Q.challenge || st.status === 'done') return;
     if (q.type === 'mc') {   // one try for multiple choice
       if (st.sel === null) { st.fbKey = 'quiz.pickFirst'; refreshCard(i); return; }
       const ok = st.sel === q.correct;
@@ -975,6 +998,15 @@
     beginExam(out, spec.minutes, Object.assign({}, settings, { subject: 'sel', topic: len === 'short' ? 'selshort' : 'selfull' }));
   }
 
+  /* W9: the time used so far in a challenge, from the moment the server started it */
+  let chClock = null;
+  function tickChallengeClock() {
+    const Q = S.quiz, tm = $('#timer');
+    if (!Q || !Q.challenge || S.screen !== 'quiz') { clearInterval(chClock); chClock = null; return; }
+    const used = mmss(Date.now() - Q.started);
+    tm.textContent = '⏱ ' + used; tm.setAttribute('aria-label', t('fr.clock') + ' ' + used); tm.classList.remove('low');
+    if (!chClock) chClock = setInterval(tickChallengeClock, 1000);
+  }
   function tickTimer() {
     const Q = S.quiz; if (!Q || !Q.exam || Q.finished) return stopTimer();
     const left = Q.limitMs - (Date.now() - Q.startedAt), tm = $('#timer');
@@ -2091,8 +2123,9 @@
   });
   $('#parentUnlock').addEventListener('click', async () => { draftProvider = null; delete $('#aiKey').dataset.touched; if (await unlockParent()) $('#parentArea').scrollIntoView({ block: 'start' }); });
   $('#startBtn').addEventListener('click', () => {
-    const st = S.settings;
+    const st = S.settings, to = S.challengeTo;
     closeSetup();
+    if (to && homeMode(st) === 'practice') return sendChallengeFrom(st, to);
     if (homeMode(st) === 'study') { markStudyDone(st.studyTopic); openStudy(st.studyTopic, studyYearOf(st)); } else startQuiz(st);
   });
   $('#quitBtn').addEventListener('click', () => {
@@ -2133,6 +2166,7 @@
   }
   $('#planForm').addEventListener('submit', e => { e.preventDefault(); addPlan(); });
   $('#setupClose').addEventListener('click', closeSetup);
+  $('#setupDlg').addEventListener('close', () => { S.challengeTo = null; });   // Escape: the next sheet is a normal one again
   // R3.8: without the <dialog> API there is no cancel event, so Escape closes the sheet here
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && typeof $('#setupDlg').showModal !== 'function' && $('#setupDlg').hasAttribute('open')) closeSetup(); });
   $('#setupDlg').addEventListener('click', e => {
@@ -2252,7 +2286,7 @@
 
   /* v2.0.0: accounts, friends and practising together (js/friends.js) */
   if (window.Friends) window.Friends.init({
-    t, el, $, store, K, Profiles, S, lang, go, toast, render, startQuiz, startChallenge, topicOptions, yearLabel,
+    t, el, $, store, K, Profiles, S, lang, go, toast, render, startQuiz, startChallenge, openChallenge, topicOptions, yearLabel,
     reload() { loadProfileSettings(); applySuggestedYear(); if ($('#profileDlg').open) renderProfiles(); render(); }
   });
 

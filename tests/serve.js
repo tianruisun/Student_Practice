@@ -14,11 +14,16 @@ function fileFor(root, urlPath) {
   return fs.existsSync(file) ? file : null;
 }
 
-function serve(root) {
+/* opts.api (optional): a handler for /api/* requests, e.g. tests/local-api.js, so the app's server runs in local tests too */
+function serve(root, opts = {}) {
   const base = path.resolve(root);
   // Fail at once on a wrong folder, instead of serving 404s that a test may wait on forever.
   if (!fileFor(base, '/')) return Promise.reject(new Error(`serve: no index.html in ${base}`));
   const server = http.createServer((req, res) => {
+    if (opts.api && (req.url === '/api' || req.url.startsWith('/api/') || req.url.startsWith('/api?'))) {
+      opts.api(req, res).catch(e => { res.writeHead(500); res.end(String(e && e.message)); });
+      return;
+    }
     const file = fileFor(base, req.url);
     if (!file) { res.writeHead(404); res.end('not found'); return; }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });

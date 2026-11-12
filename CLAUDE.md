@@ -15,8 +15,14 @@ Maths and reasoning practice PWA (Years 1–12, Extension 1 and 2) for students,
 - `sw.js` has `BUILD = '<version>+<n>'`. Change it in every release and before every push to Test that changes an app file,
   or phones keep the old files (a browser only updates its service worker when `sw.js` itself changes). `npm test` checks it.
 
+## Server (v2.0.0)
+- `functions/api/[[path]].js` (Cloudflare Pages Function) → `server/api.js`, with a D1 database bound as `DB`. Production and Preview bind different databases.
+- `DEV_CODES=1` on Preview (Test) only: codes and reset tokens come back in the answer. The server ignores it on Production hosts.
+- Email: `EMAIL_PROVIDER` (`resend` or `brevo`), `EMAIL_API_KEY` (a secret, set in the Cloudflare dashboard, never in the repo), `EMAIL_FROM`. Setup steps: `server/SETUP.md`.
+- The service worker never caches `/api/`. The app keeps the account in `sp.auth`.
+
 ## Tests
-- Run all: `npm test`
+- Run all: `npm test` (unit, kit, server, smoke, flows; local runs answer `/api/*` with `server/api.js` on an in-memory database)
 - Run against Test site: `npm test -- --site=https://test.student-practice.pages.dev`
 - `window.__testAnswers` exists on every host except Production, so `tests/flows.js` can answer a set correctly. Never rely on it in app code.
 - Every run ends within its time limits (unit 5 min, smoke 3 min, flows 7 min, any single browser step 20 s) and reports a failure instead of hanging.

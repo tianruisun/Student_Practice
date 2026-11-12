@@ -1045,7 +1045,7 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .school-sw { display: inline-flex; background: var(--pri-soft); border-radius: 999px; padding: 4px; }
 .school-sw button { min-height: 40px; border: 0; border-radius: 999px; padding: 0 0.85rem; background: transparent; color: var(--ink); font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
 .school-sw button[aria-pressed="true"] { background: var(--pri); color: var(--pri-ink); }
-.school-sw button:focus-visible, .plan-btn:focus-visible, .invite:focus-visible, .cal-d:focus-visible, .pi-x:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.school-sw button:focus-visible, .plan-btn:focus-visible, .cal-d:focus-visible, .pi-x:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .plan-btn { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; min-height: 48px; padding: 0.3rem 0.75rem 0.3rem 0.35rem; border: 1px solid var(--hair); border-radius: 16px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
 .pb-cal { width: 38px; border-radius: 9px; overflow: hidden; border: 1px solid var(--hair); text-align: center; background: var(--surface); }
 .pb-cal i { display: block; font-style: normal; background: #d93a3f; color: #fff; font-size: 0.6rem; font-weight: 700; line-height: 14px; white-space: nowrap; }
@@ -1058,13 +1058,6 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .tp-bubble::before { content: ''; position: absolute; left: -7px; top: 50%; margin-top: -7px; border: 7px solid transparent; border-left: 0; border-right-color: var(--surface); }
 .tp-bubble p { margin: 0 0 0.45rem; font-size: 0.88rem; line-height: 1.4; overflow-wrap: anywhere; }
 #todayGo { min-height: 44px; padding: 0 1.1rem; width: auto; }
-.soon-chip { font-size: 0.72rem; font-weight: 600; color: #8a4b00; background: #ffefd6; border-radius: 999px; padding: 0.15rem 0.6rem; }
-.friends { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem; }
-.seat svg { width: 56px; height: 56px; display: block; margin: 0 auto; }
-.seat-bg { fill: var(--seat); } .seat-fg { fill: var(--seat-fg); }
-.invite { width: 100%; min-height: 44px; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; background: none; border: 0; color: var(--pri); font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
-.inv-plus { width: 56px; height: 56px; border-radius: 50%; border: 2px dashed var(--line); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; line-height: 1; }
-.friends-note { margin: 0.45rem 0 0; }
 .home-scene svg { display: block; width: 100%; height: 110px; border-radius: var(--radius); }
 .sc-sky { fill: var(--sc-sky); } .sc-sun { fill: var(--sc-sun); } .sc-cloud { fill: var(--sc-cloud); opacity: .9; } .sc-grass { fill: var(--sc-grass); } .sc-grass2 { fill: var(--sc-grass2); }
 .sc-trunk { fill: #a07850; } .sc-leaf { fill: #5cc07e; } .sc-pink { fill: #ff7aa2; } .sc-yellow { fill: #ffd166; }
@@ -1102,3 +1095,102 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .pb-t span { display: none; }
 .plan-btn { padding-right: 0.55rem; }
 @media (min-width: 420px) { .pb-t span { display: inline; } .school-sw button { padding: 0 0.85rem; font-size: 0.84rem; } }
+
+/* ---------- v1.12.0 lows, fixed in v2.0.0 ---------- */
+/* R3.1: the selected day keeps its own marks: a ring outside it, the Today ring and the Practised fill inside */
+.cal-d.sel { background: transparent; color: var(--ink); font-weight: 700; box-shadow: 0 0 0 3px var(--pri); }
+.cal-d.sel.done { background: var(--done-day); }
+.cal-d.sel.today { box-shadow: 0 0 0 3px var(--pri), inset 0 0 0 2px var(--pri); }
+/* R3.2: day cells 44 px tall; the calendar card gives the grid more room on small phones */
+.cal-d { min-height: 44px; }
+@media (max-width: 380px) { #screen-plan .card { padding-left: 0.5rem; padding-right: 0.5rem; } .cal-grid { gap: 3px; } }
+/* R3.3: the school switch is a 44 px target */
+.school-sw button { min-height: 44px; }
+/* R3.4: the run beside the calendar is readable in dark mode */
+@media (prefers-color-scheme: dark) { .pb-t em { color: #ffb066; } }
+/* R3.5: in High school only the Study picture is dimmed; the name keeps a readable colour */
+.mode-card.soon .mc-t { opacity: 1; color: var(--muted); }
+
+/* ---------- v2.0.0 (W8, Terry chose Option B): five tabs, the Friends tab, accounts and practising together ---------- */
+.bottom-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.2rem; padding-left: 0.4rem; padding-right: 0.4rem; }
+.tab { position: relative; }
+.nav-dot { position: absolute; top: 4px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 0.66rem; font-weight: 700; line-height: 18px; text-align: center; }
+@media (max-width: 365px) { .tab, .tab[aria-current="page"] { font-size: 0.58rem; } }
+#screen-friends h2 { margin: 0 0 0.8rem; }
+.f-acc, .f-part, .f-cmp, .f-mewrap { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem; margin-bottom: 0.9rem; }
+.f-owl { font-size: 2.6rem; text-align: center; line-height: 1; margin-bottom: 0.6rem; }
+.f-seg { display: flex; width: 100%; margin-bottom: 0.9rem; }
+.f-seg .seg-btn { flex: 1; min-height: 44px; }
+.f-form { display: flex; flex-direction: column; gap: 0.2rem; }
+.f-form .btn { margin-top: 0.5rem; }
+.f-field { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.6rem; min-width: 0; }
+.f-field label, .f-pick legend { font-weight: 600; font-size: 0.9rem; }
+.f-field input, .f-field select { width: 100%; min-height: 48px; padding: 0.55rem 0.8rem; border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); font: inherit; }
+.f-field input:focus, .f-field select:focus { border-color: var(--pri); outline: 3px solid color-mix(in srgb, var(--pri) 25%, transparent); }
+#fCode { font-size: 1.4rem; letter-spacing: 0.3em; font-weight: 700; }
+.f-hint { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: anywhere; }
+.f-why { margin-top: 0.9rem; text-align: center; }
+.f-err { margin: 0.3rem 0 0; color: var(--bad); font-weight: 600; font-size: 0.88rem; }
+.f-msg { margin: 0.3rem 0 0; color: var(--ok); font-weight: 600; font-size: 0.88rem; }
+.f-dev { margin: 0; padding: 0.4rem 0.6rem; border-radius: 10px; background: var(--warn-soft); font-size: 0.85rem; }
+.f-h { margin: 0 0 0.5rem; font-size: 1.1rem; text-wrap: balance; }
+.f-sec { margin: 0.9rem 0 0.4rem; font-size: 0.85rem; font-weight: 700; color: var(--muted); }
+.f-steps { display: flex; gap: 4px; margin-bottom: 0.8rem; }
+.f-steps i { flex: 1; height: 6px; border-radius: 3px; background: var(--hair); }
+.f-steps i.on { background: var(--pri); }
+.f-pick { border: 0; padding: 0; margin: 0 0 0.6rem; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.35rem; }
+.f-pick legend { margin-bottom: 0.4rem; }
+.f-pick-i { position: relative; display: flex; }
+.f-pick-i input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.f-pick-i span { flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; border-radius: 12px; background: var(--surface-2); border: 2px solid transparent; }
+.f-pick-i input:checked + span { border-color: var(--pri); background: var(--pri-soft); }
+.f-pick-i input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+.f-acc .btn.ghost, .f-part .btn.ghost, .f-mewrap .btn.ghost { min-height: 44px; }
+.btn.small { width: auto; min-height: 44px; margin-top: 0; padding: 0.4rem 0.9rem; font-size: 0.86rem; flex: none; }
+.f-me { display: flex; align-items: center; gap: 0.7rem; }
+.f-me-t { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.f-av { flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--sky-soft); display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; line-height: 1; }
+.f-av.big { width: 52px; height: 52px; font-size: 1.8rem; }
+.f-confirm { margin-top: 0.7rem; padding: 0.7rem; border-radius: var(--radius-sm); background: var(--bad-soft); display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.f-confirm p { margin: 0; flex-basis: 100%; font-size: 0.88rem; }
+.f-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.f-li { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.45rem 0.55rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+.f-name { flex: 1; min-width: 7rem; overflow-wrap: anywhere; font-size: 0.92rem; }
+.f-name b, .f-name small { display: block; }
+.f-name small { color: var(--muted); font-size: 0.76rem; }
+.f-wait .f-name { color: var(--muted); }
+.f-ic { font-size: 1.2rem; }
+.f-dot { display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 0.68rem; line-height: 18px; }
+.seg-btn[aria-pressed="true"] .f-dot { background: var(--pri-ink); color: var(--pri); }
+.f-send .seg { display: flex; width: 100%; }
+.f-send .seg-btn { flex: 1; min-height: 44px; }
+.f-send-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+.f-send-h .btn { text-decoration: none; font-size: 1.1rem; min-width: 44px; }
+.f-danger { color: var(--bad) !important; }
+.f-more { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); padding: 0.4rem 1rem; margin-bottom: 0.9rem; }
+.f-more summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }
+.f-avrow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.35rem; }
+.f-avbtn { min-height: 44px; border: 2px solid transparent; border-radius: 12px; background: var(--surface-2); font-size: 1.4rem; cursor: pointer; }
+.f-avbtn[aria-pressed="true"] { border-color: var(--pri); background: var(--pri-soft); }
+.f-avbtn:focus-visible, .fr-cta:focus-visible, .f-more summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.f-score { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin: 0.6rem 0; }
+.f-side { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.7rem 0.4rem; border-radius: var(--radius-sm); background: var(--surface-2); text-align: center; overflow-wrap: anywhere; }
+.f-side b { font-size: 1.6rem; line-height: 1.2; }
+.f-side small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.f-side.win { box-shadow: inset 0 0 0 3px var(--accent); }
+.f-qs { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }
+.f-qrow { display: flex; gap: 0.5rem; align-items: flex-start; }
+.f-qn { flex: 0 0 4.5rem; font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; padding-top: 2px; }
+.f-dots { display: flex; flex-wrap: wrap; gap: 4px; }
+.f-dots span { width: 24px; height: 24px; border-radius: 6px; font-size: 0.68rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.f-dots .y { background: var(--ok-soft); color: var(--ok); }
+.f-dots .n { background: var(--bad-soft); color: var(--bad); }
+.res-vs { margin: 0 0 1rem; }
+.res-vs > p { margin: 0 0 0.6rem; padding: 0.7rem 0.9rem; border-radius: var(--radius-sm); background: var(--sky-soft); }
+.res-vs .f-cmp { margin-bottom: 0; }
+/* Home: one line to the Friends tab */
+.fr-cta { width: 100%; min-height: 56px; display: flex; align-items: center; gap: 0.7rem; padding: 0.55rem 0.8rem; border: 1px solid var(--hair); border-radius: var(--radius-sm); background: var(--sky-soft); color: var(--ink); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+.fr-cta-ic { font-size: 1.6rem; }
+.fr-faces { display: flex; }
+.fr-faces .f-av { width: 36px; height: 36px; font-size: 1.2rem; border: 2px solid var(--surface); }
+.fr-faces .f-av + .f-av { margin-left: -8px; }

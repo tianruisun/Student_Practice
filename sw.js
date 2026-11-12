@@ -2,7 +2,7 @@
    BUILD: a browser installs a new service worker only when THIS file's bytes change, not when version.js does
    (R6.2, v1.7.0). So BUILD changes with every push to Test that changes an app file: <APP_VERSION>+<n>, n counting
    the pushes of that version. Installing then re-fetches every file below. tests/run.js checks both rules. */
-const BUILD = '1.12.0+3';
+const BUILD = '2.0.0+1';
 importScripts('./version.js');
 const CACHE_VERSION = 'maths-' + self.APP_VERSION;
 const ASSETS = [
@@ -40,6 +40,7 @@ const ASSETS = [
   './js/game-money.js',
   './js/game-broken.js',
   './js/game-numbers.js',
+  './js/friends.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon.svg',
@@ -70,6 +71,7 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // AI API calls go straight to the network
+  if (url.pathname.includes('/api/')) return;       // v2.0.0: the app's own server (accounts, friends) is never cached
 
   // Pages: network first (fresh when online), cached copy when offline.
   if (req.mode === 'navigate') {

@@ -35,10 +35,10 @@ function nodeSuite(file) {
 (async () => {
   const arg = process.argv.find(a => a.startsWith('--site='));
   let server = null, site = arg && arg.slice(7);
-  if (!site) { server = await serve(ROOT); site = `http://127.0.0.1:${server.address().port}/`; }
+  if (!site) { server = await serve(ROOT, CONFIG.api ? { api: require(path.join(ROOT, CONFIG.api)).localApi() } : {}); site = `http://127.0.0.1:${server.address().port}/`; }
   else if (!siteURL(site)) { console.log(`--site must start with http:// or https:// (got ${site})`); process.exit(1); }
   else site = siteURL(site);   // with or without a trailing '/'
-  const results = { unit: nodeSuite(CONFIG.unit), kit: nodeSuite('tests/kit.js') };
+  const results = { unit: nodeSuite(CONFIG.unit), kit: nodeSuite('tests/kit.js'), server: nodeSuite(CONFIG.server) };
   results.smoke = await browserSuite('smoke', () => smoke.run(site, { local: !!server }));
   if (flows) results.flows = await browserSuite('flows', () => flows.run(site));
   if (server) server.close();

@@ -1031,10 +1031,11 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(/id="startBtn"/.test(html));
   });
   /* v1.12.0 W4: Home and the bottom bar (Terry's notes on the v1.11.0 screenshot) */
-  t('W4: one start button on Home; no ▶ and no Students tab in the bottom bar; four tabs', () => {
+  t('W4: one start button on Home; no ▶ and no Students tab in the bottom bar; five tabs since v2.0.0 (Friends)', () => {
     assert.ok(!/id="fabStart"|id="navStudents"|id="studyCard"|id="studyTopicBtn"|id="sourceLine"|id="subjectNote"/.test(html));
     const nav = (/<nav class="bottom-nav"[\s\S]*?<\/nav>/.exec(html) || [''])[0];
-    assert.strictEqual((nav.match(/class="tab"/g) || []).length, 4);
+    assert.strictEqual((nav.match(/class="tab"/g) || []).length, 5);
+    assert.deepStrictEqual([...nav.matchAll(/data-go="(\w+)"/g)].map(m => m[1]), ['home', 'progress', 'friends', 'games', 'parent']);
   });
   t('W4: the header keeps only the language button; tour and parent lock are in Settings', () => {
     const header = (/<header class="top">[\s\S]*?<\/header>/.exec(html) || [''])[0];
@@ -1050,7 +1051,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   /* v1.12.0 W6 (Terry chose Option B): four cards on Home; the options and Start in a sheet */
   t('W7: Home has the school switch, My plan, today\'s plan, four cards, Carry on and Friends; no week, Badges or Start', () => {
     const home = (/<section id="screen-home"[\s\S]*?<\/section>/.exec(html) || [''])[0];
-    for (const id of ['schoolSwitch', 'planBtn', 'todayPlan', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'friendsBox', 'inviteBtn']) assert.ok(home.includes('id="' + id + '"'), id);
+    for (const id of ['schoolSwitch', 'planBtn', 'todayPlan', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'friendsBox', 'friendsInner']) assert.ok(home.includes('id="' + id + '"'), id);
     assert.ok(!/id="startBtn"|id="diffSel"|id="modeTiles"|id="weekCard"|id="badgeBox"|id="homeBadges"/.test(home));
     assert.ok(!/id="schoolSel"|id="schoolField"/.test(html), 'the school is chosen on Home only');
   });
@@ -1073,7 +1074,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('W6: the new words are in English and Chinese', () => {
     const keys = ['mode.relax.sub', 'study.k6note', 'sheet.close', 'home.streak', 'home.streak1', 'home.streak0', 'home.carry', 'home.lastTime',
       'plan.my', 'plan.open', 'plan.today', 'plan.todayNone', 'plan.todayDone', 'plan.start', 'plan.make', 'plan.add', 'plan.weekly', 'plan.byParent', 'mode.study.soon', 'mode.study.soonNote',
-      'friends.title', 'friends.soon', 'friends.invite', 'friends.note', 'friends.inviteSoon', 'tour.schoolT', 'tour.planT', 'tour.todayT', 'tour.friendsT',
+      'friends.title', 'tour.schoolT', 'tour.planT', 'tour.todayT', 'tour.friendsT',
       'tour.carryT', 'tour.carry', 'day.1', 'day.2', 'day.3', 'day.4', 'day.5', 'day.6', 'day.7'];
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.en[k] === S.zh[k]), []);
   });
@@ -1092,6 +1093,83 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     const topics = Object.keys(S.en).filter(k => /^topic\./.test(k)).map(k => k.slice(6));
     const offered = topics.filter(k => k === 'mixed' || globalThis.Gen && (Object.keys(Gen.SUBJECTS.maths).includes(k) || Object.keys(Gen.SUBJECTS.ga).includes(k)) || /^k6/.test(k));
     assert.deepStrictEqual(offered.filter(k => !has.has(k)), []);
+  });
+}
+
+/* ---------- v2.0.0 (W8, Terry chose Option B): accounts, the Friends tab and practising together ---------- */
+{
+  const fs = require('fs'), path = require('path'), root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const fr = fs.readFileSync(path.join(root, 'js/friends.js'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const vm = require('vm'); const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} }; box.window = box; box.self = box;
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8'), box); vm.runInNewContext(fs.readFileSync(path.join(root, 'js/releases.js'), 'utf8'), box);
+  const S = box.I18N.STRINGS;
+  t('W8: the Friends screen, the Friends tab with its dot, and the results card are in the page', () => {
+    assert.ok(/<section id="screen-friends"[\s\S]*?id="frBody"/.test(html));
+    assert.ok(/id="navFriends" data-go="friends"[\s\S]*?id="friendsDot" hidden/.test(html));
+    assert.ok(/<section id="screen-results"[\s\S]*?id="resVs" class="res-vs" hidden/.test(html));
+  });
+  t('W8: friends.js loads before app.js and is in the offline files', () => {
+    assert.ok(html.indexOf('js/friends.js') > 0 && html.indexOf('js/friends.js') < html.indexOf('js/app.js'));
+    assert.ok(sw.includes("'./js/friends.js',"));
+  });
+  t('W8: the service worker never caches the server (/api/)', () => {
+    assert.ok(/if \(url\.pathname\.includes\('\/api\/'\)\) return;/.test(sw));
+    assert.ok(sw.indexOf("includes('/api/')") < sw.indexOf('caches.match(req'));
+  });
+  t('W8: every word friends.js uses is in English and Chinese, and they differ', () => {
+    const used = new Set([...fr.matchAll(/t\('((?:acc|fr|nav|sheet|subject)\.[\w.]+)'/g)].map(m => m[1]));
+    ['acc.err.offline', 'acc.err.not_set_up', 'acc.err.server', 'acc.err.signed_out'].forEach(k => used.add(k));
+    const missing = [...used].filter(k => !S.en[k] || !S.zh[k]);
+    assert.deepStrictEqual(missing, []);
+    assert.deepStrictEqual([...used].filter(k => S.en[k] === S.zh[k] && !/^fr\.cOfN$/.test(k)), []);
+  });
+  t('W8: every error the server can send has words in both languages', () => {
+    const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
+    const codes = new Set([...api.matchAll(/fail\(\d+, '(\w+)'/g)].map(m => m[1]));
+    ['bad_input', 'bad_origin', 'no_route'].forEach(c => codes.delete(c));   // not reachable from the app's own forms
+    assert.deepStrictEqual([...codes].filter(c => !S.en['acc.err.' + c] || !S.zh['acc.err.' + c]), []);
+  });
+  t('W8: no English letters in the Chinese account words, except names, codes and numbers in braces', () => {
+    const bad = Object.keys(S.zh).filter(k => /^(acc|fr|rel\.2\.0\.0)\./.test(k)).filter(k => /[A-Za-z]{2,}/.test(S.zh[k].replace(/\{\w+\}/g, '')));
+    assert.deepStrictEqual(bad, []);
+  });
+  t('W8: the account is kept under sp.auth; every other key friends.js stores is a student key', () => {
+    assert.ok(fr.includes("const AUTH = 'sp.auth';"));
+    assert.ok(!/localStorage/.test(fr), 'friends.js uses the app\'s store only');
+  });
+  t('W8: the old "soon" words of v1.12.0 are gone', () => {
+    for (const k of ['friends.soon', 'friends.invite', 'friends.note', 'friends.inviteSoon']) assert.ok(!(k in S.en) && !(k in S.zh), k);
+    assert.ok(!/inviteBtn|friendsList|SEAT/.test(app + html));
+  });
+  t('W8: app.js hands Friends what it needs, and a store write tells it', () => {
+    assert.ok(/window\.Friends\.init\(\{[\s\S]*?startChallenge[\s\S]*?reload\(\)/.test(app));
+    assert.ok(app.includes('if (!quiet && window.Friends) window.Friends.changed(k);'));
+    assert.ok(app.includes('if (Q.challenge && window.Friends) window.Friends.finished(Q);'));
+  });
+  t('W8: Practise again after a challenge is a normal set', () => {
+    assert.ok(app.includes('delete S.lastQuizSettings.challenge;'));
+  });
+  t('W8: What\'s new for v2.0.0 lists four items with words in both languages', () => {
+    const rel = box.RELEASES[0];
+    assert.strictEqual(rel.v, '2.0.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'account,friends,together,fixes');
+    rel.items.forEach(i => ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.0.0.' + i.id + sfx] && S.zh['rel.2.0.0.' + i.id + sfx], i.id + sfx)));
+  });
+  t('W8: the Pages Function and the server are not offline files and hold no secret', () => {
+    assert.ok(!/server\/|functions\//.test(sw));
+    const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
+    assert.ok(/env\.EMAIL_API_KEY/.test(api) && !/EMAIL_API_KEY\s*=\s*'/.test(api));
+  });
+  t('R3.1-R3.5 (v1.12.0): calendar marks, 44 px targets and readable colours', () => {
+    const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+    assert.ok(/\.cal-d\.sel \{ background: transparent;[^}]*box-shadow: 0 0 0 3px var\(--pri\)/.test(css), 'R3.1');
+    assert.ok(/\.cal-d\.sel\.today \{ box-shadow: 0 0 0 3px var\(--pri\), inset 0 0 0 2px var\(--pri\)/.test(css), 'R3.1 today');
+    assert.ok(/\.cal-d \{ min-height: 44px; \}/.test(css), 'R3.2');
+    assert.ok(/\.school-sw button \{ min-height: 44px; \}/.test(css), 'R3.3');
+    assert.ok(/prefers-color-scheme: dark\) \{ \.pb-t em \{ color: #ffb066; \} \}/.test(css), 'R3.4');
+    assert.ok(/\.mode-card\.soon \.mc-t \{ opacity: 1; color: var\(--muted\); \}/.test(css), 'R3.5');
   });
 }
 

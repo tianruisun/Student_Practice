@@ -485,8 +485,8 @@ async function run(site) {
     await flow('R6.1 a year picked before any suggestion', async () => {
       const profiles = JSON.stringify({ list: [{ id: 'p1', name: 'Eve' }], active: 'p1' });
       const { context, page, errors } = await freshPage(browser, site, { 'sp.profiles': profiles, [SETTINGS]: settings() });
+      await page.click('#schoolSwitch [data-school="high"]');
       await openSheet(page, 'practice');
-      await page.selectOption('#schoolSel', 'high');
       await page.selectOption('#yearSel', '8');
       await page.keyboard.press('Escape');
       await page.click('#profileBtn');
@@ -552,14 +552,14 @@ async function run(site) {
       const tourOpen = () => page.evaluate(() => { const d = document.querySelector('#tourDlg'); return !!d && d.open; });
       await page.waitForTimeout(300);
       check('tour: opens on the first visit', await tourOpen());
-      check('tour: starts at step 1 of 8', (await page.textContent('#tourStep')) === 'Step 1 of 8', await page.textContent('#tourStep'));
+      check('tour: starts at step 1 of 11', (await page.textContent('#tourStep')) === 'Step 1 of 11', await page.textContent('#tourStep'));
       check('tour: Back is hidden on step 1', !(await page.isVisible('#tourBack')));
       // walk every step: the highlight surrounds its part, the box stays on screen, nothing scrolls sideways, no raw keys
       const problems = [];
-      for (let k = 1; k <= 8; k++) {   // v1.12.0 W6: 8 steps on a first visit (the week and the four cards; options are in the sheet)
+      for (let k = 1; k <= 11; k++) {   // v1.12.0 W7: 11 steps on a first visit (school, My plan, today's plan, the cards, Friends)
         await page.waitForTimeout(400);   // the highlight slides to its part in 0.25 s
         const r = await page.evaluate(() => {
-          const sels = [null, '#profileBtn', '#langBtn', '#weekCard', '#modeCards', '.tab[data-go="progress"]', '#navGames', '#navParent'];
+          const sels = [null, '#profileBtn', '#langBtn', '#schoolSwitch', '#planBtn', '#todayPlan', '#modeCards', '#friendsBox', '.tab[data-go="progress"]', '#navGames', '#navParent'];
           const n = +/\d+/.exec(document.querySelector('#tourStep').textContent)[0], sel = sels[n - 1];
           const h = document.querySelector('.tour-hole').getBoundingClientRect(), p = document.querySelector('.tour-pop').getBoundingClientRect();
           const a = sel && document.querySelector(sel).getBoundingClientRect();
@@ -573,7 +573,7 @@ async function run(site) {
         if (r.side) problems.push(`step ${k} scrolls sideways`);
         if (/tour\./.test(r.text) || r.text.length < 10) problems.push(`step ${k} text "${r.text}"`);
         if (k === 2) { await page.click('#tourBack'); if (!/^Step 1 /.test(await page.textContent('#tourStep'))) problems.push('Back does not go to step 1'); await page.click('#tourNext'); }
-        if (k < 8) await page.click('#tourNext');
+        if (k < 11) await page.click('#tourNext');
       }
       check('tour: every step highlights its part, on screen', problems.length === 0, problems.join('; '));
       check('tour: the last step says Done and has no Skip', (await page.textContent('#tourNext')) === 'Done' && !(await page.isVisible('#tourSkip')));
@@ -644,21 +644,21 @@ async function run(site) {
         }
         return out;
       };
-      // v1.12.0 W6: the steps follow Home: 8 with nothing done yet, 10 with Carry on and Badges; every step highlights its part
+      // v1.12.0 W7: the steps follow Home: 11 with nothing done yet, 12 with Carry on; every step highlights its part
       const t0 = Date.now();
       const done = { 'sp.history.p1': JSON.stringify([{ date: t0, subject: 'maths', year: 5, topic: 'frac', diff: 1, n: 5, correct: 5, stars: 3, byTopic: { frac: [5, 5] }, wrong: [] }]),
         'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 5, diff: 1, n: 5 }]) };
-      for (const [name, seed, total] of [['nothing done', {}, 8], ['a set and a badge', done, 10]]) {
+      for (const [name, seed, total] of [['nothing done', {}, 11], ['a set and a badge', done, 12]]) {
         const { context, page, errors } = await freshPage(browser, site, Object.assign({ [SETTINGS]: settings({ subject: 'sel' }) }, seed));
         const steps = await walk(page);
         check(`R1.1 ${name}: ${total} steps`, steps.length === total && steps[0].step === `Step 1 of ${total}`, steps.length + ' / ' + (steps[0] || {}).step);
-        check(`R1.1 ${name}: Carry on and Badges only when there are some`, steps.some(x => x.title === 'Carry on') === (total === 10) && steps.some(x => x.title === 'Badges') === (total === 10), steps.map(x => x.title).join(','));
+        check(`R1.1 ${name}: Carry on only when there is a set; no Badges step (Badges are in Progress)`, steps.some(x => x.title === 'Carry on') === (total === 12) && !steps.some(x => x.title === 'Badges'), steps.map(x => x.title).join(','));
         check(`R1.1 ${name}: no step about options or Start (they are in the sheet)`, !steps.some(x => /Set up|^Start$|^Subject$|^Print$/.test(x.title)), steps.map(x => x.title).join(','));
         check(`R1.1 ${name}: every step but the first highlights something`, steps.slice(1).every(x => x.hole > 0), steps.map(x => x.hole).join(','));
-        if (total === 10) {
+        if (total === 12) {
           await page.click('#langBtn');
           const zh = await walk(page);
-          check('R1.1 Chinese steps', zh.some(x => x.title === '继续练习') && zh.some(x => x.title === '本周'), zh.map(x => x.title).join(','));
+          check('R1.1 Chinese steps', zh.some(x => x.title === '继续练习') && zh.some(x => x.title === '我的计划') && zh.some(x => x.title === '小学还是中学'), zh.map(x => x.title).join(','));
         }
         check(`R1.1 ${name}: no page errors`, errors.length === 0, errors.join(' | '));
         await context.close();
@@ -706,6 +706,10 @@ async function run(site) {
         check('R1.3 no showModal: no tour dialog left behind', (await page.locator('#tourDlg').count()) === 0);
         await page.click('.tab[data-go="home"]');
         check('R1.3 no showModal: Home still works', await visible(page, '#cardPractice'));
+        await page.click('#cardPractice');
+        check('R2.1 no showModal: the Practice card still opens its sheet', await page.locator('#setupDlg').evaluate(d => d.open));
+        await page.click('#startBtn');
+        check('R2.1 no showModal: Start still starts a set', await visible(page, '#screen-quiz'));
         check('R1.3 no showModal: no page errors', errors.length === 0, errors.join(' | '));
         await context.close();
       }
@@ -1551,7 +1555,7 @@ async function run(site) {
       const v = await appVersion(page);
       check('v1.11 What\'s new: opens on its own for a browser that used an earlier version', await isOpen(page));
       check('v1.11 What\'s new: the title names this version', (await page.textContent('#newsTitle')).includes(v), await page.textContent('#newsTitle'));
-      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 5, await page.locator('#newsBody li').count());
+      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 7, await page.locator('#newsBody li').count());
       const sizes = await page.evaluate(() => ['#newsShow', '#newsClose'].map(s => document.querySelector(s).getBoundingClientRect().height));
       check('v1.11 What\'s new: Show me and Got it are at least 44 px tall', sizes.every(h => h >= 44), sizes);
       check('v1.11 What\'s new: nothing is stored until it is closed', (await page.evaluate(() => localStorage.getItem('sp.news'))) === null);
@@ -1567,8 +1571,8 @@ async function run(site) {
       await page.click('#newsShow');
       check('v1.11 Show me: the dialog closes and the guided tour opens', !(await isOpen(page)) && (await page.locator('#tourDlg').count()) === 1);
       const titles = [];
-      for (let k = 0; k < 5 && (await page.locator('#tourDlg').count()); k++) { titles.push(await page.textContent('#tourTitle')); await page.click('#tourNext'); }
-      const want = await page.evaluate(() => ['modes', 'week', 'icons', 'settings', 'relax'].map(id => window.I18N.t('rel.' + self.APP_VERSION + '.' + id + 'T')));
+      for (let k = 0; k < 7 && (await page.locator('#tourDlg').count()); k++) { titles.push(await page.textContent('#tourTitle')); await page.click('#tourNext'); }
+      const want = await page.evaluate(() => ['modes', 'school', 'plan', 'icons', 'friends', 'settings', 'relax'].map(id => window.I18N.t('rel.' + self.APP_VERSION + '.' + id + 'T')));
       check('v1.11 Show me: one step per new item, in order', JSON.stringify(titles) === JSON.stringify(want), JSON.stringify(titles));
       check('v1.11 Show me: the tour ends on Home, and What\'s new is remembered', (await page.locator('#tourDlg').count()) === 0 && (await visible(page, '#screen-home')) && !!(await page.evaluate(() => localStorage.getItem('sp.news'))));
       check('v1.11 Show me: no page errors', errors.length === 0, errors.join(' | '));
@@ -1683,18 +1687,33 @@ async function run(site) {
       }));
       check('W6 four cards: Study, Practice, Test, Relax, each with a short line', cards.map(c => c.t).join() === 'Study,Practice,Test,Relax' && cards.every(c => c.s.length > 3), JSON.stringify(cards));
       check('W6 every card icon is the same size and in the same place, and bigger than its name', cards.every(c => c.ic === cards[0].ic && c.dx === cards[0].dx && c.dy === cards[0].dy) && cards[0].ic >= 56 && cards[0].ic > 3 * cards[0].name, JSON.stringify(cards));
-      check('W6 a first visit: the week asks to practise today, no Carry on or Badges', (await page.textContent('#weekStreak')) === 'Practise today to start a run' && (await page.locator('#weekDays li').count()) === 7 && !(await on('#carryBox')) && !(await on('#badgeBox')));
+      check('W7 a first visit: the owl says there is no plan yet, Make a plan; no Carry on', (await page.textContent('#todayText')) === 'No plan for today yet.' && (await page.textContent('#todayGo')) === 'Make a plan' && !(await on('#carryBox')));
+      check('W7 the top row: Primary school chosen, then the calendar with today\'s date', (await page.getAttribute('#schoolSwitch [data-school="primary"]', 'aria-pressed')) === 'true' && (await page.textContent('#planDay')) === String(new Date().getDate()) && (await page.getAttribute('#planBtn', 'aria-label')) === 'My plan: open the calendar');
+      const topRow = await page.evaluate(() => { const a = document.querySelector('#schoolSwitch').getBoundingClientRect(), b = document.querySelector('#planBtn').getBoundingClientRect(); return Math.abs(a.top - b.top) < 12; });
+      check('W7 the switch and the calendar are on one row at 375 px', topRow);
+      check('W7 the owl and today\'s plan sit under the switch and above the Study card', await page.evaluate(() => { const y = s => document.querySelector(s).getBoundingClientRect().top; return y('#schoolSwitch') < y('#todayPlan') && y('#todayPlan') < y('#cardStudy'); }));
+      check('W7 Friends: three empty seats, Invite, marked soon; no Badges on Home', (await page.locator('#friendsList .seat svg').count()) === 3 && (await on('#inviteBtn')) && (await page.textContent('#friendsBox .soon-chip')) === 'Practise together: soon' && (await page.locator('#badgeBox, #homeBadges, #weekCard').count()) === 0);
+      await page.click('#inviteBtn');
+      check('W7 Invite says practising together comes later', /later version/.test(await page.textContent('#toast')), await page.textContent('#toast'));
+      await page.evaluate(() => { document.querySelector('#toast').hidden = true; });
       check('W6 Home shows no options or Start until a card is tapped', !(await on('#startBtn')) && !(await on('#diffSel')) && !(await sheetOpen(page)));
-      check('W6 Home: no removed parts', (await page.locator('#modeTiles, #subjectNote, #sourceLine, #studyCard, #studyTopicBtn, #fabStart, #navStudents, #parentBtn').count()) === 0);
+      check('W6 Home: no removed parts', (await page.locator('#modeTiles, #subjectNote, #sourceLine, #studyCard, #studyTopicBtn, #fabStart, #navStudents, #parentBtn, #schoolSel, #schoolField').count()) === 0);
       const layout = await homeLayout();
       // Practice
       await page.click('#cardPractice');
       check('W6 Practice: the sheet opens with its own name', (await sheetOpen(page)) && (await page.textContent('#setupTitle')) === 'Practice');
       check('W6 Practice: Maths and General Ability only, Maths chosen', (await values('#subjectChips input')) === 'maths,ga' && (await page.locator('#subjectChips input[value="maths"]').isChecked()));
-      check('W6 Practice: school, year, topic, difficulty, count and Print; Start practice in view', (await on('#schoolSel')) && (await on('#yearSel')) && (await on('#topicSel')) && (await on('#diffSel')) && (await on('#countSel')) && (await on('#printHome')) && (await page.textContent('#startBtn')) === 'Start practice' && (await startInView()));
+      check('W6 Practice: year, topic, difficulty, count and Print; Start practice in view', (await on('#yearSel')) && (await on('#topicSel')) && (await on('#diffSel')) && (await on('#countSel')) && (await on('#printHome')) && (await page.textContent('#startBtn')) === 'Start practice' && (await startInView()));
       const opts = await page.locator('#topicSel option').allTextContents();
       check('W6 every topic in the list starts with a picture', opts.length > 3 && opts.every(o => /^[^\p{L}\p{N}\s]+ \S/u.test(o)), JSON.stringify(opts));
       check('R1.1 the Practice topic is the student\'s (Fractions)', (await page.inputValue('#topicSel')) === 'k6frac');
+      // R2.5 (v1.12.0): choosing a subject with the keyboard keeps the focus on the subject
+      await page.focus('#subjectChips input[value="ga"]');
+      await page.keyboard.press('Space');
+      check('R2.5 Space on General Ability chooses it and focus stays on it', (await page.locator('#subjectChips input[value="ga"]').isChecked()) && (await page.evaluate(() => document.activeElement.matches('#subjectChips input[value="ga"]'))), await page.evaluate(() => document.activeElement.outerHTML.slice(0, 60)));
+      await page.focus('#subjectChips input[value="maths"]');
+      await page.keyboard.press('Space');
+      await page.selectOption('#topicSel', 'k6frac');
       await page.click('#setupClose');
       check('W6 ✕ closes the sheet, focus goes back to the card', !(await sheetOpen(page)) && (await page.evaluate(() => document.activeElement.id)) === 'cardPractice');
       check('W6 Home did not move or change', (await homeLayout()) === layout, layout + ' / ' + (await homeLayout()));
@@ -1716,7 +1735,7 @@ async function run(site) {
       await page.keyboard.press('Escape');
       // Study
       await page.click('#cardStudy');
-      check('W6 Study: no subject or school, says K to Year 6, Read the lesson', (await page.textContent('#setupTitle')) === 'Study' && !(await on('#subjectBox')) && !(await on('#schoolField')) && (await on('#studyNote')) && (await page.textContent('#startBtn')) === 'Read the lesson' && (await startInView()));
+      check('W6 Study: no subject, says K to Year 6 once (R2.3), Read the lesson', (await page.textContent('#setupTitle')) === 'Study' && !(await on('#subjectBox')) && !(await on('#setupSub')) && (await on('#studyNote')) && (await page.textContent('#startBtn')) === 'Read the lesson' && (await startInView()));
       await page.keyboard.press('Escape');
       // Relax
       await page.click('#cardRelax');
@@ -1730,6 +1749,15 @@ async function run(site) {
       }
       await page.keyboard.press('Escape');
       check('W6 Home at 320 px: no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      // R2.2 (v1.12.0): with bigger text (24 px) the card words stay in their cards and the page does not scroll sideways
+      const big = await page.evaluate(() => {
+        document.documentElement.style.fontSize = '24px';
+        const out = [...document.querySelectorAll('#modeCards .mode-card')].map(b => { const r = b.getBoundingClientRect(); return [...b.querySelectorAll('.mc-t, .mc-s')].every(x => { const q = x.getBoundingClientRect(); return q.left >= r.left - 1 && q.right <= r.right + 1; }); });
+        const side = document.documentElement.scrollWidth - innerWidth;
+        document.documentElement.style.fontSize = '';
+        return { inside: out.every(Boolean), side };
+      });
+      check('R2.2 24 px text at 320 px: card words inside the cards, no sideways scroll', big.inside && big.side <= 0, JSON.stringify(big));
       await page.setViewportSize({ width: 375, height: 812 });
       await openSheet(page, 'practice');
       await page.keyboard.press('Escape');
@@ -1758,52 +1786,138 @@ async function run(site) {
       const zh = await page.evaluate(() => ['nav.home', 'nav.progress', 'nav.games', 'nav.settings'].map(k => window.I18N.t(k)));
       check('v1.12 tabs in Chinese, Relax is 放松', JSON.stringify(await tabs()) === JSON.stringify(zh) && zh[2] === '放松', JSON.stringify(await tabs()));
       await page.click('.tab[data-go="home"]');
-      check('W6 cards in Chinese', (await page.locator('#modeCards .mc-t').allTextContents()).join() === '学习,练习,考试,放松' && (await page.textContent('#weekTitle, .week-title')) === '本周');
+      check('W6 cards in Chinese', (await page.locator('#modeCards .mc-t').allTextContents()).join() === '学习,练习,考试,放松');
+      check('W7 no English beside Chinese: the switch reads 小学 / 中学', (await page.locator('#schoolSwitch button').allTextContents()).join() === '小学,中学');
       await page.click('#cardPractice');
       check('W6 the sheet in Chinese', (await page.textContent('#setupTitle')) === '练习' && (await page.textContent('#startBtn')) === '开始练习');
       check('W6 Home cards and sheet: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
 
-    // W6: the week, Carry on and badges come from what the app already keeps for the student
-    await flow('v1.12 W6 week, Carry on and badges', async () => {
-      const now = Date.now(), day = 864e5;
+    // W7 (Terry 2026-11-12): My plan: the calendar, plans per day (once or every week), the owl's today's plan, a parent's
+    // plan behind the PIN; Carry on (W6), now with the Competition paper (R2.4)
+    await flow('v1.12 W7 My plan, today\'s plan and Carry on', async () => {
+      const now = Date.now(), day = 864e5, today = new Date();
       const set = (date, topic, correct) => ({ date, subject: 'maths', year: 5, topic, diff: 1, n: 5, correct, stars: 1, byTopic: { [topic]: [correct, 5] }, wrong: [] });
-      const badge = kind => ({ date: now, kind, subject: 'maths', year: 5, diff: 1, n: 5 });
       const { context, page, errors } = await freshPage(browser, site, {
-        [SETTINGS]: settings({ year: 8, subject: 'sel' }),
-        'sp.history.p1': JSON.stringify([set(now - 10 * day, 'k6frac', 2), set(now - 2 * day, 'k6frac', 4), set(now - day, 'k6frac', 4), set(now, 'k6time', 3)]),
-        'sp.badges.p1': JSON.stringify([badge('perfect'), badge('perfect'), badge('speed')])
+        [SETTINGS]: settings({ year: 5, subject: 'sel' }),
+        'sp.history.p1': JSON.stringify([set(now - 10 * day, 'k6frac', 2), set(now - 2 * day, 'k6frac', 4), set(now - day, 'k6frac', 4), set(now, 'k6time', 3)])
       });
       const on = sel => page.locator(sel).first().isVisible();
-      check('W6 week: 3 days in a row', (await page.textContent('#weekStreak')) === '🔥 3 days in a row', await page.textContent('#weekStreak'));
-      check('W6 week: today is marked and practised', (await page.locator('#weekDays li.today.on').count()) === 1);
-      check('W6 week: the days are in Monday to Sunday order', (await page.locator('#weekDays li span').allTextContents()).join() === 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
-      const dec = await page.evaluate(() => window.I18N.t('topic.k6time'));
-      const carry = await page.textContent('#carryOn');
-      check('W6 Carry on: the last set, its year and score', (await on('#carryBox')) && carry.includes(dec) && carry.includes('Year 5') && carry.includes('Last time 3 out of 5'), carry);
-      check('W6 Carry on: the bar shows 60%', (await page.locator('#carryOn .carry-bar i').evaluate(i => i.style.width)) === '60%');
+      check('W7 the calendar button shows the run: 3 days', (await page.textContent('#planStreak')) === '🔥 3');
+      const carry = await page.textContent('#carryOn'), k6time = await page.evaluate(() => window.I18N.t('topic.k6time'));
+      check('W6 Carry on: the last set, its year and score, a 60% bar', (await on('#carryBox')) && carry.includes(k6time) && carry.includes('Year 5') && carry.includes('Last time 3 out of 5') && (await page.locator('#carryOn .carry-bar i').evaluate(i => i.style.width)) === '60%', carry);
       await page.click('#carryOn');
-      check('W6 Carry on opens Practice with Maths, Year 5 and that topic', (await sheetOpen(page)) && (await page.textContent('#setupTitle')) === 'Practice' && (await page.locator('#subjectChips input[value="maths"]').isChecked()) && (await page.inputValue('#yearSel')) === '5' && (await page.inputValue('#topicSel')) === 'k6time');
+      check('W6 Carry on opens Practice with Maths, Year 5 and that topic', (await sheetOpen(page)) && (await page.textContent('#setupTitle')) === 'Practice' && (await page.inputValue('#yearSel')) === '5' && (await page.inputValue('#topicSel')) === 'k6time');
       await page.keyboard.press('Escape');
-      const hb = await page.locator('#homeBadges li').allTextContents();
-      check('W6 badges: one per kind the student has, with how many', hb.length === 2 && hb[0].includes('×2') && hb[1].includes('×1'), JSON.stringify(hb));
-      await page.click('#badgesAll');
-      check('W6 See all opens Progress', await on('#screen-progress'));
+      // My plan from the owl's Make a plan
+      await page.click('#todayGo');
+      check('W7 Make a plan opens My plan', await on('#screen-plan'));
+      check('W7 My plan: the run, this month, today chosen and marked practised', (await page.textContent('#planRun')) === '🔥 3 days in a row' &&
+        (await page.textContent('#calMonth')) === today.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' }) &&
+        (await page.locator('#calGrid .cal-d.today.sel.done').count()) === 1 && (await page.locator('#calGrid .cal-d').count()) === new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate());
+      check('W7 My plan: the days start on Monday', (await page.locator('#calGrid .cal-dn').allTextContents()).join() === 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+      check('W7 My plan: nothing planned yet', await on('#dayEmpty'));
+      await page.selectOption('#planWhat', 'maths');
+      await page.selectOption('#planTopic', 'k6frac');
+      await page.selectOption('#planCount', '5');
+      await page.selectOption('#planRepeat', '7');
+      await page.click('#planAdd');
+      const items = await page.locator('#dayList li').allTextContents();
+      check('W7 the plan for today: Fractions, 5 questions, every week', items.length === 1 && /Fractions · 5 questions/.test(items[0]) && /Every week/.test(items[0]), JSON.stringify(items));
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.plan.p1')));
+      check('W7 the plan is kept for this student, by the student', stored.length === 1 && stored[0].every === 7 && stored[0].by === 'student' && stored[0].topic === 'k6frac' && stored[0].count === 5, JSON.stringify(stored));
+      // every week: the same weekday next week is marked (moving to next month when needed)
+      const next = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+      if (next.getMonth() !== today.getMonth()) await page.click('#calNext');
+      const nextIso = next.getFullYear() + '-' + String(next.getMonth() + 1).padStart(2, '0') + '-' + String(next.getDate()).padStart(2, '0');
+      check('W7 every week: next week is planned too', (await page.getAttribute(`#calGrid [data-day="${nextIso}"]`, 'class')).includes('plan'));
+      check('W7 a day button says its date and what it has', /1 planned/.test(await page.getAttribute(`#calGrid [data-day="${nextIso}"]`, 'aria-label')));
+      // back on Home the owl shows today's plan; Start now opens Practice with that plan
+      await page.click('#planBack');
+      check('W7 the owl shows today\'s plan', (await page.textContent('#todayText')) === "Today's plan: 🍕 Fractions · 5 questions" && (await page.textContent('#todayGo')) === 'Start now', await page.textContent('#todayText'));
+      await page.click('#todayGo');
+      check('W7 Start now opens Practice with Maths, Year 5, Fractions and 5 questions', (await sheetOpen(page)) && (await page.textContent('#setupTitle')) === 'Practice' && (await page.inputValue('#yearSel')) === '5' && (await page.inputValue('#topicSel')) === 'k6frac' && (await page.inputValue('#countSel')) === '5');
+      await page.click('#startBtn');
+      await page.click('#finishBtn');
+      await page.click('#homeBtn');
+      check('W7 after the set, today\'s plan is done', (await page.textContent('#todayText')) === "Today's plan is done. Well done!" && (await page.textContent('#todayGo')) === 'See my plan', await page.textContent('#todayText'));
+      // a parent's plan needs the PIN to remove
+      await openParent(page);
+      await typePin(page);
       await page.click('.tab[data-go="home"]');
+      await page.click('#planBtn');
+      check('W7 with Parent settings unlocked, My plan says the PIN protects what is added', await on('#planParentNote'));
+      await page.selectOption('#planWhat', 'study');
+      await page.click('#planAdd');
+      check('W7 a parent\'s plan is marked', /Set by a parent/.test((await page.locator('#dayList li').allTextContents()).join('|')));
+      await page.click('#navParent');
+      await page.click('#lockBtn');
+      await page.click('.tab[data-go="home"]');
+      await page.click('#planBtn');
+      const parentRow = page.locator('#dayList li', { hasText: 'Set by a parent' });
+      await parentRow.locator('.pi-x').click();
+      check('W7 removing a parent\'s plan asks for the PIN', await page.locator('#pinDialog').evaluate(d => d.open));
+      await page.click('#pinCancel');
+      check('W7 without the PIN the parent\'s plan stays', (await page.locator('#dayList li', { hasText: 'Set by a parent' }).count()) === 1);
+      await page.locator('#dayList li', { hasText: 'Fractions' }).locator('.pi-x').click();
+      check('W7 the student removes their own plan without the PIN', (await page.locator('#dayList li', { hasText: 'Fractions' }).count()) === 0 && !(await page.locator('#pinDialog').evaluate(d => d.open)));
+      // Chinese
       await page.click('#langBtn');
-      check('W6 week and Carry on in Chinese', (await page.textContent('#weekStreak')) === '🔥 连续 3 天' && (await page.textContent('#carryOn')).includes('上次 5 题答对 3 题'), await page.textContent('#weekStreak'));
-      check('W6 week, Carry on and badges: no page errors', errors.length === 0, errors.join(' | '));
+      check('W7 My plan in Chinese', (await page.textContent('#planH')) === '我的计划' && (await page.textContent('#planAdd')) === '加入计划' && (await page.locator('#calGrid .cal-dn').first().textContent()) === '一');
+      await page.click('#planBack');
+      check('W7 the owl in Chinese', /^今天的计划/.test(await page.textContent('#todayText')) && (await page.getAttribute('#planBtn', 'aria-label')) === '我的计划：打开日历', await page.textContent('#todayText'));
+      check('W7 My plan: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // R2.4 (v1.12.0): Carry on after a Competition set opens that set's paper
+    await flow('R2.4 Carry on keeps the Competition paper', async () => {
+      const { context, page, errors } = await freshPage(browser, site, {
+        [SETTINGS]: settings({ year: 9, compPaper: 'aimo', compLen: 'short' }),
+        'sp.history.p1': JSON.stringify([{ date: Date.now(), subject: 'comp', year: 9, topic: 'amc_i', diff: 2, n: 10, correct: 4, stars: 1, byTopic: {}, wrong: [] }])
+      });
+      await page.click('#carryOn');
+      check('R2.4 Carry on opens Test with Competition and the AMC paper of that set', (await page.textContent('#setupTitle')) === 'Test' && (await page.locator('#subjectChips input[value="comp"]').isChecked()) && (await page.inputValue('#compPaperSel')) === 'amc_i', await page.inputValue('#compPaperSel'));
+      check('R2.4: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // W7: Primary school or High school on Home; each keeps its own year; Study is K–6, so in High school it is coming
+    await flow('v1.12 W7 school switch', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 5 }) });
+      const pressed = () => page.locator('#schoolSwitch button[aria-pressed="true"]').getAttribute('data-school');
+      check('W7 the switch reads Primary school / High school', (await page.locator('#schoolSwitch button').allTextContents()).join() === 'Primary school,High school');
+      check('W7 a Year 5 student is in Primary school', (await pressed()) === 'primary');
+      await page.click('#schoolSwitch [data-school="high"]');
+      check('W7 High school: Year 7, the button is chosen, focus stays on it', (await pressed()) === 'high' && (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 7 && (await page.evaluate(() => document.activeElement.dataset.school)) === 'high');
+      check('W7 High school: the Study card says Coming soon', (await page.textContent('#cardStudy .mc-s')) === 'Coming soon' && (await page.getAttribute('#cardStudy', 'aria-disabled')) === 'true');
+      await page.click('#cardStudy', { force: true });   // aria-disabled: Playwright would wait for it; a finger does not
+      check('W7 High school: tapping Study says the lessons are K–6, no sheet', !(await sheetOpen(page)) && /Primary school for the K–6 lessons/.test(await page.textContent('#toast')), await page.textContent('#toast'));
+      await page.evaluate(() => { document.querySelector('#toast').hidden = true; });
+      await openSheet(page, 'practice');
+      const years = await page.locator('#yearSel option').evaluateAll(o => o.map(x => +x.value));
+      check('W7 High school: the Practice years are Year 7 and up', years.length > 3 && years.every(y => y >= 7), JSON.stringify(years));
+      await page.selectOption('#yearSel', '10');
+      await page.keyboard.press('Escape');
+      await page.click('#schoolSwitch [data-school="primary"]');
+      check('W7 back to Primary school: Year 5 again, Study says K–6 lessons', (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 5 && (await page.textContent('#cardStudy .mc-s')) === 'K–6 lessons');
+      await page.click('#schoolSwitch [data-school="high"]');
+      check('W7 High school again: Year 10, as left', (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 10);
+      check('W7 school switch: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
 
     // R1.3 (v1.12.0): a Year 7–12 student who opens Study is told that the lessons are Kindergarten to Year 6
     await flow('R1.3 Study for an older student', async () => {
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 10 }) });
-      check('R1.3 the Study card says K to Year 6', (await page.textContent('#cardStudy .mc-s')) === 'Lessons, K to Year 6');
+      check('R1.3 a Year 10 student: the Study card says Coming soon (W7: High school)', (await page.textContent('#cardStudy .mc-s')) === 'Coming soon');
+      await page.click('#schoolSwitch [data-school="primary"]');
+      check('R1.3 in Primary school the Study card says K–6 lessons', (await page.textContent('#cardStudy .mc-s')) === 'K–6 lessons');
       await page.click('#cardStudy');
-      check('R1.3 the Study sheet says the lessons are for Kindergarten to Year 6', (await page.isVisible('#studyNote')) && (await page.textContent('#studyNote')) === 'Lessons are for Kindergarten to Year 6.' && (await page.inputValue('#yearSel')) === '6');
+      check('R1.3 the Study sheet says the lessons are for Kindergarten to Year 6', (await page.isVisible('#studyNote')) && (await page.textContent('#studyNote')) === 'Lessons are for Kindergarten to Year 6.');
       await page.keyboard.press('Escape');
+      await page.click('#schoolSwitch [data-school="high"]');
       await page.click('#cardPractice');
       check('R1.3 Practice still has Year 10', (await page.inputValue('#yearSel')) === '10');
       check('R1.3: no page errors', errors.length === 0, errors.join(' | '));

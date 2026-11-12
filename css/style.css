@@ -1161,10 +1161,21 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .f-ic { font-size: 1.2rem; }
 .f-dot { display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff; font-size: 0.68rem; line-height: 18px; }
 .seg-btn[aria-pressed="true"] .f-dot { background: var(--pri-ink); color: var(--pri); }
-.f-send .seg { display: flex; width: 100%; }
-.f-send .seg-btn { flex: 1; min-height: 44px; }
-.f-send-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
-.f-send-h .btn { text-decoration: none; font-size: 1.1rem; min-width: 44px; }
+/* W9 (v2.0.0, Option A): a challenge card with its chips and buttons; ✕ next to a friend removes them (after asking) */
+.f-card { display: flex; flex-direction: column; gap: 0.45rem; padding: 0.6rem; border-radius: var(--radius-sm); background: var(--surface-2); }
+.f-card.hi { background: var(--pri-soft); box-shadow: inset 0 0 0 2px var(--pri); }
+.f-who { display: flex; align-items: center; gap: 0.6rem; }
+.f-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.f-chip { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 0.76rem; font-weight: 700; }
+.f-chip.time { background: var(--warn-soft); color: var(--ink); }
+.f-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.f-row .btn.small { flex: 1 1 8rem; }
+.f-row .f-hint { margin: 0; }
+.btn.small.f-x { min-width: 44px; padding: 0.4rem; font-size: 1rem; color: var(--muted); }
+#fFriendList .f-name { min-width: 3.5rem; }   /* the name, Challenge and ✕ fit one row on a 375 px phone */
+.f-list > .f-confirm { margin-top: 0; }
+.f-side .f-time { font-size: 0.82rem; }
+.ch-note { margin: 0 0 0.6rem; padding: 0.5rem 0.75rem; border-radius: 10px; background: var(--pri-soft); color: var(--ink); font-size: 0.86rem; }
 .f-danger { color: var(--bad) !important; }
 .f-more { background: var(--surface); border: 1px solid var(--hair); border-radius: var(--radius); padding: 0.4rem 1rem; margin-bottom: 0.9rem; }
 .f-more summary { min-height: 44px; display: flex; align-items: center; font-weight: 700; cursor: pointer; }

@@ -2079,51 +2079,80 @@ async function run(site) {
         await pa.page.evaluate(() => window.Friends.refresh());
         await pa.page.waitForSelector('#fFriendList button');
         check('W8 the first student sees the friend too', (await pa.page.textContent('#fFriendList')).includes(nb));
-        // A practises together with B: 5 questions, then the set goes to B
-        await pa.page.getByRole('button', { name: 'Practise together' }).click();
-        check('W8 the panel says how it works and starts with 10 questions', (await pa.page.textContent('.f-send')).includes(`Then ${nb} gets exactly the same questions`) && (await pa.page.getAttribute('#fCount10', 'aria-pressed')) === 'true');
-        await pa.page.click('#fCount5');
-        await pa.page.click('#fSendGo');
-        await pa.page.waitForSelector('#screen-quiz:not([hidden])');
-        const qa = await answerSet(pa.page, [1]);
-        await pa.page.waitForFunction(() => /^Sent to/.test(document.querySelector('#resVs').textContent));
-        check('W8 the results say the set went to the friend', (await pa.page.textContent('#resVs')) === `Sent to ${nb}. You both see both scores when ${nb} has done it.` && (await pa.page.textContent('#resScore')) === 'You got 4 out of 5');
-        check('W8 the challenge set is in the history like any set', (await pa.page.evaluate(() => JSON.parse(localStorage.getItem('sp.history.p1')).length)) === 1);
-        // B does the same questions
+        // W9 (Option A): A sets up the challenge in the Practice sheet and sends it; both can start at once
+        await pa.page.getByRole('button', { name: 'Challenge ' + nb, exact: true }).click();
+        await pa.page.waitForFunction(() => document.querySelector('#setupDlg').open);
+        check('W9 Challenge opens the Practice sheet for that friend', (await pa.page.textContent('#setupTitle')) === 'Challenge ' + nb && (await pa.page.textContent('#setupSub')) === 'You can both start as soon as it is sent.' && (await pa.page.textContent('#startBtn')) === 'Send the challenge' && (await pa.page.isHidden('#printHome')));
+        check('W9 the sheet has year, subject, topic, level and count', (await pa.page.isVisible('#yearSel')) && (await pa.page.isVisible('#subjectChips')) && (await pa.page.isVisible('#topicSel')) && (await pa.page.isVisible('#diffSel')) && (await pa.page.isVisible('#countSel')));
+        await pa.page.selectOption('#countSel', '5');
+        await pa.page.selectOption('#diffSel', '3');
+        await pa.page.click('#startBtn');
+        await pa.page.waitForSelector('#screen-friends:not([hidden]) .f-card');
+        check('W9 sent: the toast says so, and the challenge waits for me too', (await pa.page.textContent('#toast')) === 'Challenge sent to ' + nb + '.' && (await pa.page.textContent('.f-card')).includes(nb + ' has not accepted yet') && (await pa.page.textContent('.f-card')).includes('h left'), await pa.page.textContent('#frBody'));
+        check('W9 the challenge names its year, level and count', (await pa.page.textContent('.f-card')).includes('5 questions · Level 3'), await pa.page.textContent('.f-card'));
+        // B is told, and accepts
         await pb.page.evaluate(() => window.Friends.refresh());
         await pb.page.waitForSelector('#friendsDot:not([hidden])');
         await pb.page.click('#fTabCh');
-        check('W8 Waiting for you: from the friend, with their score', (await pb.page.textContent('#frBody')).includes(`From ${na}`) && (await pb.page.textContent('#frBody')).includes('they got 4/5'));
-        await pb.page.getByRole('button', { name: 'Do it' }).click();
-        await pb.page.waitForSelector('#screen-quiz:not([hidden])');
+        const inv = await pb.page.textContent('.f-card.hi');
+        check('W9 the friend gets it at once: who, the set, the time left, Accept and Decline', inv.includes(na + ' challenged you') && inv.includes('Accept and start') && inv.includes('Decline') && /2[34] h left/.test(inv), inv);
+        await pb.page.getByRole('button', { name: 'Accept and start' }).click();
+        await pb.page.waitForSelector('#screen-quiz:not([hidden]) .qcard');
         const qb = await pb.page.evaluate(() => window.__testAnswers());
-        check('W8 the friend gets exactly the same questions', JSON.stringify(qa) === JSON.stringify(qb));
+        check('W9 the set is the one A chose: 5 questions', qb.length === 5);
+        check('W9 no Check answer in a challenge, and the note says so', (await pb.page.locator('#qList .qcard button:has-text("Check")').count()) === 0 && (await pb.page.textContent('#chNote')) === 'In a challenge, answers are marked when you hand in.');
+        await pb.page.waitForFunction(() => /^⏱ 0:0[1-9]/.test(document.querySelector('#timer').textContent), null, { timeout: 5000 }).catch(() => {});
+        check('W9 a clock shows the time used', (await pb.page.isVisible('#timer')) && /^⏱ \d+:\d\d$/.test(await pb.page.textContent('#timer')) && (await pb.page.getAttribute('#timer', 'aria-label')).startsWith('Time used'), await pb.page.textContent('#timer'));
         await answerSet(pb.page, [1, 2]);
-        await pb.page.waitForSelector('#resVs #fCompare');
-        const cmp = await pb.page.textContent('#resVs');
-        check('W8 the friend sees both scores at once', cmp.includes(`⭐ ${na} won this time`) && cmp.includes('3/5') && cmp.includes('4/5') && cmp.includes(`${na} got question 3 right, and you did not.`), cmp);
-        const dots = await pb.page.locator('#resVs .f-dots').first().locator('span').evaluateAll(s => s.map(x => x.className).join());
-        check('W8 each question right or wrong, in order', dots === 'y,n,n,y,y', dots);
-        check('W8 the comparison has no answers or worked solutions', !/Answer:|Worked solution/.test(cmp));
-        await pb.page.click('#fSendBack');
-        check('W8 Send a set back opens the panel for that friend', (await pb.page.textContent('.f-send h3')) === `Practise together with ${na}`);
-        await pb.page.click('#fSendClose');
-        // A sees the result in Finished
+        await pb.page.waitForFunction(() => /Handed in/.test(document.querySelector('#resVs').textContent));
+        check('W9 handed in first: waits for the friend to see who won', (await pb.page.textContent('#resVs')) === 'Handed in. You see who won when ' + na + ' has finished.' && (await pb.page.textContent('#resScore')) === 'You got 3 out of 5');
+        // A does the same questions
+        await pa.page.evaluate(() => window.Friends.refresh());
+        await pa.page.waitForFunction(n => document.querySelector('#frBody').textContent.includes(n + ' has finished'), nb);
+        check('W9 A sees that the friend has finished, but not the score', !(await pa.page.textContent('.f-card')).includes('60%'));
+        await pa.page.getByRole('button', { name: 'Start', exact: true }).click();
+        await pa.page.waitForSelector('#screen-quiz:not([hidden]) .qcard');
+        const qa = await answerSet(pa.page, [1]);
+        check('W9 both get exactly the same questions', JSON.stringify(qa) === JSON.stringify(qb));
+        await pa.page.waitForSelector('#resVs #fCompare');
+        const cmp = await pa.page.textContent('#resVs');
+        check('W9 who won, and why: higher accuracy', cmp.includes('🏆 You won!') && cmp.includes('The higher accuracy wins.') && cmp.includes('80%') && cmp.includes('60%') && /⏱ \d+:\d\d/.test(cmp), cmp);
+        check('W9 the comparison names the set: 5 questions, Level 3', cmp.includes('5 questions · Level 3'), cmp);
+        const dots = await pa.page.locator('#resVs .f-dots').first().locator('span').evaluateAll(x => x.map(e => e.className).join());
+        check('W9 each question right or wrong, in order', dots === 'y,n,y,y,y', dots);
+        check('W9 the comparison has no answers or worked solutions', !/Answer:|Worked solution/.test(cmp));
+        await pa.page.click('#fSendBack');
+        await pa.page.waitForFunction(() => document.querySelector('#setupDlg').open);
+        check('W9 Challenge again opens the sheet for that friend', (await pa.page.textContent('#setupTitle')) === 'Challenge ' + nb);
+        await pa.page.click('#setupClose');
+        // B sees the result in Finished
+        await pb.page.click('.tab[data-go="friends"]');
+        await pb.page.evaluate(() => window.Friends.refresh());
+        await pb.page.click('#fTabCh');
+        await pb.page.waitForSelector('text=Finished (the last 20)');
+        check('W9 Finished: Me 60% : 80% friend, with a star', (await pb.page.textContent('#frBody')).includes('Me 60% : 80% ' + na) && (await pb.page.textContent('#frBody')).includes('⭐'), await pb.page.textContent('#frBody'));
+        await pb.page.getByRole('button', { name: 'See' }).click();
+        check('W9 See shows the comparison', (await pb.page.textContent('#fCompare h3')) === '⭐ ' + na + ' won this time');
+        check('W9 the comparison fits a 375 px phone', await pb.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+        await pb.page.click('#fCmpBack');
+        // a second challenge: B declines it, and A sees that
+        const second = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', year: 4, topic: 'mixed', diff: 2, count: 1 }, questions: [{ q: { en: '1 + 1 = ?', zh: '1 + 1 = ?' }, type: 'input', value: 2, answer: '2', topic: 'add' }] }, A.token);
+        check('W9 a second challenge is sent', second.status === 200, JSON.stringify(second));
+        await pb.page.evaluate(() => window.Friends.refresh());
+        await pb.page.waitForSelector('.f-card.hi');
+        await pb.page.getByRole('button', { name: 'Decline' }).click();
+        await pb.page.waitForFunction(() => /You declined the challenge/.test(document.querySelector('#toast').textContent));
+        await pb.page.waitForFunction(() => !document.querySelector('.f-card.hi'));
+        check('W9 the friend can decline; it is in Finished as declined', (await pb.page.textContent('#frBody')).includes('You declined'));
         await pa.page.click('.tab[data-go="friends"]');
         await pa.page.evaluate(() => window.Friends.refresh());
         await pa.page.click('#fTabCh');
-        await pa.page.waitForSelector('text=Finished');
-        check('W8 Finished: me 4 : 3 friend, with a trophy', (await pa.page.textContent('#frBody')).includes(`Me 4 : 3 ${nb}`) && (await pa.page.textContent('#frBody')).includes('🏆'));
-        await pa.page.getByRole('button', { name: 'See' }).click();
-        check('W8 See shows the comparison: You won', (await pa.page.textContent('#fCompare h3')) === '🏆 You won!');
-        const wrap = await pa.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-        check('W8 the comparison fits a 375 px phone', wrap);
-        await pa.page.click('#fCmpBack');
-        // remove the friend: a second tap confirms
+        await pa.page.waitForFunction(n => document.querySelector('#frBody').textContent.includes(n + ' declined'), nb);
+        check('W9 the sender sees it was declined', true);
+        // remove the friend: ✕, then Yes
         await pa.page.click('#fTabFriends');
-        await pa.page.getByRole('button', { name: 'Practise together' }).click();
-        await pa.page.click('#fRemove');
-        check('W8 Remove asks first', (await pa.page.textContent('.f-confirm')).includes(`Remove ${nb} from your friends?`));
+        await pa.page.getByRole('button', { name: 'Remove ' + nb + ' from my friends' }).click();
+        check('W8 Remove asks first', (await pa.page.textContent('.f-confirm')).includes('Remove ' + nb + ' from your friends?'));
         await pa.page.click('#fRemoveYes');
         await pa.page.waitForSelector('text=No friends yet');
         check('W8 after removing, the list is empty', (await pa.page.locator('#fFriendList .f-li').count()) === 0);
@@ -2259,19 +2288,20 @@ async function run(site) {
         await apiCall('POST', 'friends/add', { who: nb }, A.token);
         await apiCall('POST', 'friends/answer', { username: na, accept: true }, B.token);
         const good = [{ q: { en: '1 + 1 = ?', zh: '1 + 1 = ?' }, type: 'input', value: 2, answer: '2', topic: 'add' }];
-        const sent = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', year: 5, topic: 'mixed', diff: 2, count: 1 }, questions: good, score: { ok: [true] } }, A.token);
-        const refused = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', count: 1 }, questions: [{ type: 'input' }], score: { ok: [true] } }, A.token);
+        const sent = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', year: 5, topic: 'mixed', diff: 2, count: 1 }, questions: good }, A.token);
+        const refused = await apiCall('POST', 'challenges', { to: nb, settings: { subject: 'maths', count: 1 }, questions: [{ type: 'input' }] }, A.token);
+        await apiCall('POST', 'challenges/' + sent.data.id + '/answer', { accept: true }, B.token);
         check('R1.2 the server refuses a set with a question of the wrong shape', refused.status === 400 && refused.data.error === 'bad_set', JSON.stringify(refused));
         const pb = await signedInPage(B);
         // an older or broken client could still have stored one: the answer is changed on its way to the app
-        await pb.page.route('**/api/challenges/' + sent.data.id, async route => {
+        await pb.page.route('**/api/challenges/' + sent.data.id + '/start', async route => {
           const res = await route.fetch(); const body = await res.json(); body.questions = [{ type: 'input' }];
           await route.fulfill({ response: res, json: body });
         });
         await pb.page.click('.tab[data-go="friends"]');
         await pb.page.waitForSelector('#fTabCh');
         await pb.page.click('#fTabCh');
-        await pb.page.getByRole('button', { name: 'Do it' }).click();
+        await pb.page.getByRole('button', { name: 'Start', exact: true }).click();
         await pb.page.waitForFunction(() => /cannot be opened/.test(document.querySelector('#toast').textContent));
         const st = await pb.page.evaluate(() => ({ quiz: !document.querySelector('#screen-quiz').hidden, friends: !document.querySelector('#screen-friends').hidden, nav: document.querySelector('.bottom-nav').getBoundingClientRect().height }));
         check('R1.2 the friend stays on Friends with the bottom bar, and the toast says why', !st.quiz && st.friends && st.nav > 40 && (await pb.page.textContent('#toast')) === 'This set cannot be opened in this version of the app. Ask your friend to send a new one.', JSON.stringify(st));

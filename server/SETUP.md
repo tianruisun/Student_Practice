@@ -1,6 +1,6 @@
 # Server setup (v2.0.0)
 
-Accounts, friends and practising together need a small server: a Cloudflare Pages Function
+Accounts, friends and challenges need a small server: a Cloudflare Pages Function
 (`functions/api/[[path]].js` → `server/api.js`) and a D1 database. Everything here is done in the Cloudflare
 dashboard by Terry; nothing needs `wrangler login`, and no key goes into the repo. The tables are created by the
 server itself on its first request.

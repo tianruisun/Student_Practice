@@ -362,50 +362,171 @@ t('friend lists show username and picture only, no email', async () => {
   assert.deepStrictEqual(Object.keys(f).sort(), ['avatar', 'seen', 'username']);
 });
 
-/* ---------- challenges ---------- */
-t('challenge: the friend gets the same questions, then both scores show', async () => {
+/* ---------- challenges (W9, v2.0.0: Option A) ---------- */
+const HOUR = 60 * MIN;
+async function pair() {
   fresh(); const a = await signUp('anan'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
-  const c = await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true, false], time: 61000 } }, { token: a });
+  return { a, b };
+}
+const send = (tok, extra = {}) => call('POST', 'challenges', Object.assign({ to: 'leo', settings: SET, questions: QS }, extra), { token: tok });
+const list = async tok => (await call('GET', 'challenges', undefined, { token: tok })).body.challenges;
+const start = (tok, id) => call('POST', 'challenges/' + id + '/start', {}, { token: tok });
+const result = (tok, id, ok) => call('POST', 'challenges/' + id + '/result', { score: { ok, time: 1 } }, { token: tok });
+const answer = (tok, id, accept) => call('POST', 'challenges/' + id + '/answer', { accept }, { token: tok });
+
+t('W9 a sent challenge shows for both at once; the sender can start before the friend accepts', async () => {
+  const { a, b } = await pair();
+  const c = await send(a);
   assert.strictEqual(c.status, 200, JSON.stringify(c.body));
-  const list = (await call('GET', 'challenges', undefined, { token: b })).body.challenges;
-  assert.strictEqual(list.length, 1); assert.strictEqual(list[0].mine, false); assert.strictEqual(list[0].b, null);
-  assert.strictEqual(list[0].questions, undefined, 'the list has no questions');
-  const one = (await call('GET', 'challenges/' + c.body.id, undefined, { token: b })).body;
-  assert.deepStrictEqual(one.questions, QS); assert.deepStrictEqual(one.settings, SET); assert.strictEqual(one.a.c, 1);
-  assert.strictEqual((await call('POST', 'challenges/' + c.body.id + '/result', { score: { ok: [true, true], time: 50000 } }, { token: b })).status, 200);
-  const mine = (await call('GET', 'challenges', undefined, { token: a })).body.challenges[0];
-  assert.strictEqual(mine.mine, true); assert.deepStrictEqual([mine.a.c, mine.b.c], [1, 2]); assert.ok(mine.done);
+  const forB = (await list(b))[0], forA = (await list(a))[0];
+  assert.deepStrictEqual([forB.mine, forB.status, forB.over, forB.me, forB.them], [false, 'sent', false, null, null]);
+  assert.deepStrictEqual([forA.mine, forA.status], [true, 'sent']);
+  assert.strictEqual(forB.questions, undefined, 'the list has no questions');
+  assert.strictEqual((await call('GET', 'challenges/' + c.body.id, undefined, { token: b })).body.questions, undefined, 'questions only come with start');
+  const s = await start(a, c.body.id);
+  assert.strictEqual(s.status, 200, JSON.stringify(s.body)); assert.deepStrictEqual(s.body.questions, QS); assert.strictEqual(s.body.started, clock);
+  assert.deepStrictEqual(s.body.settings, SET);
 });
-t('challenge result only once, only by the friend asked', async () => {
-  fresh(); const a = await signUp('anan'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
-  const id = (await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true, true] } }, { token: a })).body.id;
-  assert.strictEqual((await call('POST', `challenges/${id}/result`, { score: { ok: [true, true] } }, { token: a })).status, 404);
-  await call('POST', `challenges/${id}/result`, { score: { ok: [false, true] } }, { token: b });
-  assert.strictEqual((await call('POST', `challenges/${id}/result`, { score: { ok: [true, true] } }, { token: b })).body.error, 'already_done');
+t('W9 the friend must accept before starting; Accept then start gives the same questions', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  assert.strictEqual((await start(b, id)).body.error, 'not_accepted');
+  const acc = await answer(b, id, true);
+  assert.strictEqual(acc.status, 200); assert.strictEqual(acc.body.status, 'accepted'); assert.strictEqual(acc.body.deadline, clock + 24 * HOUR);
+  assert.strictEqual((await answer(b, id, true)).body.error, 'already_answered');
+  assert.strictEqual((await answer(a, id, true)).status, 404, 'only the friend answers');
+  assert.deepStrictEqual((await start(b, id)).body.questions, QS);
+});
+t('W9 decline: nobody can play it, both see it declined in Done', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  assert.strictEqual((await answer(b, id, false)).body.status, 'declined');
+  assert.strictEqual((await start(a, id)).body.error, 'declined');
+  assert.strictEqual((await start(b, id)).body.error, 'declined');
+  const ca = (await list(a))[0];
+  assert.deepStrictEqual([ca.status, ca.over, ca.winner], ['declined', true, null]);
+});
+t('W9 the time is the server\'s: from start to result; the app\'s own time is ignored', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  await start(a, id); later(95e3);
+  const r = await result(a, id, [true, false]);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body)); assert.deepStrictEqual([r.body.me.c, r.body.me.n, r.body.me.time], [1, 2, 95e3]);
+  assert.strictEqual((await result(a, id, [true, true])).body.error, 'already_done');
+  // starting again does not reset the clock
+  await answer(b, id, true); await start(b, id); later(10e3); await start(b, id); later(20e3);
+  assert.strictEqual((await result(b, id, [true, true])).body.me.time, 30e3);
+});
+t('W9 a result needs a start first', async () => {
+  const { a } = await pair();
+  const id = (await send(a)).body.id;
+  assert.strictEqual((await result(a, id, [true, true])).body.error, 'not_started');
+});
+t('W9 the friend\'s score stays hidden until this student finishes', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  await start(a, id); await result(a, id, [true, true]);
+  await answer(b, id, true);
+  const forB = (await list(b))[0];
+  assert.deepStrictEqual(forB.them, { done: true }); assert.strictEqual(forB.over, false);
+  await start(b, id); const r = await result(b, id, [true, false]);
+  assert.strictEqual(r.body.over, true); assert.strictEqual(r.body.them.c, 2); assert.strictEqual(r.body.winner, 'them');
+  assert.strictEqual((await list(a))[0].winner, 'me');
+});
+t('W9 who wins: accuracy first, then the shorter time; equal both is a draw', async () => {
+  const W = H.winnerOf;
+  assert.strictEqual(W({ c: 8, n: 10, time: 900 }, { c: 7, n: 10, time: 100 }), 'a');
+  assert.strictEqual(W({ c: 8, n: 10, time: 900 }, { c: 8, n: 10, time: 100 }), 'b');
+  assert.strictEqual(W({ c: 8, n: 10, time: 100 }, { c: 8, n: 10, time: 100 }), 'draw');
+  assert.strictEqual(W({ c: 0, n: 10, time: 100 }, null), 'a', 'finishing beats not finishing');
+  assert.strictEqual(W(null, null), 'none');
+});
+t('W9 same score, faster wins (through the routes)', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  await answer(b, id, true);
+  await start(a, id); await start(b, id);
+  later(40e3); await result(b, id, [true, false]);
+  later(20e3); const r = await result(a, id, [false, true]);
+  assert.deepStrictEqual([r.body.me.time, r.body.them.time, r.body.winner], [60e3, 40e3, 'them']);
+});
+t('W9 not accepted in 24 hours: it is gone for both', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  later(24 * HOUR - 1000);
+  assert.strictEqual((await list(b)).length, 1);
+  later(2000);
+  assert.strictEqual((await list(b)).length, 0); assert.strictEqual((await list(a)).length, 0);
+  assert.strictEqual((await answer(b, id, true)).status, 404);
+  assert.strictEqual(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM duels').get().n, 0);
+});
+t('W9 after accepting, 24 hours to finish: the side that did not finish loses', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  later(5 * HOUR); await answer(b, id, true);
+  await start(a, id); later(MIN); await result(a, id, [false, false]);
+  later(24 * HOUR - 2 * MIN);
+  assert.strictEqual((await list(b))[0].over, false);
+  await start(b, id);
+  later(3 * MIN);
+  assert.strictEqual((await result(b, id, [true, true])).body.error, 'too_late');
+  const ca = (await list(a))[0], cb = (await list(b))[0];
+  assert.deepStrictEqual([ca.over, ca.winner, cb.winner, cb.me], [true, 'me', 'them', null]);
+  assert.strictEqual(cb.them.c, 0, 'once it is over, the score shows');
+});
+t('W9 neither finished in time: no winner', async () => {
+  const { a, b } = await pair();
+  const id = (await send(a)).body.id;
+  await answer(b, id, true); later(24 * HOUR + 1);
+  const c = (await list(a))[0];
+  assert.deepStrictEqual([c.over, c.winner], [true, 'none']);
+});
+t('W9 each student keeps the last 20 challenges', async () => {
+  const { a, b } = await pair();
+  const ids = [];
+  for (let i = 0; i < 23; i++) { const id = (await send(a)).body.id; ids.push(id); await answer(b, id, true); }
+  const la = await list(a), lb = await list(b);
+  assert.strictEqual(la.length, 20); assert.strictEqual(lb.length, 20);
+  assert.strictEqual(la[0].id, ids[22]); assert.strictEqual(la[19].id, ids[3]);
+  assert.strictEqual(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM duels').get().n, 20);
+});
+t('W9 the sender chooses the set: year, subject, topic, level and count are kept', async () => {
+  const { a, b } = await pair();
+  const set = { subject: 'ga', year: 3, topic: 'mixed', diff: 4, count: 2 };
+  await send(a, { settings: set });
+  assert.deepStrictEqual((await list(b))[0].settings, set);
+  assert.strictEqual((await send(a, { settings: { subject: 'maths', year: 'five' } })).status, 400);
 });
 t('challenge only between friends', async () => {
   fresh(); const a = await signUp('anan'); await signUp('leo');
-  assert.strictEqual((await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true, true] } }, { token: a })).body.error, 'not_friends');
+  assert.strictEqual((await send(a)).body.error, 'not_friends');
 });
-t('a third student cannot read a challenge', async () => {
-  fresh(); const a = await signUp('anan'), b = await signUp('leo'), c = await signUp('mia'); await befriend(a, b, 'leo', 'anan');
-  const id = (await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true, true] } }, { token: a })).body.id;
-  assert.strictEqual((await call('GET', 'challenges/' + id, undefined, { token: c })).status, 404);
+t('a third student cannot read, answer or play a challenge', async () => {
+  const { a } = await pair(); const c = await signUp('mia');
+  const id = (await send(a)).body.id;
+  for (const r of [await call('GET', 'challenges/' + id, undefined, { token: c }), await start(c, id), await answer(c, id, true), await result(c, id, [true, true])]) assert.strictEqual(r.status, 404);
 });
 t('the score is counted from the right/wrong list, not trusted', async () => {
-  fresh(); const a = await signUp('anan'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
-  await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true, false], c: 99, n: 99 } }, { token: a });
-  const ch = (await call('GET', 'challenges', undefined, { token: b })).body.challenges[0];
-  assert.deepStrictEqual([ch.a.c, ch.a.n], [1, 2]);
-  assert.strictEqual((await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true] } }, { token: a })).status, 400);
+  const { a } = await pair();
+  const id = (await send(a)).body.id;
+  await start(a, id);
+  assert.strictEqual((await call('POST', 'challenges/' + id + '/result', { score: { ok: [true] } }, { token: a })).status, 400);
+  const r = await call('POST', 'challenges/' + id + '/result', { score: { ok: [true, false], c: 99, n: 99 } }, { token: a });
+  assert.deepStrictEqual([r.body.me.c, r.body.me.n], [1, 2]);
+});
+t('the old challenges table is dropped (it was only on the Test database)', async () => {
+  fresh(); env.DB.raw.exec('CREATE TABLE challenges (id INTEGER PRIMARY KEY)');
+  await call('GET', 'health');
+  await signUp('anan');
+  assert.strictEqual(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'challenges'").get().n, 0);
 });
 t('removing a friend keeps finished challenges readable; deleting an account removes everything', async () => {
   fresh(); const a = await signUp('anan', 'a@example.com', 'password-1'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
-  await call('POST', 'challenges', { to: 'leo', settings: SET, questions: QS, score: { ok: [true, true] } }, { token: a });
+  await send(a);
   await call('PUT', 'progress', { data: { x: 1 } }, { token: a });
   assert.strictEqual((await call('POST', 'account/delete', { password: 'wrong-pass' }, { token: a })).status, 401);
   assert.strictEqual((await call('POST', 'account/delete', { password: 'password-1' }, { token: a })).status, 200);
-  for (const tb of ['users', 'sessions', 'progress', 'challenges', 'friends']) {
+  for (const tb of ['users', 'sessions', 'progress', 'duels', 'friends']) {
     const rows = env.DB.raw.prepare(`SELECT COUNT(*) AS n FROM ${tb}`).get().n;
     assert.strictEqual(rows, tb === 'users' || tb === 'sessions' ? 1 : 0, tb);
   }

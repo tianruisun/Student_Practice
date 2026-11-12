@@ -218,7 +218,7 @@
   /* the account's profile leaves this device (sign out, account deleted, or the session ended on another device) */
   function dropLocal() {
     const P = A.Profiles, id = F.auth && F.auth.profile;
-    F.auth = null; F.friends = null; F.challenges = null; F.send = null; F.compare = null;
+    F.auth = null; F.friends = null; F.challenges = null; F.confirmRemove = ''; F.compare = null;
     clearTimeout(F.syncTimer); F.syncTimer = 0;
     saveAuth();
     if (id && P.list.some(x => x.id === id)) {
@@ -252,7 +252,8 @@
     updateDot();
     if (A.S.screen === 'friends' || A.S.screen === 'home') A.render();
   }
-  const waitingForMe = () => (F.challenges || []).filter(c => !c.mine && !c.b);
+  // what the student still has to do: a friend's challenge not declined, not over and not handed in yet
+  const waitingForMe = () => (F.challenges || []).filter(c => !c.mine && !c.over && !c.me && c.status !== 'declined');
   function updateDot() {
     const n = signedIn() ? (F.friends ? F.friends.incoming.length : 0) + waitingForMe().length : 0;
     const dot = $('#friendsDot');
@@ -279,38 +280,50 @@
     await refresh();
   }
   async function removeFriend(username) {
-    try { await api('POST', 'friends/remove', { username }); F.send = null; F.confirmRemove = ''; A.toast(t('fr.removed', { name: username })); } catch (e) { A.toast(errText(e)); }
+    try { await api('POST', 'friends/remove', { username }); F.confirmRemove = ''; A.toast(t('fr.removed', { name: username })); } catch (e) { A.toast(errText(e)); }
     await refresh();
   }
 
-  /* a challenge set: started from the "practise together" panel, sent when the set is finished */
-  function startSend() {
-    const s = F.send, st = A.S.settings;
-    const settings = Object.assign({}, st, { subject: s.subject, topic: s.topic, count: s.count });
-    F.send = null;
-    A.startQuiz(Object.assign(settings, { challenge: { mode: 'send', to: s.to } }));
+  /* ---------- W9 challenges (Terry chose Option A) ----------
+     The sender chooses the set in the Practice sheet (app.js openChallenge) and sends it; both can start at once.
+     The friend accepts (and starts) or declines. The server keeps the time from the first opening of the set. */
+  const otherOf = c => (c.mine ? c.to : c.from);
+  async function sendChallenge(to, settings, questions) {
+    try {
+      await api('POST', 'challenges', { to, settings, questions });
+      A.toast(t('fr.chSent', { name: to }));
+      F.tab = 'challenges'; F.compare = null;
+      await refresh();
+      A.go('friends');
+      return true;
+    } catch (e) { A.toast(errText(e), 6000); return false; }
   }
   async function playChallenge(id) {
     try {
-      const ch = await api('GET', 'challenges/' + id);
-      if (ch.b) { F.compare = ch; A.render(); return; }
-      A.startChallenge(ch.questions, ch.settings, { mode: 'answer', id: ch.id, from: ch.from.username, ch });
-    } catch (e) { A.toast(errText(e)); }
+      const r = await api('POST', 'challenges/' + id + '/start', {});
+      // the clock started on the server: this device's time of that moment, so the clock on screen agrees with it
+      const startedHere = Date.now() - Math.max(0, r.now - r.started);
+      A.startChallenge(r.questions, r.settings, { id: r.id, with: otherOf(r).username, ch: r }, startedHere);
+    } catch (e) { A.toast(errText(e), 6000); refresh(); }
   }
-  /* app.js calls this when a challenge set is finished (after it is saved in the history) */
+  async function answerChallenge(c, accept) {
+    try {
+      await api('POST', 'challenges/' + c.id + '/answer', { accept });
+      if (accept) return playChallenge(c.id);
+      A.toast(t('fr.declinedToast', { name: c.from.username }));
+    } catch (e) { A.toast(errText(e), 6000); }
+    refresh();
+  }
+  async function openCompare(id) {
+    try { F.compare = await api('GET', 'challenges/' + id); A.render(); window.scrollTo(0, 0); } catch (e) { A.toast(errText(e)); }
+  }
+  /* app.js calls this when a challenge set is handed in (after it is saved in the history) */
   async function finished(Q) {
     const c = Q.challenge; if (!c) return;
-    const score = { ok: Q.questions.map((_, i) => !!(Q.results[i] && Q.results[i].ok)), time: Date.now() - Q.started };
-    c.state = 'sending'; c.score = score;
+    const score = { ok: Q.questions.map((_, i) => !!(Q.results[i] && Q.results[i].ok)) };
+    c.state = 'sending';
     try {
-      if (c.mode === 'send') {
-        const settings = { subject: Q.settings.subject, year: Q.settings.year, topic: Q.settings.topic, diff: Q.settings.diff, count: Q.questions.length };
-        const r = await api('POST', 'challenges', { to: c.to, settings, questions: Q.questions, score });
-        c.id = r.id;
-      } else {
-        await api('POST', 'challenges/' + c.id + '/result', { score });
-        c.ch = Object.assign({}, c.ch, { b: { c: score.ok.filter(Boolean).length, n: score.ok.length, ok: score.ok, time: score.time } });
-      }
+      c.ch = await api('POST', 'challenges/' + c.id + '/result', { score });
       c.state = 'sent';
     } catch (e) { c.state = 'failed'; c.err = errText(e); }
     if (A.S.screen === 'results') A.render();
@@ -378,7 +391,7 @@
     if (F.compare) return box.append(compareView(F.compare, true));
     if (F.view === 'reset' || (!signedIn() && F.view !== 'move')) return box.append(accountPanel());
     if (F.view === 'move') return box.append(movePanel());
-    if (F.send) return box.append(sendPanel());
+
     box.append(meCard(), tabsRow(), F.tab === 'friends' ? friendsPart() : challengesPart(), accountPart());
   }
 
@@ -553,8 +566,20 @@
     fr.friends.forEach(u => {
       const li = el('li', 'f-li');
       const name = el('span', 'f-name'); name.append(el('b', '', u.username), el('small', '', seenText(u.seen)));
-      li.append(av(u.avatar), name, btn(t('fr.together'), 'primary small', () => openSend(u.username)));
+      // W9: Challenge opens the Practice sheet for this friend; ✕ asks before removing the friend
+      const x = btn('✕', 'ghost small f-x', () => { F.confirmRemove = F.confirmRemove === u.username ? '' : u.username; A.render(); });
+      x.setAttribute('aria-label', t('fr.remove', { name: u.username }));
+      x.setAttribute('aria-expanded', String(F.confirmRemove === u.username));
+      const go = btn(t('fr.together'), 'primary small', () => A.openChallenge(u.username));
+      go.setAttribute('aria-label', t('fr.challengeWith', { name: u.username }));   // not the same name as the Challenges tab
+      li.append(av(u.avatar), name, go, x);
       ul.append(li);
+      if (F.confirmRemove === u.username) {
+        const q = el('li', 'f-confirm'); q.setAttribute('role', 'alert');
+        q.append(el('p', '', t('fr.removeQ', { name: u.username })), btn(t('fr.removeYes'), 'secondary small', () => removeFriend(u.username), 'fRemoveYes'),
+          btn(t('acc.back'), 'ghost small', () => { F.confirmRemove = ''; A.render(); }));
+        ul.append(q);
+      }
     });
     fr.outgoing.forEach(u => {
       const li = el('li', 'f-li f-wait');
@@ -571,88 +596,77 @@
     if (d < 864e5) return t('fr.seenToday');
     return t('fr.seenDays', { n: Math.max(1, Math.floor(d / 864e5)) });
   }
-  function openSend(to) {
-    const st = A.S.settings;
-    F.send = { to, subject: st.subject === 'ga' ? 'ga' : 'maths', topic: 'mixed', count: 10 };
-    F.err = ''; A.render(); window.scrollTo(0, 0);
-  }
-  function sendPanel() {
-    const s = F.send, st = A.S.settings, w = el('div', 'f-part f-send');
-    const year = s.subject === 'ga' && st.year === 0 ? 1 : st.year;
-    const top = el('div', 'f-send-h');
-    top.append(el('h3', 'f-h', t('fr.togetherWith', { name: s.to })), btn('✕', 'ghost small', () => { F.send = null; F.confirmRemove = ''; A.render(); }, 'fSendClose'));
-    top.lastChild.setAttribute('aria-label', t('sheet.close'));
-    w.append(top);
-    w.append(el('p', 'f-hint', t('fr.howItWorks', { name: s.to })));
-    // subject
-    const subj = el('div', 'seg'); subj.setAttribute('role', 'group'); subj.setAttribute('aria-label', t('fr.subject'));
-    ['maths', 'ga'].forEach(k => {
-      const b = btn(t('subject.' + k), '', () => { s.subject = k; s.topic = 'mixed'; A.render(); }, 'fSub-' + k);
-      b.className = 'seg-btn'; b.setAttribute('aria-pressed', String(s.subject === k)); subj.append(b);
-    });
-    w.append(el('p', 'f-sec', t('fr.subject')), subj);
-    // topic
-    const tw = el('div', 'f-field'), tl = el('label', '', t('fr.topic')); tl.htmlFor = 'fTopic';
-    const sel = el('select'); sel.id = 'fTopic';
-    A.topicOptions(s.subject, year).forEach(([k, label]) => { const o = el('option', '', label); o.value = k; o.selected = k === s.topic; sel.append(o); });
-    sel.addEventListener('change', () => { s.topic = sel.value; });
-    tw.append(tl, sel);
-    w.append(tw, el('p', 'f-hint', t('fr.year', { year: A.yearLabel(year) })));
-    // count
-    const cnt = el('div', 'seg'); cnt.setAttribute('role', 'group'); cnt.setAttribute('aria-label', t('fr.count'));
-    [5, 10, 20].forEach(n => {
-      const b = btn(String(n), '', () => { s.count = n; A.render(); }, 'fCount' + n);
-      b.className = 'seg-btn'; b.setAttribute('aria-pressed', String(s.count === n)); cnt.append(b);
-    });
-    w.append(el('p', 'f-sec', t('fr.count')), cnt);
-    w.append(btn(t('fr.startSend', { name: s.to }), 'primary', () => { s.year = year; startSend(); }, 'fSendGo'));
-    // remove this friend, with a second tap to confirm
-    if (F.confirmRemove === s.to) {
-      const q = el('div', 'f-confirm'); q.setAttribute('role', 'alert');
-      q.append(el('p', '', t('fr.removeQ', { name: s.to })), btn(t('fr.removeYes'), 'secondary small', () => removeFriend(s.to), 'fRemoveYes'), btn(t('acc.back'), 'ghost small', () => { F.confirmRemove = ''; A.render(); }));
-      w.append(q);
-    } else w.append(btn(t('fr.remove', { name: s.to }), 'ghost small f-danger', () => { F.confirmRemove = s.to; A.render(); }, 'fRemove'));
-    return w;
-  }
+  /* "4 年级 · 分数 · 10 题 · 难度 2" */
   function chTitle(c) {
     const s = c.settings || {};
     const topic = s.topic && s.topic !== 'mixed' ? t('topic.' + s.topic) : t('subject.' + (s.subject || 'maths'));
-    return t('fr.chTitle', { topic, n: s.count || (c.a && c.a.n) || '' });
+    return t('fr.chTitle', { year: s.year !== undefined ? A.yearLabel(s.year) : '', topic, n: s.count || '', diff: t('fr.diffN', { n: s.diff || 2 }) });
   }
+  const pct = sc => Math.round(100 * sc.c / sc.n) + '%';
+  function timeLeft(c) {
+    const ms = c.deadline - Date.now();
+    return ms >= 3600e3 ? t('fr.leftH', { n: Math.floor(ms / 3600e3) }) : t('fr.leftM', { n: Math.max(1, Math.ceil(ms / 60e3)) });
+  }
+  const chip = (text, cls) => el('span', 'f-chip' + (cls ? ' ' + cls : ''), text);
+  /* Option A: three parts, as before: Waiting for you, Waiting for your friend, Finished (the last 20) */
   function challengesPart() {
     const w = el('div', 'f-part'), list = F.challenges;
     if (!list) { w.append(el('p', 'f-hint', F.netErr || t('fr.loading'))); return w; }
-    const forMe = list.filter(c => !c.mine && !c.b), forThem = list.filter(c => c.mine && !c.b), done = list.filter(c => c.b);
+    const forMe = list.filter(c => !c.over && !c.me && c.status !== 'declined');
+    const forThem = list.filter(c => !c.over && c.me);
+    const done = list.filter(c => c.over);
     const section = (key, items, make) => {
       if (!items.length) return;
       w.append(el('h3', 'f-sec', t(key)));
-      const ul = el('ul', 'f-list'); items.forEach(c => ul.append(make(c))); w.append(ul);
+      const ul = el('ul', 'f-list f-ch'); items.forEach(c => ul.append(make(c))); w.append(ul);
     };
     if (!list.length) w.append(el('p', 'f-hint', t('fr.noChallenges')));
     section('fr.forYou', forMe, c => {
-      const li = el('li', 'f-li');
-      const name = el('span', 'f-name'); name.append(el('b', '', t('fr.fromName', { name: c.from.username })), el('small', '', chTitle(c) + ' · ' + t('fr.theirScore', { c: c.a.c, n: c.a.n })));
-      li.append(av(c.from.avatar), name, btn(t('fr.doIt'), 'primary small', () => playChallenge(c.id)));
+      const other = otherOf(c), invite = !c.mine && c.status === 'sent';
+      const li = el('li', 'f-card' + (invite ? ' hi' : ''));
+      const who = el('div', 'f-who'), name = el('span', 'f-name');
+      name.append(el('b', '', c.mine ? t('fr.challengeWith', { name: other.username }) : t('fr.challengedYou', { name: other.username })), el('small', '', chTitle(c)));
+      who.append(av(other.avatar), name);
+      const chips = el('div', 'f-chips');
+      chips.append(chip(timeLeft(c), 'time'));
+      if (c.mine) chips.append(chip(c.them && c.them.done ? t('fr.theyDone', { name: other.username }) : c.status === 'accepted' ? t('fr.theyAccepted', { name: other.username }) : t('fr.theyNotAccepted', { name: other.username })));
+      else if (c.them && c.them.done) chips.append(chip(t('fr.theyDone', { name: other.username })));
+      const row = el('div', 'f-row');
+      if (invite) row.append(btn(t('fr.acceptStart'), 'primary small', () => answerChallenge(c, true)), btn(t('fr.decline'), 'ghost small', () => answerChallenge(c, false)));
+      else {
+        row.append(btn(t(c.started ? 'fr.goOn' : 'fr.start'), 'primary small', () => playChallenge(c.id)));
+        if (c.started) row.append(el('small', 'f-hint', t('fr.goOnNote')));
+      }
+      li.append(who, chips, row);
       return li;
     });
     section('fr.forThem', forThem, c => {
-      const li = el('li', 'f-li f-wait');
-      const name = el('span', 'f-name'); name.append(el('b', '', c.to.username), el('small', '', chTitle(c) + ' · ' + t('fr.myScore', { c: c.a.c, n: c.a.n })));
-      li.append(av(c.to.avatar), name, el('span', 'f-ic', '⏳'));
+      const other = otherOf(c), li = el('li', 'f-card f-wait');
+      const who = el('div', 'f-who'), name = el('span', 'f-name');
+      name.append(el('b', '', t('fr.withName', { name: other.username })), el('small', '', chTitle(c) + ' · ' + pct(c.me)));
+      who.append(av(other.avatar), name, el('span', 'f-ic', '⏳'));
+      const chips = el('div', 'f-chips');
+      chips.append(chip(c.mine && c.status === 'sent' ? t('fr.theyNotAccepted', { name: other.username }) : t('fr.theyAccepted', { name: other.username })), chip(timeLeft(c), 'time'));
+      li.append(who, chips);
       return li;
     });
     section('fr.done', done, c => {
-      const li = el('li', 'f-li');
-      const other = c.mine ? c.to : c.from, mine = c.mine ? c.a : c.b, theirs = c.mine ? c.b : c.a;
-      const name = el('span', 'f-name'); name.append(el('b', '', t('fr.vs', { a: mine.c, b: theirs.c, name: other.username })), el('small', '', chTitle(c)));
-      const icon = mine.c > theirs.c ? '🏆' : mine.c === theirs.c ? '🤝' : '⭐';
-      li.append(av(other.avatar), name, btn(t('fr.see'), 'ghost small', async () => {
-        try { F.compare = await api('GET', 'challenges/' + c.id); A.render(); window.scrollTo(0, 0); } catch (e) { A.toast(errText(e)); }
-      }), el('span', 'f-ic', icon));
+      const other = otherOf(c), li = el('li', 'f-li');
+      const name = el('span', 'f-name');
+      if (c.status === 'declined') {
+        name.append(el('b', '', c.mine ? t('fr.theyDeclined', { name: other.username }) : t('fr.youDeclined')), el('small', '', chTitle(c)));
+        li.append(av(other.avatar), name);
+        return li;
+      }
+      const mine = c.me ? pct(c.me) : '–', theirs = c.them ? pct(c.them) : '–';
+      name.append(el('b', '', t('fr.vs', { a: mine, b: theirs, name: other.username })), el('small', '', chTitle(c)));
+      const icon = c.winner === 'me' ? '🏆' : c.winner === 'draw' ? '🤝' : c.winner === 'none' ? '⌛' : '⭐';
+      li.append(av(other.avatar), name, btn(t('fr.see'), 'ghost small', () => openCompare(c.id)), el('span', 'f-ic', icon));
       return li;
     });
     return w;
   }
+
   function accountPart() {
     const d = el('details', 'f-more'); d.open = F.delOpen;
     d.addEventListener('toggle', () => { F.delOpen = d.open; });
@@ -679,33 +693,42 @@
     return d;
   }
 
-  /* both scores side by side, and each question right or wrong */
+  /* both sides: accuracy and time, who won and why, each question right or wrong */
   function compareView(c, withBack) {
     const w = el('div', 'f-cmp'); w.id = 'fCompare';
-    const me = c.mine ? c.a : c.b, them = c.mine ? c.b : c.a, other = c.mine ? c.to : c.from, my = F.auth ? F.auth.me : { avatar: 0 };
-    const head = me.c > them.c ? t('fr.won') : me.c === them.c ? t('fr.draw') : t('fr.lost', { name: other.username });
-    w.append(el('h3', 'f-h', head), el('p', 'f-hint', chTitle(c)));
+    const me = c.me, them = c.them, other = otherOf(c), my = F.auth ? F.auth.me : { avatar: 0 };
+    const head = c.winner === 'me' ? t('fr.won') : c.winner === 'draw' ? t('fr.draw') : c.winner === 'none' ? t('fr.noneFinished') : t('fr.lost', { name: other.username });
+    const why = !me || !them ? (me || them ? t('fr.byFinish') : '') : me.c === them.c ? t('fr.byTime') : t('fr.byAccuracy');
+    w.append(el('h3', 'f-h', head));
+    if (why) w.append(el('p', 'f-hint', why));
+    w.append(el('p', 'f-hint', chTitle(c)));
     const sc = el('div', 'f-score');
     const side = (avatar, name, s, win) => {
       const d = el('div', 'f-side' + (win ? ' win' : ''));
-      d.append(av(avatar), el('span', '', name), el('b', '', t('fr.cOfN', { c: s.c, n: s.n })), el('small', '', s.time ? mmss(s.time) : ''));
+      d.append(av(avatar), el('span', '', name));
+      if (s) {
+        d.append(el('b', '', pct(s)), el('small', '', t('fr.cOfN', { c: s.c, n: s.n })));
+        const tm = el('small', 'f-time', '⏱ ' + mmss(s.time)); tm.setAttribute('aria-label', t('fr.clock') + ' ' + mmss(s.time)); d.append(tm);
+      } else d.append(el('b', '', '–'), el('small', '', t('fr.notFinished')));
       return d;
     };
-    sc.append(side(my.avatar, t('fr.me'), me, me.c > them.c), side(other.avatar, other.username, them, them.c > me.c));
+    sc.append(side(my.avatar, t('fr.me'), me, c.winner === 'me'), side(other.avatar, other.username, them, c.winner === 'them'));
     w.append(sc);
     const rows = el('div', 'f-qs');
     [[t('fr.me'), me], [other.username, them]].forEach(([name, s]) => {
+      if (!s || !s.ok) return;
       const r = el('div', 'f-qrow'); r.append(el('span', 'f-qn', name));
       const dots = el('span', 'f-dots');
       s.ok.forEach((ok, i) => { const q = el('span', ok ? 'y' : 'n', String(i + 1)); q.setAttribute('aria-label', t(ok ? 'fr.qRight' : 'fr.qWrong', { n: i + 1 })); dots.append(q); });
       r.append(dots); rows.append(r);
     });
     w.append(rows);
-    const gotThey = me.ok.map((ok, i) => (!ok && them.ok[i] ? i + 1 : 0)).filter(Boolean);
-    if (gotThey.length) w.append(el('p', 'f-hint', t('fr.theyGot', { list: gotThey.join(', '), name: other.username })));
-    const both = me.ok.filter((ok, i) => ok && them.ok[i]).length;
-    w.append(el('p', 'f-hint', t('fr.both', { n: both })));
-    w.append(btn(t('fr.sendBack', { name: other.username }), 'primary', () => { F.compare = null; A.go('friends'); openSend(other.username); }, 'fSendBack'));
+    if (me && them && me.ok && them.ok) {
+      const gotThey = me.ok.map((ok, i) => (!ok && them.ok[i] ? i + 1 : 0)).filter(Boolean);
+      if (gotThey.length) w.append(el('p', 'f-hint', t('fr.theyGot', { list: gotThey.join(', '), name: other.username })));
+      w.append(el('p', 'f-hint', t('fr.both', { n: me.ok.filter((ok, i) => ok && them.ok[i]).length })));
+    }
+    w.append(btn(t('fr.sendBack', { name: other.username }), 'primary', () => { F.compare = null; A.openChallenge(other.username); }, 'fSendBack'));
     if (withBack) w.append(btn(t('fr.backFriends'), 'ghost', () => { F.compare = null; A.render(); }, 'fCmpBack'));
     return w;
   }
@@ -721,11 +744,8 @@
       box.append(el('p', 'f-err', c.err), btn(t('fr.tryAgain'), 'secondary small', () => finished(Q), 'fRetry'));
       return;
     }
-    if (c.mode === 'send') {
-      box.append(el('p', '', c.state === 'sent' ? t('fr.sentSet', { name: c.to }) : t('fr.sending', { name: c.to })));
-      return;
-    }
-    if (c.state !== 'sent' || !c.ch || !c.ch.b) { box.append(el('p', '', t('fr.sending', { name: c.from }))); return; }
+    if (c.state !== 'sent' || !c.ch) { box.append(el('p', '', t('fr.sending'))); return; }
+    if (!c.ch.over) { box.append(el('p', '', t('fr.waitResult', { name: c.with }))); return; }
     box.append(compareView(c.ch, false));
   }
 
@@ -778,7 +798,7 @@
   }
 
   window.Friends = {
-    init, render, results, homeBox, changed, finished, updateDot, refresh, pull, upload,
+    init, render, results, homeBox, changed, finished, updateDot, refresh, pull, upload, sendChallenge,
     get signedIn() { return signedIn(); },
     get account() { return F.auth && F.auth.me ? F.auth.me.username : ''; },
     accountProfile: () => (F.auth ? F.auth.profile : null),

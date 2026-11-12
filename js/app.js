@@ -32,8 +32,9 @@
   let warnedFull = false;
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) {
-      try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+    // quiet: written by js/friends.js itself (records from the server), so it is not sent back
+    set(k, v, quiet) {
+      try { localStorage.setItem(k, JSON.stringify(v)); if (!quiet && window.Friends) window.Friends.changed(k); return true; }
       catch (e) {
         // storage full or blocked (private mode): say so once, instead of losing progress silently
         if (!warnedFull) { warnedFull = true; setTimeout(() => toast(t('store.failed'), 8000), 0); }
@@ -83,7 +84,12 @@
       gameKey() { return K.games + '.' + P.active; },
       planKey() { return K.plan + '.' + P.active; },
       select(id) { P.active = id; store.set(K.profiles, P); },
-      add(name) { if (P.list.length >= MAX_PROFILES) return null; let n = 1; while (P.list.some(x => x.id === 'p' + n)) n++; const pr = { id: 'p' + n, name }; P.list.push(pr); P.active = pr.id; store.set(K.profiles, P); return pr; },
+      add(name) { if (P.list.length >= MAX_PROFILES) return null; return this.addAny({ name }); },
+      // v2.0.0: a signed-in account's profile, and a blank one when the last profile leaves with a sign-out; not limited
+      // to MAX_PROFILES, so a full device can still sign in
+      addAny(fields) { let n = 1; while (P.list.some(x => x.id === 'p' + n)) n++; const pr = Object.assign({ id: 'p' + n, name: '' }, fields); P.list.push(pr); P.active = pr.id; store.set(K.profiles, P); return pr; },
+      addAccount(username) { return this.addAny({ name: username, account: username }); },
+      addLocal() { return this.addAny({ name: '' }); },
       // fields: name, schoolYear (0 = Kindergarten to 12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
       update(id, fields) { const pr = P.list.find(x => x.id === id); if (pr) { Object.assign(pr, fields); store.set(K.profiles, P); } },
       remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); store.del(K.plan + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
@@ -126,6 +132,7 @@
 
   function render() {
     window.I18N.applyStatic();
+    if (window.Friends) window.Friends.updateDot();   // after applyStatic, which resets the tab's name
     const who = Profiles.name(Profiles.active);
     $('#profileName').textContent = who;
     // the wave is its own span, so a narrow phone can drop it and keep the name (v1.11.0 R1.1)
@@ -139,7 +146,7 @@
     const inGame = S.screen === 'game' || S.screen === 'puzzle';
     document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || inGame);
     document.body.classList.toggle('in-game', inGame);   // the header too: a round needs the whole screen on a small phone
-    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, plan: renderPlan, parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
+    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, plan: renderPlan, friends: () => window.Friends && window.Friends.render(), parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
   }
 
   /* ---------- HOME ---------- */
@@ -172,8 +179,8 @@
     test: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffe2b8"/><rect x="21" y="7" width="6" height="5" rx="1.5" fill="#f08a1c"/><circle cx="24" cy="27" r="13" fill="#fff" stroke="#f08a1c" stroke-width="3"/><path d="M24 27V19" stroke="#e8483f" stroke-width="2.6" stroke-linecap="round"/><path d="M24 27l5 3" stroke="#3b2f86" stroke-width="2.4" stroke-linecap="round"/><circle cx="24" cy="27" r="1.8" fill="#3b2f86"/>'),
     relax: SVG48('<rect x="2" y="2" width="44" height="44" rx="14" fill="#ffd0e1"/><ellipse cx="20" cy="20" rx="8" ry="10" fill="#ff5c8d"/><ellipse cx="30" cy="23" rx="7" ry="9" fill="#ffb02e"/><path d="M20 30v8M30 32v6" stroke="#9a8fbf" stroke-width="1.4"/><ellipse cx="17" cy="16" rx="2" ry="3" fill="#fff" opacity=".6"/>')
   };
-  /* v1.12.0 W7 (Terry: "里面的图像大一点 ... 再配上一些可爱的图"): a big picture on each card, the owl with today's plan,
-     an empty seat for each friend to come */
+  /* v1.12.0 W7 (Terry: "里面的图像大一点 ... 再配上一些可爱的图"): a big picture on each card and the owl with
+     today's plan */
   const ART96 = d => `<svg viewBox="0 0 96 96" aria-hidden="true">${d}</svg>`;
   const MODE_ART = {
     study: ART96('<ellipse cx="48" cy="84" rx="30" ry="5" fill="#000" opacity=".08"/><path d="M14 26c10-5 22-5 34 3v52c-12-8-24-8-34-3z" fill="#34c27b"/><path d="M82 26c-10-5-22-5-34 3v52c12-8 24-8 34-3z" fill="#2aa868"/><path d="M19 30c8-3 17-2 25 3v42c-8-5-17-6-25-3z" fill="#fff"/><path d="M77 30c-8-3-17-2-25 3v42c8-5 17-6 25-3z" fill="#f4fff8"/><g stroke="#9bdcb9" stroke-width="2.4" stroke-linecap="round"><path d="M24 40h14M24 47h14M24 54h10M58 40h14M58 47h14M58 54h10"/></g><circle cx="70" cy="18" r="7" fill="#ffd166"/><path d="M70 8v-3M80 18h3M77 11l2-2" stroke="#ffd166" stroke-width="2.4" stroke-linecap="round"/><circle cx="31" cy="64" r="3" fill="#ff7aa2"/><circle cx="65" cy="64" r="3" fill="#ff7aa2"/>'),
@@ -182,7 +189,6 @@
     relax: ART96('<path d="M38 52c-2 12 6 18 2 32M60 50c2 12-4 20 0 34" stroke="#b49ad8" stroke-width="2" fill="none"/><ellipse cx="37" cy="32" rx="17" ry="21" fill="#ff6f9c"/><ellipse cx="60" cy="34" rx="15" ry="19" fill="#ffb13d"/><path d="M33 53l4-3 4 3zM56 53l4-3 4 3z" fill="#e05585"/><ellipse cx="31" cy="24" rx="4" ry="7" fill="#fff" opacity=".55"/><ellipse cx="55" cy="27" rx="3.5" ry="6" fill="#fff" opacity=".55"/><path d="M70 14l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#ffd166"/><path d="M18 60l1.5 3.5 3.5 1.5-3.5 1.5L18 70l-1.5-3.5L13 65l3.5-1.5z" fill="#8f6bf0"/>')
   };
   const OWL = '<svg viewBox="0 0 80 80" aria-hidden="true"><ellipse cx="40" cy="74" rx="22" ry="4" fill="#000" opacity=".08"/><path d="M16 30c0-14 10-22 24-22s24 8 24 22v24c0 12-10 18-24 18S16 66 16 54z" fill="#8f6bf0"/><path d="M16 14l9 8M64 14l-9 8" stroke="#8f6bf0" stroke-width="7" stroke-linecap="round"/><ellipse cx="40" cy="54" rx="15" ry="14" fill="#cdbdfc"/><path d="M33 50q7 4 14 0M33 57q7 4 14 0" stroke="#a88ff5" stroke-width="2" fill="none"/><circle cx="30" cy="32" r="10" fill="#fff"/><circle cx="50" cy="32" r="10" fill="#fff"/><circle cx="31" cy="33" r="5" fill="#2a2340"/><circle cx="49" cy="33" r="5" fill="#2a2340"/><circle cx="32.5" cy="31.5" r="1.6" fill="#fff"/><circle cx="50.5" cy="31.5" r="1.6" fill="#fff"/><path d="M36 41l4 5 4-5z" fill="#ffb03a"/><path d="M22 18h36l-18-9z" fill="#2a2340"/><rect x="38" y="9" width="4" height="4" fill="#2a2340"/><path d="M58 18v8" stroke="#ffd166" stroke-width="2"/><circle cx="58" cy="27" r="2.4" fill="#ffd166"/><circle cx="24" cy="42" r="3" fill="#ff9ebd" opacity=".7"/><circle cx="56" cy="42" r="3" fill="#ff9ebd" opacity=".7"/></svg>';
-  const SEAT = '<svg viewBox="0 0 56 56" aria-hidden="true"><circle class="seat-bg" cx="28" cy="28" r="27"/><circle class="seat-fg" cx="28" cy="23" r="10"/><path class="seat-fg" d="M11 49q17-18 34 0z"/></svg>';
   const PLAN_EMOJI = { maths: '✏️', ga: '💡', study: '📖', sel: '⏱️', comp: '🏆' };
 
   /* an emoji in front of each topic in the topic list (Terry, v1.12.0: "okay for your suggestion for now") */
@@ -302,10 +308,16 @@
     if (isTimed(it.kind)) return t('subject.' + it.kind);
     return topicLabel(it.topic) + ' · ' + t('plan.nq', { n: it.count });
   }
+  /* R3.6 (v1.12.0): every path that changes the year first keeps the year of the school it leaves, so the
+     Primary school / High school switch brings it back (a Year 8 student doing a Year 5 plan stays Year 8 in High school) */
+  function setYear(st, y) {
+    if (YEARS.includes(st.year) && st.year !== y) { if (schoolOf(st.year) === 'high') st.highYear = st.year; else st.primaryYear = st.year; }
+    st.year = y;
+  }
   function startPlanItem(it) {
     if (it.kind === 'study') return openSetup('study', st => { st.studyYear = it.year; st.studyTopic = it.topic; });
     if (isTimed(it.kind)) return openSetup('test', st => { st.subject = it.kind; });
-    openSetup('practice', st => { st.subject = it.kind; st.year = it.year; st.yearPicked = true; st.topic = it.topic; st.count = it.count; });
+    openSetup('practice', st => { st.subject = it.kind; setYear(st, it.year); st.yearPicked = true; st.topic = it.topic; st.count = it.count; });
   }
   // a lesson read from the sheet ticks today's plan item for that lesson
   function markStudyDone(topic) {
@@ -448,12 +460,12 @@
       b.querySelector('.carry-go').setAttribute('aria-hidden', 'true');
       b.onclick = () => openSetup(timed ? 'test' : 'practice', st2 => {
         st2.subject = last.subject || 'maths';
-        if (!timed) { st2.year = last.year; st2.yearPicked = true; st2.topic = last.topic; }
+        if (!timed) { setYear(st2, last.year); st2.yearPicked = true; st2.topic = last.topic; }
         else if (last.subject === 'comp' && Competition.PAPERS[last.topic]) st2.compPaper = last.topic;   // R2.4: the same paper
       });
     }
-    // friends: empty seats until practising together is ready (W5)
-    document.querySelectorAll('#friendsList .seat').forEach(li => { li.innerHTML = SEAT; });
+    // friends (v2.0.0): sign in, or the friends and what is waiting for the student
+    if (window.Friends) window.Friends.homeBox();
   }
   /* open the sheet for a card; prep changes the settings after the mode is set (Carry on) */
   function openSetup(m, prep) {
@@ -466,7 +478,13 @@
     if (!dlg.open) { try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); } }
     dlg.scrollTop = 0;
   }
-  const closeSetup = () => { if ($('#setupDlg').open) $('#setupDlg').close(); };
+  /* R3.8 (v1.12.0): close() where the browser has it, and the attribute the R2.1 fallback set where it does not */
+  const closeSetup = () => {
+    const d = $('#setupDlg');
+    if (!d.open && !d.hasAttribute('open')) return;
+    try { d.close(); } catch (e) { /* no <dialog> API */ }
+    d.removeAttribute('open');
+  };
 
   function renderHome() {
     const st = S.settings;
@@ -564,6 +582,7 @@
     S.loadingKey = 'loading.ai';
     const { year, topic, diff, count } = settings, subject = settings.subject || 'maths';
     S.lastQuizSettings = Object.assign({}, settings);
+    delete S.lastQuizSettings.challenge;   // Practise again makes a new set, not another challenge
     let questions = null;
     const ai = aiConfig();
     if (ai) {
@@ -593,10 +612,43 @@
     S.quiz = {
       exam: false, questions, i: 0, page: 0, results: [], started: Date.now(),
       st: questions.map(() => ({ status: 'answering', tries: 0, given: [], sel: null, fbKey: '', draft: '' })),
-      settings: Object.assign({ subject }, settings)
+      settings: Object.assign({ subject }, settings), challenge: settings.challenge || null
     };
+    delete S.quiz.settings.challenge;
     go('quiz');
     focusCardInput(0);
+  }
+
+  /* v2.0.0: a friend's challenge, with exactly the questions the friend had */
+  /* R1.2 (v2.0.0): only a set whose every question has the shape cardEl draws is started; the server checks the same
+     rules (server/api.js questionOk). Returns false, with a toast in words, for any other set. */
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+  const text2 = (v, max) => isObj(v) && typeof v.en === 'string' && v.en.length <= max && (v.zh === undefined || (typeof v.zh === 'string' && v.zh.length <= max));
+  function questionOk(q) {
+    if (!isObj(q) || !text2(q.q, 4000) || typeof q.topic !== 'string' || q.topic.length > 40) return false;
+    if (q.fig !== undefined && q.fig !== null && !(isObj(q.fig) && typeof q.fig.type === 'string')) return false;
+    if (q.sol !== undefined && q.sol !== null && !text2(q.sol, 8000)) return false;
+    if (q.type === 'mc') return Array.isArray(q.choices) && q.choices.length >= 2 && q.choices.length <= 5 && q.choices.every(c => text2(c, 1000)) && Number.isInteger(q.correct) && q.correct >= 0 && q.correct < q.choices.length;
+    if (q.type === 'input') return Number.isFinite(q.value) && (typeof q.answer === 'string' || Number.isFinite(q.answer)) && (q.unit === undefined || q.unit === null || typeof q.unit === 'string') && (q.tol === undefined || q.tol === null || Number.isFinite(q.tol));
+    return false;
+  }
+  function startChallenge(questions, settings, challenge) {
+    if (!Array.isArray(questions) || !questions.length || questions.length > 60 || !questions.every(questionOk)) { toast(t('acc.err.bad_set'), 6000); return false; }
+    const before = S.screen;
+    S.lastQuizSettings = Object.assign({}, S.settings, settings);
+    S.quiz = {
+      exam: false, questions, i: 0, page: 0, results: [], started: Date.now(),
+      st: questions.map(() => ({ status: 'answering', tries: 0, given: [], sel: null, fbKey: '', draft: '' })),
+      settings: Object.assign({ subject: 'maths', year: S.settings.year, diff: S.settings.diff, topic: 'mixed' }, settings), challenge
+    };
+    try { go('quiz'); }
+    catch (e) {   // a question that still cannot be drawn: back where the student was, with the bottom bar
+      console.warn('challenge set could not be drawn:', e);
+      S.quiz = null; go(before === 'quiz' ? 'friends' : before || 'friends'); toast(t('acc.err.bad_set'), 6000);
+      return false;
+    }
+    focusCardInput(0);
+    return true;
   }
 
   /* reinforcement: n similar questions for each ticked review item */
@@ -840,7 +892,9 @@
       return;
     }
     Q.st.forEach((x, i) => { if (x.status !== 'done') Q.results[i] = markUnchecked(Q.questions[i], x); });
-    saveSession(); go('results');
+    saveSession();
+    if (Q.challenge && window.Friends) window.Friends.finished(Q);   // v2.0.0: to the friend, or the friend's score back
+    go('results');
   }
   function markUnchecked(q, st) {
     st.status = 'done';
@@ -1211,6 +1265,7 @@
     const Q = S.quiz; if (!Q) return go('home');
     const n = Q.questions.length, c = Q.results.filter(r => r && r.ok).length, pct = c / n;
     $('#resScore').textContent = t('res.score', { c, n });
+    if (window.Friends) window.Friends.results(Q); else $('#resVs').hidden = true;
     const k = starsFor(c, n), sb = $('#resStars');
     sb.innerHTML = ''; sb.append(starRow(k, true));
     $('#resMsg').textContent = (Q.maxMarks ? t('comp.marksScore', { m: Q.marks, total: Q.maxMarks }) + ' ' : '') + t('stars.msg' + k);
@@ -1836,7 +1891,7 @@
     // With a suggestion stored, a year that differs from it was picked by hand. Before any suggestion exists, only the
     // flag set on Home says so (R6.1).
     const handPicked = st.suggested == null ? st.yearPicked === true : st.year !== st.suggested;
-    if (!handPicked) st.year = y;
+    if (!handPicked) setYear(st, y);
     st.suggested = y; saveSettings();
   }
   function renderProfiles() {
@@ -1854,6 +1909,7 @@
       const del = el('button', 'icon-btn', '🗑'); del.type = 'button'; del.setAttribute('aria-label', t('profile.delete'));
       del.addEventListener('click', async () => {
         if (Profiles.list.length <= 1) return toast(t('profile.lastOne'));
+        if (window.Friends && window.Friends.accountProfile() === pr.id) return toast(t('acc.profileSignOut'));
         if (!S.parent && !(await unlockParent())) return;
         if (!confirm(t('profile.deleteConfirm', { name: Profiles.name(pr) }))) return;
         const wasActive = pr === Profiles.active;
@@ -2076,8 +2132,9 @@
     renderPlan();
   }
   $('#planForm').addEventListener('submit', e => { e.preventDefault(); addPlan(); });
-  $('#inviteBtn').addEventListener('click', () => toast(t('friends.inviteSoon')));
   $('#setupClose').addEventListener('click', closeSetup);
+  // R3.8: without the <dialog> API there is no cancel event, so Escape closes the sheet here
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && typeof $('#setupDlg').showModal !== 'function' && $('#setupDlg').hasAttribute('open')) closeSetup(); });
   $('#setupDlg').addEventListener('click', e => {
     if (e.target !== e.currentTarget) return;
     const r = e.currentTarget.getBoundingClientRect();
@@ -2192,6 +2249,12 @@
     window.__testAnswers = () => (S.quiz ? S.quiz.questions.map(q => ({ type: q.type, answer: q.answer, correct: q.correct })) : null);
     window.__testGame = () => (S.screen === 'puzzle' && puzzle ? puzzle.state : game ? game.state : null);   // v1.9.0 balloons; v1.10.0 the puzzle game on screen
   }
+
+  /* v2.0.0: accounts, friends and practising together (js/friends.js) */
+  if (window.Friends) window.Friends.init({
+    t, el, $, store, K, Profiles, S, lang, go, toast, render, startQuiz, startChallenge, topicOptions, yearLabel,
+    reload() { loadProfileSettings(); applySuggestedYear(); if ($('#profileDlg').open) renderProfiles(); render(); }
+  });
 
   registerSW();
   applySuggestedYear();

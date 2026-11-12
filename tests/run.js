@@ -262,6 +262,58 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
 /* v1.7.0: badges, suggested year, progress file (js/records.js) */
 {
   const Rec = require('../js/records.js');
+  /* v2.0.0 R1.1: one account on two devices */
+  {
+    const set = (date, extra) => Object.assign({ date, subject: 'maths', n: 5, correct: 4, wrong: [] }, extra);
+    const doc = (history, more) => ({ v: 1, keys: Object.assign({ history }, more || {}), profile: {} });
+    const dates = d => d.keys.history.map(h => h.date);
+    t('R1.1 merge: each device\'s new sets are kept, in date order, none twice', () => {
+      const common = [set(1)], b = Rec.baseOf(doc(common));
+      const m = Rec.mergeAccount(doc([set(1), set(3)]), doc([set(1), set(2)]), b);
+      assert.deepStrictEqual(dates(m), [1, 2, 3]);
+    });
+    t('R1.1 merge: a set removed on one device (in the base) stays removed', () => {
+      const b = Rec.baseOf(doc([set(1), set(2)]));
+      assert.deepStrictEqual(dates(Rec.mergeAccount(doc([set(2)]), doc([set(1), set(2), set(3)]), b)), [2, 3]);
+      assert.deepStrictEqual(dates(Rec.mergeAccount(doc([set(1), set(2), set(4)]), doc([]), b)), [4], 'progress cleared on the other device');
+    });
+    t('R1.1 merge without a base joins both copies', () => {
+      assert.deepStrictEqual(dates(Rec.mergeAccount(doc([set(5)]), doc([set(1), set(5)]), null)), [1, 5]);
+    });
+    t('R1.1 merge: at most 100 sets and 500 badges, the newest kept', () => {
+      const m = Rec.mergeAccount(doc(Array.from({ length: 80 }, (_, i) => set(i * 2))), doc(Array.from({ length: 80 }, (_, i) => set(i * 2 + 1))), null);
+      assert.strictEqual(m.keys.history.length, 100); assert.strictEqual(m.keys.history[99].date, 159);
+    });
+    t('R1.1 merge: badges by date, kind and level', () => {
+      const bd = (date, kind) => ({ date, kind, subject: 'maths', year: 4, diff: 2 });
+      const m = Rec.mergeAccount(doc([], { badges: [bd(1, 'perfect'), bd(3, 'speed')] }), doc([], { badges: [bd(1, 'perfect'), bd(2, 'firstTry')] }), null);
+      assert.deepStrictEqual(m.keys.badges.map(b => b.kind), ['perfect', 'firstTry', 'speed']);
+    });
+    t('R1.1 merge: plan items by id; a removed one stays removed; ticked days are joined', () => {
+      const it = (id, done) => ({ id, day: '2026-11-12', kind: 'study', topic: 'k6frac', every: 7, done });
+      const b = Rec.baseOf(doc([], { plan: [it('a'), it('b')] }));
+      const m = Rec.mergeAccount(doc([], { plan: [it('a', ['2026-11-12']), it('c')] }), doc([], { plan: [it('a', ['2026-11-19']), it('b'), it('d')] }), b);
+      assert.deepStrictEqual(m.keys.plan.map(x => x.id).sort(), ['a', 'c', 'd']);
+      assert.deepStrictEqual(m.keys.plan.find(x => x.id === 'a').done, ['2026-11-12', '2026-11-19']);
+    });
+    t('R1.1 merge: a question reviewed on either device stays reviewed', () => {
+      const w = r => ({ q: { en: 'x' }, reviewed: r });
+      const m = Rec.mergeAccount(doc([set(1, { wrong: [w(false), w(true)] })]), doc([set(1, { wrong: [w(true), w(false)] })]), null);
+      assert.deepStrictEqual(m.keys.history[0].wrong.map(x => !!x.reviewed), [true, true]);
+    });
+    t('R1.1 merge: games keep the best score (highest) and the best time (lowest), and the most plays', () => {
+      const a = { balloons: { best: 30, plays: 4, last: 10, date: 5 }, sudoku: { easy: { best: 90000, plays: 2, last: 90000, date: 1 } } };
+      const s = { balloons: { best: 25, plays: 6, last: 25, date: 9 }, sudoku: { easy: { best: 80000, plays: 1, last: 80000, date: 2 }, hard: { best: 300000, plays: 1 } }, money: { best: 3, plays: 1 } };
+      const g = Rec.mergeAccount(doc([], { games: a }), doc([], { games: s }), null).keys.games;
+      assert.deepStrictEqual(g.balloons, { best: 30, plays: 6, last: 25, date: 9 });
+      assert.deepStrictEqual([g.sudoku.easy.best, g.sudoku.easy.plays, g.sudoku.hard.best, g.money.best], [80000, 2, 300000, 3]);
+    });
+    t('R1.1 merge: this device\'s settings and profile win; the other copy fills what is missing', () => {
+      const m = Rec.mergeAccount({ keys: { settings: { year: 5 } }, profile: { schoolYear: 5 } }, { keys: { settings: { year: 8 } }, profile: { schoolYear: 8, dob: '2016-03' } }, null);
+      assert.deepStrictEqual([m.keys.settings.year, m.profile.schoolYear, m.profile.dob], [5, 5, '2016-03']);
+      assert.deepStrictEqual(Rec.mergeAccount({ keys: {} }, { keys: { settings: { year: 8 } } }, null).keys.settings, { year: 8 });
+    });
+  }
   const base = { subject: 'maths', year: 4, diff: 2, n: 10, correct: 10, firstTry: 10, seconds: 100 };
   t('badges: all three for a fast, first-try, perfect set', () => assert.deepStrictEqual(Rec.awardsFor(base), ['perfect', 'firstTry', 'speed']));
   t('badges: none below 100%', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, correct: 9 }), []));
@@ -1031,10 +1083,11 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(/id="startBtn"/.test(html));
   });
   /* v1.12.0 W4: Home and the bottom bar (Terry's notes on the v1.11.0 screenshot) */
-  t('W4: one start button on Home; no ▶ and no Students tab in the bottom bar; four tabs', () => {
+  t('W4: one start button on Home; no ▶ and no Students tab in the bottom bar; five tabs since v2.0.0 (Friends)', () => {
     assert.ok(!/id="fabStart"|id="navStudents"|id="studyCard"|id="studyTopicBtn"|id="sourceLine"|id="subjectNote"/.test(html));
     const nav = (/<nav class="bottom-nav"[\s\S]*?<\/nav>/.exec(html) || [''])[0];
-    assert.strictEqual((nav.match(/class="tab"/g) || []).length, 4);
+    assert.strictEqual((nav.match(/class="tab"/g) || []).length, 5);
+    assert.deepStrictEqual([...nav.matchAll(/data-go="(\w+)"/g)].map(m => m[1]), ['home', 'progress', 'friends', 'games', 'parent']);
   });
   t('W4: the header keeps only the language button; tour and parent lock are in Settings', () => {
     const header = (/<header class="top">[\s\S]*?<\/header>/.exec(html) || [''])[0];
@@ -1050,7 +1103,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   /* v1.12.0 W6 (Terry chose Option B): four cards on Home; the options and Start in a sheet */
   t('W7: Home has the school switch, My plan, today\'s plan, four cards, Carry on and Friends; no week, Badges or Start', () => {
     const home = (/<section id="screen-home"[\s\S]*?<\/section>/.exec(html) || [''])[0];
-    for (const id of ['schoolSwitch', 'planBtn', 'todayPlan', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'friendsBox', 'inviteBtn']) assert.ok(home.includes('id="' + id + '"'), id);
+    for (const id of ['schoolSwitch', 'planBtn', 'todayPlan', 'modeCards', 'cardStudy', 'cardPractice', 'cardTest', 'cardRelax', 'carryOn', 'friendsBox', 'friendsInner']) assert.ok(home.includes('id="' + id + '"'), id);
     assert.ok(!/id="startBtn"|id="diffSel"|id="modeTiles"|id="weekCard"|id="badgeBox"|id="homeBadges"/.test(home));
     assert.ok(!/id="schoolSel"|id="schoolField"/.test(html), 'the school is chosen on Home only');
   });
@@ -1073,7 +1126,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('W6: the new words are in English and Chinese', () => {
     const keys = ['mode.relax.sub', 'study.k6note', 'sheet.close', 'home.streak', 'home.streak1', 'home.streak0', 'home.carry', 'home.lastTime',
       'plan.my', 'plan.open', 'plan.today', 'plan.todayNone', 'plan.todayDone', 'plan.start', 'plan.make', 'plan.add', 'plan.weekly', 'plan.byParent', 'mode.study.soon', 'mode.study.soonNote',
-      'friends.title', 'friends.soon', 'friends.invite', 'friends.note', 'friends.inviteSoon', 'tour.schoolT', 'tour.planT', 'tour.todayT', 'tour.friendsT',
+      'friends.title', 'tour.schoolT', 'tour.planT', 'tour.todayT', 'tour.friendsT',
       'tour.carryT', 'tour.carry', 'day.1', 'day.2', 'day.3', 'day.4', 'day.5', 'day.6', 'day.7'];
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.en[k] === S.zh[k]), []);
   });
@@ -1092,6 +1145,94 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     const topics = Object.keys(S.en).filter(k => /^topic\./.test(k)).map(k => k.slice(6));
     const offered = topics.filter(k => k === 'mixed' || globalThis.Gen && (Object.keys(Gen.SUBJECTS.maths).includes(k) || Object.keys(Gen.SUBJECTS.ga).includes(k)) || /^k6/.test(k));
     assert.deepStrictEqual(offered.filter(k => !has.has(k)), []);
+  });
+}
+
+/* ---------- v2.0.0 (W8, Terry chose Option B): accounts, the Friends tab and practising together ---------- */
+{
+  const fs = require('fs'), path = require('path'), root = path.join(__dirname, '..');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const fr = fs.readFileSync(path.join(root, 'js/friends.js'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  const vm = require('vm'); const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} }; box.window = box; box.self = box;
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8'), box); vm.runInNewContext(fs.readFileSync(path.join(root, 'js/releases.js'), 'utf8'), box);
+  const S = box.I18N.STRINGS;
+  t('W8: the Friends screen, the Friends tab with its dot, and the results card are in the page', () => {
+    assert.ok(/<section id="screen-friends"[\s\S]*?id="frBody"/.test(html));
+    assert.ok(/id="navFriends" data-go="friends"[\s\S]*?id="friendsDot" hidden/.test(html));
+    assert.ok(/<section id="screen-results"[\s\S]*?id="resVs" class="res-vs" hidden/.test(html));
+  });
+  t('W8: friends.js loads before app.js and is in the offline files', () => {
+    assert.ok(html.indexOf('js/friends.js') > 0 && html.indexOf('js/friends.js') < html.indexOf('js/app.js'));
+    assert.ok(sw.includes("'./js/friends.js',"));
+  });
+  t('W8: the service worker never caches the server (/api/)', () => {
+    assert.ok(/if \(url\.pathname\.includes\('\/api\/'\)\) return;/.test(sw));
+    assert.ok(sw.indexOf("includes('/api/')") < sw.indexOf('caches.match(req'));
+  });
+  t('W8: every word friends.js uses is in English and Chinese, and they differ', () => {
+    const used = new Set([...fr.matchAll(/t\('((?:acc|fr|nav|sheet|subject)\.[\w.]+)'/g)].map(m => m[1]));
+    ['acc.err.offline', 'acc.err.not_set_up', 'acc.err.server', 'acc.err.signed_out'].forEach(k => used.add(k));
+    const missing = [...used].filter(k => !S.en[k] || !S.zh[k]);
+    assert.deepStrictEqual(missing, []);
+    assert.deepStrictEqual([...used].filter(k => S.en[k] === S.zh[k] && !/^fr\.cOfN$/.test(k)), []);
+  });
+  t('W8: every error the server can send has words in both languages', () => {
+    const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
+    const codes = new Set([...api.matchAll(/fail\(\d+, '(\w+)'/g)].map(m => m[1]));
+    // R1.5 (v2.0.0): bad_input and no_route have words too; bad_origin goes to a page on another site, never to the app
+    codes.delete('bad_origin');
+    assert.ok(codes.has('bad_input') && codes.has('no_route') && codes.has('bad_set') && codes.has('stale'));
+    assert.deepStrictEqual([...codes].filter(c => !S.en['acc.err.' + c] || !S.zh['acc.err.' + c]), []);
+  });
+  t('R1.6: no always-visible "why an account" paragraph under the account panel', () => {
+    assert.ok(!('acc.why' in S.en) && !('acc.why' in S.zh) && !/f-why/.test(fr + fs.readFileSync(path.join(root, 'css/style.css'), 'utf8')));
+  });
+  t('R1.8: the sign-in box never fills in the username of an earlier session', () => {
+    assert.ok(!/value: prev/.test(fr) && !/const prev = F\.auth/.test(fr));
+  });
+  t('R1.2: startChallenge refuses a set that fails questionOk', () => {
+    assert.ok(/if \(!Array\.isArray\(questions\) \|\| !questions\.length \|\| questions\.length > 60 \|\| !questions\.every\(questionOk\)\)/.test(app));
+  });
+  t('W8: no English letters in the Chinese account words, except names, codes and numbers in braces', () => {
+    const bad = Object.keys(S.zh).filter(k => /^(acc|fr|rel\.2\.0\.0)\./.test(k)).filter(k => /[A-Za-z]{2,}/.test(S.zh[k].replace(/\{\w+\}/g, '')));
+    assert.deepStrictEqual(bad, []);
+  });
+  t('W8: the account is kept under sp.auth; every other key friends.js stores is a student key', () => {
+    assert.ok(fr.includes("const AUTH = 'sp.auth';"));
+    assert.ok(!/localStorage/.test(fr), 'friends.js uses the app\'s store only');
+  });
+  t('W8: the old "soon" words of v1.12.0 are gone', () => {
+    for (const k of ['friends.soon', 'friends.invite', 'friends.note', 'friends.inviteSoon']) assert.ok(!(k in S.en) && !(k in S.zh), k);
+    assert.ok(!/inviteBtn|friendsList|SEAT/.test(app + html));
+  });
+  t('W8: app.js hands Friends what it needs, and a store write tells it', () => {
+    assert.ok(/window\.Friends\.init\(\{[\s\S]*?startChallenge[\s\S]*?reload\(\)/.test(app));
+    assert.ok(app.includes('if (!quiet && window.Friends) window.Friends.changed(k);'));
+    assert.ok(app.includes('if (Q.challenge && window.Friends) window.Friends.finished(Q);'));
+  });
+  t('W8: Practise again after a challenge is a normal set', () => {
+    assert.ok(app.includes('delete S.lastQuizSettings.challenge;'));
+  });
+  t('W8: What\'s new for v2.0.0 lists four items with words in both languages', () => {
+    const rel = box.RELEASES[0];
+    assert.strictEqual(rel.v, '2.0.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'account,friends,together,fixes');
+    rel.items.forEach(i => ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.0.0.' + i.id + sfx] && S.zh['rel.2.0.0.' + i.id + sfx], i.id + sfx)));
+  });
+  t('W8: the Pages Function and the server are not offline files and hold no secret', () => {
+    assert.ok(!/server\/|functions\//.test(sw));
+    const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
+    assert.ok(/env\.EMAIL_API_KEY/.test(api) && !/EMAIL_API_KEY\s*=\s*'/.test(api));
+  });
+  t('R3.1-R3.5 (v1.12.0): calendar marks, 44 px targets and readable colours', () => {
+    const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+    assert.ok(/\.cal-d\.sel \{ background: transparent;[^}]*box-shadow: 0 0 0 3px var\(--pri\)/.test(css), 'R3.1');
+    assert.ok(/\.cal-d\.sel\.today \{ box-shadow: 0 0 0 3px var\(--pri\), inset 0 0 0 2px var\(--pri\)/.test(css), 'R3.1 today');
+    assert.ok(/\.cal-d \{ min-height: 44px; \}/.test(css), 'R3.2');
+    assert.ok(/\.school-sw button \{ min-height: 44px; \}/.test(css), 'R3.3');
+    assert.ok(/prefers-color-scheme: dark\) \{ \.pb-t em \{ color: #ffb066; \} \}/.test(css), 'R3.4');
+    assert.ok(/\.mode-card\.soon \.mc-t \{ opacity: 1; color: var\(--muted\); \}/.test(css), 'R3.5');
   });
 }
 

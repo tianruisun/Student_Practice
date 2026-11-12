@@ -4,6 +4,12 @@
    so an item about them points at the card that opens it).
    Add the new version at the top of this list in every release that changes something a student or parent can see. */
 self.RELEASES = [
+  { v: '2.0.0', items: [
+    { id: 'account', show: '#friendsBox' },
+    { id: 'friends', show: '#navFriends' },
+    { id: 'together', show: '#navFriends' },
+    { id: 'fixes', show: '#planBtn' }
+  ] },
   { v: '1.12.0', items: [
     { id: 'modes', show: '#modeCards' },
     { id: 'school', show: '#schoolSwitch' },

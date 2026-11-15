@@ -2176,6 +2176,8 @@ async function run(site) {
         await page.fill('#fForgotEmail', name + '@example.com');
         await page.click('#fForgotGo');
         await page.waitForSelector('#fResetPass');
+        // R5.2: the form draws the next step once more when its request ends; typing into the first copy loses the text (the password box was empty, about one run in four)
+        await page.waitForFunction(() => !window.Friends._state.busy);
         check('W10 forgot: the question of the account is shown, with an answer box', (await page.textContent('#fQuestionText')) === 'What is the name of your first pet?' && (await visible(page, '#fForgotAns')));
         check('W10 forgot: it says that without the answer the account cannot be recovered', /cannot be recovered/.test(await page.textContent('#frBody')));
         await page.fill('#fForgotAns', 'max'); await page.fill('#fResetPass', 'new-pass-' + name);

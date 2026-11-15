@@ -56,7 +56,7 @@ Plain HTML/CSS/JS – no frameworks, no build step, relative paths only – so i
 
 ## Server (v2.0.0)
 
-Accounts, friends and challenges run on a Cloudflare Pages Function (`functions/api/[[path]].js`, which hands every `/api/*` request to `server/api.js`) with a D1 database. The GitHub Pages address uses the Production server. Setting it up (databases, bindings, the email service) is in [server/SETUP.md](server/SETUP.md). On this PC, `npm test` runs the same server on an in-memory database (`tests/local-api.js`).
+Accounts, friends and challenges run on a Cloudflare Pages Function (`functions/api/[[path]].js`, which hands every `/api/*` request to `server/api.js`) with a D1 database. The GitHub Pages address uses the Production server. Setting it up (databases and bindings; no email service) is in [server/SETUP.md](server/SETUP.md). On this PC, `npm test` runs the same server on an in-memory database (`tests/local-api.js`).
 
 ## Publish
 The app is hosted on Cloudflare Pages: `main` is Production (https://student-practice.pages.dev) and `test` is the Test app (https://test.student-practice.pages.dev, with a red TEST badge). Changes reach them only through the release process; nobody pushes by hand.

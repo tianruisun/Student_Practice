@@ -9,7 +9,6 @@
    Stored per account: display name, email, password hash, security question number and answer hash, picture number, friend
    code, progress (the student's own app data), friends and the last 20 challenges of each student. No real names. */
 
-export const PROD_HOSTS = ['student-practice.pages.dev', 'tianruisun.github.io'];
 const ORIGINS = [/^https:\/\/([a-z0-9-]+\.)?student-practice\.pages\.dev$/, /^https:\/\/tianruisun\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
 export const AVATARS = ['🦊', '🐼', '🐯', '🐨', '🐰', '🐸', '🦁', '🐧', '🐙', '🦄', '🐵', '🐶'];
 const USERNAME = /^[a-z0-9_]{3,20}$/;
@@ -27,7 +26,7 @@ export const REG_IP = 150;                              // sign-ups per address 
 export const QUESTIONS = 8;                             // the security questions are numbered 0..7; their words are in js/i18n.js
 export const ANS_MIN = 2, ANS_MAX = 60;                 // characters of a security answer, after cleaning
 export const ANS_FAIL = 10;                             // wrong answers per email address in an hour, then the reset is locked until the hour ends
-export const ANS_IP_FAIL = 100;                         // wrong answers per address in an hour (a class resetting together)
+export const ANS_IP_FAIL = 300;                         // wrong answers per address in an hour (a school resetting together); stops one address trying many emails
 export const PUT_DAY = 300;                             // saves of the records per account in a day (D1 writes are shared)
 /* W9 (v2.0.0, Terry chose Option A): a challenge not accepted in 24 hours goes; after accepting, both have 24 hours to
    finish (a side that has not finished loses); each student keeps the last 20 challenges */
@@ -75,7 +74,6 @@ const b64u = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').re
 const randomBytes = n => crypto.getRandomValues(new Uint8Array(n));
 const sha256 = async s => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)));
 const newToken = () => b64u(randomBytes(32));
-const randomCode6 = () => String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0');
 const friendCode = () => [...randomBytes(6)].map(b => CODE_CHARS[b % CODE_CHARS.length]).join('');
 /* constant-time compare of two hex strings of equal length */
 const same = (a, b) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
@@ -148,8 +146,6 @@ const meOf = u => ({ username: u.name, avatar: u.avatar, friendCode: u.code, ema
 const cleanAnswer = a => String(a || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 const okAnswer = a => { const c = cleanAnswer(a); return typeof a === 'string' && a.length <= 200 && c.length >= ANS_MIN && c.length <= ANS_MAX; };
 const okQid = q => Number.isInteger(q) && q >= 0 && q < QUESTIONS;
-/* the question asked for an email that has no account looks like any other: a number worked out from the address */
-const fakeQid = async email => parseInt((await sha256('q:' + email)).slice(0, 6), 16) % QUESTIONS;
 
 /* ---------- routes ---------- */
 const ROUTES = {
@@ -209,20 +205,22 @@ const ROUTES = {
     await db.prepare('UPDATE users SET avatar = ? WHERE id = ?').bind(a, me.id).run();
     return { ok: true };
   },
-  /* forgot password, step 1: the number of the security question. An address with no account gets a question too, so the
-     answer does not tell whether the address is registered (sign-up does tell, as an address can be used once). */
+  /* forgot password, step 1: the number of the security question. An address with no account says so (no_account):
+     sign-up already tells whether an address is taken, as an address can be used once, so hiding it here would only
+     leave a student guessing why the answer never works (R4.5). */
   'POST reset/question': async ({ db, body, now, ip }) => {
     const email = normEmail(str(body.email, 260));
     await limitOr429(db, 'qip:' + ip, 120, 60 * MIN, now);
     const u = EMAIL.test(email) ? await db.prepare('SELECT qid FROM users WHERE email = ?').bind(email).first() : null;
-    return { qid: u ? u.qid : await fakeQid(email) };
+    if (!u) fail(404, 'no_account');
+    return { qid: u.qid };
   },
   /* step 2: the email, the answer and a new password. Wrong answers count per address (10 an hour, then locked until the
      hour ends, even for the right answer) and per network address. */
   'POST reset': async ({ db, body, now, ip }) => {
     const email = normEmail(str(body.email, 260));
     if (!okPassword(body.password)) fail(400, 'bad_password');
-    if (await full(db, 'ans:' + email, ANS_FAIL, now) || await full(db, 'ansip:' + ip, ANS_IP_FAIL, now)) fail(429, 'too_many');
+    if (await full(db, 'ans:' + email, ANS_FAIL, now) || await full(db, 'ansip:' + ip, ANS_IP_FAIL, now)) fail(429, 'reset_locked');
     const u = EMAIL.test(email) ? await db.prepare('SELECT id, name, ans FROM users WHERE email = ?').bind(email).first() : null;
     const answer = typeof body.answer === 'string' && body.answer.length <= 200 ? cleanAnswer(body.answer) : '';
     if (!u || !answer || !(await checkPassword(answer, u.ans))) {

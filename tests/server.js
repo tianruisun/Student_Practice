@@ -152,12 +152,17 @@ t('change picture', async () => {
 
 /* ---------- forgot password (W10: the email and the answer to the security question) ---------- */
 const RESET = (o = {}) => Object.assign({ email: 'anan@example.com', answer: 'Rex', password: 'new-password' }, o);
-t('W10 reset: the question number comes for an email; unknown emails get a question too, always the same one', async () => {
+t('W10 R4.5 reset: the question number comes for an email; an email with no account says so (no_account, 404)', async () => {
   fresh(); await signUp('anan');
   assert.deepStrictEqual((await call('POST', 'reset/question', { email: 'ANAN@example.com' })).body, { qid: 0 });
-  const a = (await call('POST', 'reset/question', { email: 'nobody@example.com' })).body, b = (await call('POST', 'reset/question', { email: 'nobody@example.com' })).body;
-  assert.ok(Number.isInteger(a.qid) && a.qid >= 0 && a.qid < 8); assert.deepStrictEqual(a, b);
-  assert.strictEqual((await call('POST', 'reset/question', { email: 'not an email' })).status, 200);
+  const a = await call('POST', 'reset/question', { email: 'nobody@example.com' });
+  assert.strictEqual(a.status, 404); assert.strictEqual(a.body.error, 'no_account');
+  assert.strictEqual((await call('POST', 'reset/question', { email: 'not an email' })).body.error, 'no_account');
+});
+t('R4.5 asking for questions is limited to 120 an hour per address', async () => {
+  fresh();
+  for (let i = 0; i < 120; i++) assert.strictEqual((await call('POST', 'reset/question', { email: 'x' + i + '@example.com' }, { ip: '10.0.0.8' })).status, 404);
+  assert.strictEqual((await call('POST', 'reset/question', { email: 'x@example.com' }, { ip: '10.0.0.8' })).status, 429);
 });
 t('W10 reset: the right answer (any case, extra spaces) sets a new password and ends the old sessions', async () => {
   fresh(); const old = await signUp('anan', undefined, 'password-1');
@@ -182,18 +187,18 @@ t('W10 reset: a new password under 8 characters is refused and does not count as
   for (let i = 0; i < 12; i++) assert.strictEqual((await call('POST', 'reset', RESET({ password: 'short' }))).body.error, 'bad_password');
   assert.strictEqual((await call('POST', 'reset', RESET())).status, 200);
 });
-t('W10 reset: 10 wrong answers lock that email for 1 hour, even for the right answer', async () => {
+t('W10 reset: 10 wrong answers lock that email for 1 hour (reset_locked), even for the right answer', async () => {
   fresh(); await signUp('anan'); await signUp('leo');
   for (let i = 0; i < 10; i++) assert.strictEqual((await call('POST', 'reset', RESET({ answer: 'no' + i }))).body.error, 'wrong_answer', 'wrong ' + (i + 1));
-  assert.strictEqual((await call('POST', 'reset', RESET())).status, 429);
+  const locked = await call('POST', 'reset', RESET()); assert.strictEqual(locked.status, 429); assert.strictEqual(locked.body.error, 'reset_locked');
   assert.strictEqual((await call('POST', 'reset', RESET({ email: 'leo@example.com' }))).status, 200, 'another email is not locked');
   later(59 * MIN); assert.strictEqual((await call('POST', 'reset', RESET())).status, 429, 'still locked at 59 minutes');
   later(2 * MIN); assert.strictEqual((await call('POST', 'reset', RESET())).status, 200, 'free after the hour');
 });
-t('W10 reset: a school guessing from one address is stopped after 100 wrong answers in an hour; other addresses are not', async () => {
+t('W10 R4.6 reset: one address trying many emails is stopped after 300 wrong answers in an hour (30 students with typos are not); other addresses are not', async () => {
   fresh(); await signUp('anan');
-  assert.strictEqual(H.ANS_FAIL, 10); assert.strictEqual(H.ANS_IP_FAIL, 100);
-  for (let i = 0; i < 100; i++) await call('POST', 'reset', RESET({ email: 'x' + i + '@example.com', answer: 'no' }), { ip: '10.0.0.9' });
+  assert.strictEqual(H.ANS_FAIL, 10); assert.strictEqual(H.ANS_IP_FAIL, 300);
+  for (let i = 0; i < 300; i++) await call('POST', 'reset', RESET({ email: 'x' + i + '@example.com', answer: 'no' }), { ip: '10.0.0.9' });
   assert.strictEqual((await call('POST', 'reset', RESET(), { ip: '10.0.0.9' })).status, 429);
   assert.strictEqual((await call('POST', 'reset', RESET(), { ip: '10.0.0.10' })).status, 200);
 });

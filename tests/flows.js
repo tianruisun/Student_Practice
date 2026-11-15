@@ -1991,6 +1991,7 @@ async function run(site) {
         check('W8 signed out, the Friends tab shows Sign in and Create account', (await visible(page, '#fLogin')) && (await page.getAttribute('#fTabLogin', 'aria-pressed')) === 'true' && (await page.textContent('#fTabReg')) === 'Create account');
         await page.click('#fTabReg');
         check('W10 sign-up is one page: email, display name, password, security question, answer, 12 pictures', (await page.locator('#fReg input:not([type=radio]), #fReg select').count()) === 5 && (await page.locator('.f-pick input[type=radio]').count()) === 12 && (await page.getAttribute('#fNewPass', 'autocomplete')) === 'new-password');
+        check('R4.2 the question list shows a dropdown arrow and keeps room for it', await page.$eval('#fQuestion', e => { const c = getComputedStyle(e); return c.backgroundImage !== 'none' && parseFloat(c.paddingRight) >= 36; }));
         check('W10 the question list has the 8 questions and a first line "Choose a question"', JSON.stringify(await page.locator('#fQuestion option').allTextContents()) === JSON.stringify(['Choose a question', 'What is the name of your first pet?', 'What is the name of your favourite teacher?', 'What is the name of your favourite toy?', 'What is the name of the street you live on?', 'What is your favourite food?', 'What is the name of your first school?', 'In which city were you born?', 'What is your favourite book or film?']));
         check('W10 the page says no email is sent and the answer is the way back', /No email is sent/.test(await page.textContent('#fEmailHint')) && /way back in/.test(await page.textContent('#fAnswerHint')));
         await page.fill('#fEmail', 'not-an-email');
@@ -2164,6 +2165,9 @@ async function run(site) {
         await page.fill('#fForgotEmail', 'nope');
         await page.click('#fForgotGo');
         check('W10 forgot: a wrong email is refused in words', (await page.textContent('#fErr')) === 'That does not look like an email address.');
+        await page.fill('#fForgotEmail', 'nobody-' + name + '@example.com');
+        await page.click('#fForgotGo');
+        check('R4.5 forgot: an email with no account is told so', await errShown(page, 'No account has this email.'), await page.textContent('#fErr'));
         await page.fill('#fForgotEmail', name + '@example.com');
         await page.click('#fForgotGo');
         await page.waitForSelector('#fResetPass');

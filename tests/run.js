@@ -1198,6 +1198,9 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
       assert.strictEqual(S[L]['acc.q' + n], undefined, L + ' has no extra question');
     }
   });
+  t('R4.1: What\'s new and the hints say display name and email, not the old username sign-in', () => {
+    for (const L of ['en', 'zh']) { const w = S[L]['rel.2.0.0.account']; assert.ok(!/username|用户名/.test(w), L + ' ' + w); assert.ok(/email|邮箱/.test(w)); }
+  });
   t('W10: no sign-up screen mentions a code or a link by email any more', () => {
     for (const L of ['en', 'zh']) for (const k of Object.keys(S[L])) assert.ok(!/^acc\.(sendCode|code|codeHint|codeSent|again|againIn|otherEmail|sendLink|linkSent|devReset|devCode|err\.(email_off|email_full|code_\w+|reset_expired))$/.test(k), L + ' ' + k);
   });

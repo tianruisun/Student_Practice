@@ -1931,11 +1931,9 @@ async function run(site) {
       let data = null; try { data = await res.json(); } catch (e) { /* not JSON */ }
       return { status: res.status, data };
     };
-    /* an account straight through the server (the second student of a flow), with the test code */
+    /* an account straight through the server (the second student of a flow): email name@example.com, security question 0, answer "rex" */
     const makeAccount = async (name, password, avatar = 2) => {
-      const c = await apiCall('POST', 'code', { email: name + '@example.com' });
-      if (!c.data || !c.data.devCode) throw new Error('no test code from the server: ' + JSON.stringify(c.data));
-      const r = await apiCall('POST', 'register', { email: name + '@example.com', code: c.data.devCode, username: name, password, avatar });
+      const r = await apiCall('POST', 'register', { email: name + '@example.com', username: name, password, qid: 0, answer: 'rex', avatar });
       if (r.status !== 200) throw new Error('register: ' + JSON.stringify(r.data));
       return r.data;
     };
@@ -1976,10 +1974,9 @@ async function run(site) {
     };
     const health = await apiCall('GET', 'health').catch(e => ({ status: 0, data: { error: e.message } }));
     check('W8 the server answers on this site (/api/health)', health.status === 200 && health.data && health.data.ok, JSON.stringify(health));
-    const testCodes = health.status === 200 && (await apiCall('POST', 'code', { email: tag() + '@example.com' })).data;
-    check('W8 the server gives test codes on this site (DEV_CODES on Test and on this PC)', !!(testCodes && testCodes.devCode), JSON.stringify(testCodes));
+    check('W10 the server has no email routes (no code is sent)', health.status !== 200 || (await apiCall('POST', 'code', { email: tag() + '@example.com' })).status === 404);
 
-    if (health.status === 200 && testCodes && testCodes.devCode) {
+    if (health.status === 200) {
       await flow('v2.0 W8 sign up, move the records, sign out and sign in again', async () => {
         const name = tag(), pw = 'pass-' + name;
         const { context, page, errors } = await freshPage(browser, site, {
@@ -1993,29 +1990,26 @@ async function run(site) {
         await page.click('#friendsCta');
         check('W8 signed out, the Friends tab shows Sign in and Create account', (await visible(page, '#fLogin')) && (await page.getAttribute('#fTabLogin', 'aria-pressed')) === 'true' && (await page.textContent('#fTabReg')) === 'Create account');
         await page.click('#fTabReg');
+        check('W10 sign-up is one page: email, display name, password, security question, answer, 12 pictures', (await page.locator('#fReg input:not([type=radio]), #fReg select').count()) === 5 && (await page.locator('.f-pick input[type=radio]').count()) === 12 && (await page.getAttribute('#fNewPass', 'autocomplete')) === 'new-password');
+        check('W10 the question list has the 8 questions and a first line "Choose a question"', JSON.stringify(await page.locator('#fQuestion option').allTextContents()) === JSON.stringify(['Choose a question', 'What is the name of your first pet?', 'What is the name of your favourite teacher?', 'What is the name of your favourite toy?', 'What is the name of the street you live on?', 'What is your favourite food?', 'What is the name of your first school?', 'In which city were you born?', 'What is your favourite book or film?']));
+        check('W10 the page says no email is sent and the answer is the way back', /No email is sent/.test(await page.textContent('#fEmailHint')) && /way back in/.test(await page.textContent('#fAnswerHint')));
         await page.fill('#fEmail', 'not-an-email');
-        await page.click('#fReg1Go');
+        await page.click('#fRegGo');
         check('W8 a wrong email is refused in words', (await page.textContent('#fErr')) === 'That does not look like an email address.');
-        await page.fill('#fEmail', name + '@example.com');
-        await page.click('#fReg1Go');
-        await page.waitForSelector('#fCode');
-        const dev = await page.textContent('#fDevCode');
-        check('W8 step 2: the code box, and on the Test site the code itself', /Your code is \d{6}\./.test(dev) && (await page.getAttribute('#fCode', 'inputmode')) === 'numeric', dev);
-        check('W8 step 2: Send again waits a minute', (await page.isDisabled('#fAgain')) && /Send again in \d+ s/.test(await page.textContent('#fAgain')));
-        await page.fill('#fCode', '000000' === dev.match(/\d{6}/)[0] ? '111111' : '000000');
-        await page.click('#fReg2Go');
-        check('W8 a wrong code is refused in words', await errShown(page, 'That code is not right. Check the email and try again.'), await page.textContent('#fErr'));
-        await page.fill('#fCode', dev.match(/\d{6}/)[0]);
-        await page.click('#fReg2Go');
-        await page.waitForSelector('#fNewUser');
-        check('W8 step 3: username, password and 12 pictures', (await page.locator('.f-pick input[type=radio]').count()) === 12 && (await page.getAttribute('#fNewPass', 'autocomplete')) === 'new-password');
-        await page.fill('#fNewUser', name); await page.fill('#fNewPass', 'short');
-        await page.click('#fReg3Go');
+        await page.fill('#fEmail', name + '@example.com'); await page.fill('#fNewUser', name); await page.fill('#fNewPass', 'short');
+        await page.click('#fRegGo');
         check('W8 a short password is refused in words', (await page.textContent('#fErr')) === 'The password needs at least 8 characters.');
-        check('W8 the username typed stays after the error', (await page.inputValue('#fNewUser')) === name);
+        check('W8 what was typed stays after the error', (await page.inputValue('#fNewUser')) === name && (await page.inputValue('#fEmail')) === name + '@example.com');
         await page.fill('#fNewPass', pw);
+        await page.click('#fRegGo');
+        check('W10 no question chosen is refused in words', (await page.textContent('#fErr')) === 'Choose a security question.');
+        await page.selectOption('#fQuestion', '0');
+        await page.click('#fRegGo');
+        check('W10 no answer is refused in words', (await page.textContent('#fErr')) === 'Type an answer (at least 2 characters).');
+        check('W10 the chosen question stays after the error', (await page.inputValue('#fQuestion')) === '0');
+        await page.fill('#fAnswer', 'Rex');
         await page.locator('#fAv4').check({ force: true });
-        await page.click('#fReg3Go');
+        await page.click('#fRegGo');
         await page.waitForSelector('#fMoveYes');
         check('W8 a device with records asks before moving them into the new account', /Move Student 1’s records on this device into your account\?/.test(await page.textContent('#frBody')), await page.textContent('#frBody'));
         await page.click('#fMoveYes');
@@ -2035,9 +2029,9 @@ async function run(site) {
         check('W8 sign out: the account and its records leave this device; a new empty student is left', out.auth === null && out.hist === null && out.prof.list.length === 1 && !out.prof.list[0].account && out.prof.list[0].id !== 'p1', JSON.stringify(out));
         check('W8 sign out: the old session no longer works', (await apiCall('GET', 'me', undefined, auth.token)).status === 401);
         check('W8 sign out: the toast says the records are saved', /Signed out\. Your records are saved/.test(await page.textContent('#toast')));
-        await page.fill('#fUser', name); await page.fill('#fPass', 'wrong-password');
+        await page.fill('#fLoginEmail', name + '@example.com'); await page.fill('#fPass', 'wrong-password');
         await page.click('#fLoginGo');
-        check('W8 a wrong password is refused in words', await errShown(page, 'Wrong username or password.'), await page.textContent('#fErr'));
+        check('W8 a wrong password is refused in words', await errShown(page, 'Wrong email or password.'), await page.textContent('#fErr'));
         await page.fill('#fPass', pw);
         await page.click('#fLoginGo');
         await page.waitForSelector('#fSignOut');
@@ -2167,25 +2161,26 @@ async function run(site) {
         const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
         await page.click('.tab[data-go="friends"]');
         await page.click('#fForgot');
-        await page.fill('#fForgotUser', name);
+        await page.fill('#fForgotEmail', 'nope');
+        await page.click('#fForgotGo');
+        check('W10 forgot: a wrong email is refused in words', (await page.textContent('#fErr')) === 'That does not look like an email address.');
+        await page.fill('#fForgotEmail', name + '@example.com');
         await page.click('#fForgotGo');
         await page.waitForSelector('#fResetPass');
-        check('W8 on the Test site the new password is typed at once (no email)', (await page.textContent('#fMsg')) === 'Test site: no email is sent. Type a new password here.');
-        await page.fill('#fResetPass', 'new-pass-' + name);
+        check('W10 forgot: the question of the account is shown, with an answer box', (await page.textContent('#fQuestionText')) === 'What is the name of your first pet?' && (await visible(page, '#fForgotAns')));
+        check('W10 forgot: it says that without the answer the account cannot be recovered', /cannot be recovered/.test(await page.textContent('#frBody')));
+        await page.fill('#fForgotAns', 'max'); await page.fill('#fResetPass', 'new-pass-' + name);
+        await page.click('#fResetGo');
+        check('W10 forgot: a wrong answer is refused in words and nothing changes', (await errShown(page, 'That answer is not right.')) && (await apiCall('GET', 'me', undefined, A.token)).status === 200);
+        await page.fill('#fForgotAns', '  REX ');
         await page.click('#fResetGo');
         await page.waitForSelector('#fLogin');
         check('W8 after a reset: back to Sign in, the old session ends', /Password changed/.test(await page.textContent('#toast')) && (await apiCall('GET', 'me', undefined, A.token)).status === 401);
-        await page.fill('#fUser', name); await page.fill('#fPass', 'new-pass-' + name);
+        check('W10 after a reset the email is already in the sign-in box', (await page.inputValue('#fLoginEmail')) === name + '@example.com');
+        await page.fill('#fPass', 'new-pass-' + name);
         await page.click('#fLoginGo');
         await page.waitForSelector('#fSignOut');
         check('W8 the new password signs in', (await page.textContent('.f-me-t b')) === name);
-        // the reset link from an email opens the same form
-        const r = await apiCall('POST', 'reset', { username: name });
-        const p2 = await page.context().newPage();
-        await p2.goto(site + '?reset=' + r.data.devToken);
-        await p2.waitForSelector('#fResetPass');
-        check('W8 a reset link opens Set a new password, and the token leaves the address', !p2.url().includes('reset='), p2.url());
-        await p2.close();
         check('W8 forgot: no page errors', errors.length === 0, errors.join(' | '));
         await dropAccount(await page.evaluate(() => JSON.parse(localStorage.getItem('sp.auth')).token), 'new-pass-' + name);
         await context.close();
@@ -2207,7 +2202,7 @@ async function run(site) {
         await context.unroute('**/api/**');
         await page.click('#fSignOut');
         await page.waitForSelector('#fLogin');
-        const saved = await apiCall('POST', 'login', { username: name, password: 'pass-' + name });
+        const saved = await apiCall('POST', 'login', { email: name + '@example.com', password: 'pass-' + name });
         const prog = await apiCall('GET', 'progress', undefined, saved.data.token);
         check('W8 back online, Sign out saves the records first', prog.data.data && prog.data.data.keys.history.length === 1, JSON.stringify(prog.data).slice(0, 120));
         check('W8 offline: no page errors', errors.length === 0, errors.join(' | '));
@@ -2225,7 +2220,7 @@ async function run(site) {
       const serverDates = async token => { const r = await apiCall('GET', 'progress', undefined, token); return ((r.data && r.data.data && r.data.data.keys.history) || []).map(h => h.date); };
       await flow('v2.0 R1.1 one account on two devices keeps the records of both', async () => {
         const name = tag(), pw = 'pass-' + name;
-        const A = await makeAccount(name, pw), A2 = (await apiCall('POST', 'login', { username: name, password: pw })).data;
+        const A = await makeAccount(name, pw), A2 = (await apiCall('POST', 'login', { email: name + '@example.com', password: pw })).data;
         const phone = await signedInPage(A), tablet = await signedInPage(A2);
         const t0 = Date.now() - 3 * 3600e3;
         await addSet(phone.page, t0); check('R1.1 the phone saves its set', await phone.page.evaluate(() => window.Friends.upload()));
@@ -2240,7 +2235,7 @@ async function run(site) {
         await tablet.page.reload(); await tablet.page.waitForSelector('#helloText');
         await addSet(tablet.page, t0 + 3000);
         await tablet.page.click('.tab[data-go="friends"]');
-        await tablet.page.fill('#fUser', name); await tablet.page.fill('#fPass', pw); await tablet.page.click('#fLoginGo');
+        await tablet.page.fill('#fLoginEmail', name + '@example.com'); await tablet.page.fill('#fPass', pw); await tablet.page.click('#fLoginGo');
         await tablet.page.waitForSelector('#fSignOut');
         let after = [];
         for (let i = 0; i < 20 && after.length < 4; i++) { after = await serverDates(A.token); if (after.length < 4) await tablet.page.waitForTimeout(250); }
@@ -2256,14 +2251,13 @@ async function run(site) {
         const A = await makeAccount(name, pw);
         const { context, page, errors } = await signedInPage(A);
         await addSet(page, Date.now() - 60e3); await page.evaluate(() => window.Friends.upload());
-        const r = await apiCall('POST', 'reset', { username: name });   // a password reset ends every session
-        await apiCall('POST', 'reset/finish', { token: r.data.devToken, password: pw + '2' });
+        await apiCall('POST', 'reset', { email: name + '@example.com', answer: 'rex', password: pw + '2' });   // a password reset ends every session
         await page.click('.tab[data-go="friends"]');
         await page.evaluate(() => window.Friends.refresh());
         await page.waitForSelector('#fLogin');
         const left = await page.evaluate(() => ({ auth: localStorage.getItem('sp.auth'), prof: JSON.parse(localStorage.getItem('sp.profiles')), hist: localStorage.getItem('sp.history.p1') }));
         check('R1.8 everything was saved, so the account and its records leave this device', left.auth === null && left.hist === null && !left.prof.list.some(p => p.account), JSON.stringify(left));
-        check('R1.8 the sign-in box is empty (no earlier username)', (await page.inputValue('#fUser')) === '');
+        check('R1.8 the sign-in box is empty (no earlier email)', (await page.inputValue('#fLoginEmail')) === '');
         check('R1.8 it says to sign in again', await errShown(page, 'Please sign in again.'), await page.textContent('#fErr'));
         // unsaved records stay (they would be lost otherwise) until that account signs in again
         const B = await makeAccount(tag(), 'pass-b-' + name);
@@ -2276,8 +2270,8 @@ async function run(site) {
         const kept = await p2.page.evaluate(() => (JSON.parse(localStorage.getItem('sp.history.p1') || '[]')).length);
         check('R1.8 records not saved yet are kept on the device', kept === 1, String(kept));
         check('R1.8: no page errors', errors.length === 0 && p2.errors.length === 0, errors.concat(p2.errors).join(' | '));
-        await dropAccount((await apiCall('POST', 'login', { username: name, password: pw + '2' })).data.token, pw + '2');
-        await dropAccount((await apiCall('POST', 'login', { username: B.me.username, password: 'pass-b-' + name })).data.token, 'pass-b-' + name);
+        await dropAccount((await apiCall('POST', 'login', { email: name + '@example.com', password: pw + '2' })).data.token, pw + '2');
+        await dropAccount((await apiCall('POST', 'login', { email: B.me.username + '@example.com', password: 'pass-b-' + name })).data.token, 'pass-b-' + name);
         await context.close(); await p2.context.close();
       });
 

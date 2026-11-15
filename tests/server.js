@@ -1,5 +1,5 @@
-/* Run with: node tests/server.js   The server (server/api.js) on an in-memory database: accounts, codes, sign-in limits,
-   password reset, progress, friends, challenges, CORS and the Production rules. Prints "N passed, M failed". */
+/* Run with: node tests/server.js   The server (server/api.js) on an in-memory database: accounts (email, display name, password, security question), sign-in limits,
+   password reset by the answer, progress, friends, challenges, CORS and the Production rules. Prints "N passed, M failed". */
 const assert = require('assert');
 const { fakeD1, api } = require('./local-api.js');
 
@@ -13,7 +13,7 @@ const later = ms => { clock += ms; };
 const MIN = 60e3;
 
 let H, env;
-function fresh(extra = {}) { env = Object.assign({ DB: fakeD1(), DEV_CODES: '1' }, extra); }
+function fresh(extra = {}) { env = Object.assign({ DB: fakeD1() }, extra); }
 async function call(method, route, body, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (opts.token) headers.Authorization = 'Bearer ' + opts.token;
@@ -26,13 +26,10 @@ async function call(method, route, body, opts = {}) {
   return { status: res.status, body: text ? JSON.parse(text) : null, headers: res.headers };
 }
 let n = 0;
-/* a whole sign-up: code, check, register; returns the token */
+/* a whole sign-up (W10: email, display name, password, a security question and its answer); returns the token */
 async function signUp(name, email = name + '@example.com', password = 'secret-pass', opts = {}) {
-  const c = await call('POST', 'code', { email }, opts);
-  assert.strictEqual(c.status, 200, JSON.stringify(c.body));
-  const r = await call('POST', 'register', { email, code: c.body.devCode, username: name, password, avatar: (n++) % 12 }, opts);
+  const r = await call('POST', 'register', { email, username: name, password, qid: 0, answer: 'Rex', avatar: (n++) % 12 }, opts);
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
-  later(MIN + 1);   // the next code for any email may come
   return r.body.token;
 }
 async function befriend(ta, tb, nameB, nameA) {
@@ -54,117 +51,86 @@ t('sign-up makes an account and a session', async () => {
   assert.ok(/^[A-Z2-9]{6}$/.test(me.body.me.friendCode), me.body.me.friendCode);
   assert.strictEqual(me.body.me.email, 'xi***@example.com');
 });
-t('the code is stored hashed, never as typed', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' });
-  const row = env.DB.raw.prepare('SELECT hash FROM codes').get();
-  assert.ok(!row.hash.includes(c.body.devCode)); assert.strictEqual(row.hash.length, 64);
-});
 t('the password is stored as PBKDF2, never as typed', async () => {
   fresh(); await signUp('anan', 'anan@example.com', 'my-password-1');
   const row = env.DB.raw.prepare('SELECT pw FROM users').get();
   assert.ok(row.pw.startsWith('pbkdf2$20000$')); assert.ok(!row.pw.includes('my-password-1'));
+});
+t('the security answer is stored as PBKDF2 of the cleaned answer, never as typed', async () => {
+  fresh(); await signUp('anan');
+  const row = env.DB.raw.prepare('SELECT ans, qid FROM users').get();
+  assert.ok(row.ans.startsWith('pbkdf2$20000$')); assert.ok(!/rex/i.test(row.ans)); assert.strictEqual(row.qid, 0);
 });
 t('session tokens are stored hashed', async () => {
   fresh(); const tok = await signUp('anan');
   const row = env.DB.raw.prepare('SELECT token FROM sessions').get();
   assert.notStrictEqual(row.token, tok); assert.strictEqual(row.token.length, 64);
 });
-t('bad email refused', async () => { fresh(); assert.strictEqual((await call('POST', 'code', { email: 'not-an-email' })).body.error, 'bad_email'); });
-t('a second code within a minute: too_many', async () => {
-  fresh(); await call('POST', 'code', { email: 'a@example.com' });
-  assert.strictEqual((await call('POST', 'code', { email: 'a@example.com' })).status, 429);
-  later(MIN + 1); assert.strictEqual((await call('POST', 'code', { email: 'a@example.com' })).status, 200);
+const REG = (o = {}) => Object.assign({ email: 'a@example.com', username: 'abc', password: 'password1', qid: 3, answer: 'Elm street' }, o);
+t('bad email refused', async () => {
+  fresh();
+  for (const bad of ['not-an-email', 'a@b', 'a b@example.com', '', 'x'.repeat(300) + '@example.com']) assert.ok(['bad_email', 'bad_input'].includes((await call('POST', 'register', REG({ email: bad }))).body.error), bad);
 });
-t('code/check: right code ok and not used up', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' });
-  assert.strictEqual((await call('POST', 'code/check', { email: 'a@example.com', code: c.body.devCode })).status, 200);
-  assert.strictEqual((await call('POST', 'register', { email: 'a@example.com', code: c.body.devCode, username: 'abc', password: 'password1' })).status, 200);
-});
-t('wrong code: code_wrong, five wrong: code_tries even with the right code', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' });
-  const wrong = c.body.devCode === '000000' ? '111111' : '000000';
-  for (let i = 0; i < 4; i++) assert.strictEqual((await call('POST', 'code/check', { email: 'a@example.com', code: wrong })).body.error, 'code_wrong');
-  assert.strictEqual((await call('POST', 'code/check', { email: 'a@example.com', code: wrong })).body.error, 'code_tries');
-  assert.strictEqual((await call('POST', 'code/check', { email: 'a@example.com', code: c.body.devCode })).body.error, 'code_tries');
-});
-t('code expires after 10 minutes', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' }); later(10 * MIN + 1);
-  assert.strictEqual((await call('POST', 'code/check', { email: 'a@example.com', code: c.body.devCode })).body.error, 'code_expired');
-});
-t('a code works once', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' });
-  assert.strictEqual((await call('POST', 'register', { email: 'a@example.com', code: c.body.devCode, username: 'one', password: 'password1' })).status, 200);
-  assert.strictEqual((await call('POST', 'register', { email: 'a@example.com', code: c.body.devCode, username: 'two', password: 'password1' })).body.error, 'code_expired');
-});
-t('username rules: 3-20 of a-z 0-9 _, any case is the same name', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' });
-  for (const bad of ['ab', 'a'.repeat(21), 'has space', '名字', 'a-b']) assert.strictEqual((await call('POST', 'register', { email: 'a@example.com', code: c.body.devCode, username: bad, password: 'password1' })).body.error, 'bad_username', bad);
-  assert.strictEqual((await call('POST', 'register', { email: 'a@example.com', code: c.body.devCode, username: 'Leo_9', password: 'password1' })).body.me.username, 'leo_9');
-  later(MIN + 1); const c2 = await call('POST', 'code', { email: 'b@example.com' });
-  assert.strictEqual((await call('POST', 'register', { email: 'b@example.com', code: c2.body.devCode, username: 'LEO_9', password: 'password1' })).body.error, 'username_taken');
-});
-t('a taken name does not use up the code', async () => {
-  fresh(); await signUp('leo'); const c = await call('POST', 'code', { email: 'b@example.com' });
-  assert.strictEqual((await call('POST', 'register', { email: 'b@example.com', code: c.body.devCode, username: 'leo', password: 'password1' })).body.error, 'username_taken');
-  assert.strictEqual((await call('POST', 'register', { email: 'b@example.com', code: c.body.devCode, username: 'leo2', password: 'password1' })).status, 200);
-});
-t('password under 8 characters refused', async () => {
-  fresh(); const c = await call('POST', 'code', { email: 'a@example.com' });
-  assert.strictEqual((await call('POST', 'register', { email: 'a@example.com', code: c.body.devCode, username: 'abc', password: 'short' })).body.error, 'bad_password');
-});
-t('one email holds up to 5 accounts (a parent with several children)', async () => {
-  fresh(); for (let i = 1; i <= 5; i++) await signUp('kid' + i, 'mum@example.com');
-  assert.strictEqual((await call('POST', 'code', { email: 'MUM@example.com' })).body.error, 'email_full');
-});
-t('no email service on a host without DEV_CODES: email_off (503), no code in the answer', async () => {
-  fresh({ DEV_CODES: '0' }); const r = await call('POST', 'code', { email: 'a@example.com' });
-  assert.strictEqual(r.status, 503); assert.strictEqual(r.body.error, 'email_off'); assert.strictEqual(r.body.devCode, undefined);
-});
-t('DEV_CODES is ignored on Production hosts', async () => {
+t('W10 no email is sent and none is needed: sign-up works on a Production host with no settings at all', async () => {
   fresh();
   for (const host of ['student-practice.pages.dev', 'tianruisun.github.io']) {
-    const r = await call('POST', 'code', { email: host + '@example.com' }, { host });
-    assert.strictEqual(r.body.devCode, undefined, host); assert.strictEqual(r.body.error, 'email_off');
+    const r = await call('POST', 'register', REG({ email: host + '@example.com', username: host.slice(0, 5) }), { host });
+    assert.strictEqual(r.status, 200, host + JSON.stringify(r.body));
   }
-  const r2 = await call('POST', 'code', { email: 'x@example.com' }, { host: 'x.example', origin: 'https://tianruisun.github.io' });
-  assert.strictEqual(r2.body.devCode, undefined, 'origin github.io');
 });
-t('the email goes through the chosen service, in the chosen language', async () => {
-  const sent = []; const real = global.fetch;
-  global.fetch = async (url, o) => { sent.push({ url, o }); return new Response('{}', { status: 200 }); };
-  try {
-    fresh({ DEV_CODES: '0', EMAIL_PROVIDER: 'resend', EMAIL_API_KEY: 'k', EMAIL_FROM: 'Maths <no-reply@example.com>' });
-    const r = await call('POST', 'code', { email: 'a@example.com', lang: 'zh' });
-    assert.strictEqual(r.status, 200); assert.strictEqual(r.body.devCode, undefined);
-    assert.strictEqual(sent[0].url, 'https://api.resend.com/emails');
-    const b = JSON.parse(sent[0].o.body); assert.deepStrictEqual(b.to, ['a@example.com']); assert.ok(/验证码/.test(b.subject)); assert.ok(/\d{6}/.test(b.text));
-    fresh({ DEV_CODES: '0', EMAIL_PROVIDER: 'brevo', EMAIL_API_KEY: 'k', EMAIL_FROM: 'Maths <no-reply@example.com>' });
-    await call('POST', 'code', { email: 'b@example.com' });
-    const b2 = JSON.parse(sent[1].o.body); assert.strictEqual(sent[1].url, 'https://api.brevo.com/v3/smtp/email');
-    assert.deepStrictEqual(b2.sender, { name: 'Maths', email: 'no-reply@example.com' }); assert.ok(/code/.test(b2.subject));
-  } finally { global.fetch = real; }
+t('W10 the email code routes are gone', async () => {
+  fresh();
+  for (const [m, r] of [['POST', 'code'], ['POST', 'code/check'], ['POST', 'reset/finish']]) assert.strictEqual((await call(m, r, {})).body.error, 'no_route', r);
+});
+t('W10 one account per email: a second sign-up with it (any case) is refused, the first account stays', async () => {
+  fresh(); await signUp('anan', 'Mum@Example.com');
+  const r = await call('POST', 'register', REG({ email: 'mum@example.COM', username: 'brother' }));
+  assert.strictEqual(r.status, 409); assert.strictEqual(r.body.error, 'email_taken');
+  assert.strictEqual(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM users').get().n, 1);
+  assert.strictEqual((await call('POST', 'register', REG({ email: 'other@example.com', username: 'brother' }))).status, 200, 'another email is free');
+});
+t('W10 the display name is used once: any case is the same name, other rules too', async () => {
+  fresh(); await signUp('leo_9');
+  assert.strictEqual((await call('POST', 'register', REG({ username: 'LEO_9' }))).body.error, 'username_taken');
+  for (const bad of ['ab', 'a'.repeat(21), 'has space', '名字', 'a-b']) assert.strictEqual((await call('POST', 'register', REG({ username: bad }))).body.error, 'bad_username', bad);
+  assert.strictEqual((await call('POST', 'register', REG({ username: 'Mia_Q' }))).body.me.username, 'mia_q');
+  assert.strictEqual(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM users').get().n, 2, 'a refused name creates nothing');
+});
+t('password under 8 characters refused', async () => {
+  fresh(); assert.strictEqual((await call('POST', 'register', REG({ password: 'short' }))).body.error, 'bad_password');
+});
+t('W10 the security question must be one of the 8, the answer 2 to 60 characters', async () => {
+  fresh();
+  for (const q of [-1, 8, 1.5, '1', null, undefined]) assert.strictEqual((await call('POST', 'register', REG({ qid: q }))).body.error, 'bad_question', String(q));
+  for (const a of ['', ' ', 'x', '  y ', 'z'.repeat(61), 5, null]) assert.strictEqual((await call('POST', 'register', REG({ answer: a }))).body.error, 'bad_answer', String(a));
+  assert.strictEqual((await call('POST', 'register', REG({ qid: 7, answer: '猫咪' }))).status, 200, 'two Chinese characters are enough');
+});
+t('W10 a class signing up from one address: 100 sign-ups in an hour all work, the cap is 150', async () => {
+  fresh();
+  for (let i = 0; i < 100; i++) assert.strictEqual((await call('POST', 'register', REG({ email: 'kid' + i + '@example.com', username: 'kid_' + i }), { ip: '10.0.0.4' })).status, 200, 'sign-up ' + (i + 1));
+  assert.strictEqual(H.REG_IP, 150);
 });
 
 /* ---------- sign-in ---------- */
-t('sign in with username and password, any case', async () => {
-  fresh(); await signUp('anan', 'a@example.com', 'password-1');
-  const r = await call('POST', 'login', { username: 'AnAn', password: 'password-1' });
-  assert.strictEqual(r.status, 200); assert.ok(r.body.token); assert.strictEqual(r.body.me.username, 'anan');
+t('sign in with email and password, any case of the email; the display name does not sign in', async () => {
+  fresh(); await signUp('anan', undefined, 'password-1');
+  const r = await call('POST', 'login', { email: 'AnAn@Example.com', password: 'password-1' });
+  assert.strictEqual(r.status, 200); assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' })).status, 400); assert.ok(r.body.token); assert.strictEqual(r.body.me.username, 'anan');
 });
 t('wrong password and unknown name give the same answer', async () => {
-  fresh(); await signUp('anan', 'a@example.com', 'password-1');
-  const a = await call('POST', 'login', { username: 'anan', password: 'nope-nope' }), b = await call('POST', 'login', { username: 'nobody', password: 'nope-nope' });
+  fresh(); await signUp('anan', undefined, 'password-1');
+  const a = await call('POST', 'login', { email: 'anan@example.com', password: 'nope-nope' }), b = await call('POST', 'login', { email: 'nobody@example.com', password: 'nope-nope' });
   assert.strictEqual(a.status, 401); assert.deepStrictEqual(a.body, b.body);
 });
-t('ten wrong passwords lock that name for 15 minutes, even with the right one', async () => {
-  fresh(); await signUp('anan', 'a@example.com', 'password-1');
-  for (let i = 0; i < 10; i++) await call('POST', 'login', { username: 'anan', password: 'wrong-' + i });
-  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' })).status, 429);
-  later(15 * MIN + 1); assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' })).status, 200);
+t('ten wrong passwords lock that email for 15 minutes, even with the right one', async () => {
+  fresh(); await signUp('anan', undefined, 'password-1');
+  for (let i = 0; i < 10; i++) await call('POST', 'login', { email: 'anan@example.com', password: 'wrong-' + i });
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).status, 429);
+  later(15 * MIN + 1); assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).status, 200);
 });
 t('sign out ends that session only', async () => {
-  fresh(); const t1 = await signUp('anan', 'a@example.com', 'password-1');
-  const t2 = (await call('POST', 'login', { username: 'anan', password: 'password-1' })).body.token;
+  fresh(); const t1 = await signUp('anan', undefined, 'password-1');
+  const t2 = (await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).body.token;
   assert.strictEqual((await call('POST', 'logout', {}, { token: t1 })).status, 200);
   assert.strictEqual((await call('GET', 'me', undefined, { token: t1 })).status, 401);
   assert.strictEqual((await call('GET', 'me', undefined, { token: t2 })).status, 200);
@@ -184,34 +150,70 @@ t('change picture', async () => {
   assert.strictEqual((await call('POST', 'me/avatar', { avatar: 99 }, { token: tok })).status, 400);
 });
 
-/* ---------- forgot password ---------- */
-t('reset: a link token, new password works, old sessions end', async () => {
-  fresh(); const old = await signUp('anan', 'a@example.com', 'password-1');
-  const r = await call('POST', 'reset', { username: 'anan' }); assert.ok(r.body.devToken);
-  assert.strictEqual((await call('POST', 'reset/finish', { token: r.body.devToken, password: 'new-password' })).status, 200);
+/* ---------- forgot password (W10: the email and the answer to the security question) ---------- */
+const RESET = (o = {}) => Object.assign({ email: 'anan@example.com', answer: 'Rex', password: 'new-password' }, o);
+t('W10 reset: the question number comes for an email; unknown emails get a question too, always the same one', async () => {
+  fresh(); await signUp('anan');
+  assert.deepStrictEqual((await call('POST', 'reset/question', { email: 'ANAN@example.com' })).body, { qid: 0 });
+  const a = (await call('POST', 'reset/question', { email: 'nobody@example.com' })).body, b = (await call('POST', 'reset/question', { email: 'nobody@example.com' })).body;
+  assert.ok(Number.isInteger(a.qid) && a.qid >= 0 && a.qid < 8); assert.deepStrictEqual(a, b);
+  assert.strictEqual((await call('POST', 'reset/question', { email: 'not an email' })).status, 200);
+});
+t('W10 reset: the right answer (any case, extra spaces) sets a new password and ends the old sessions', async () => {
+  fresh(); const old = await signUp('anan', undefined, 'password-1');
+  assert.strictEqual((await call('POST', 'reset', RESET({ answer: '  rEX ' }))).status, 200);
   assert.strictEqual((await call('GET', 'me', undefined, { token: old })).status, 401);
-  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'new-password' })).status, 200);
-  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' })).status, 401);
-  assert.strictEqual((await call('POST', 'reset/finish', { token: r.body.devToken, password: 'again-again' })).body.error, 'reset_expired');
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'new-password' })).status, 200);
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).status, 401);
 });
-t('reset: unknown name answers the same as a known one (no token)', async () => {
-  fresh(); const r = await call('POST', 'reset', { username: 'nobody' });
-  assert.strictEqual(r.status, 200); assert.deepStrictEqual(r.body, { ok: true });
+t('W10 reset: a two-word answer ignores case, spaces and full-width letters', async () => {
+  fresh(); await call('POST', 'register', REG({ answer: 'Elm  Street' }));
+  assert.strictEqual((await call('POST', 'reset', RESET({ email: 'a@example.com', answer: 'ＥＬＭ street' }))).status, 200);
 });
-t('reset link ends after an hour', async () => {
-  fresh(); await signUp('anan'); const r = await call('POST', 'reset', { username: 'anan' }); later(61 * MIN);
-  assert.strictEqual((await call('POST', 'reset/finish', { token: r.body.devToken, password: 'new-password' })).body.error, 'reset_expired');
+t('W10 reset: a wrong answer changes nothing; an unknown email answers the same', async () => {
+  fresh(); await signUp('anan', undefined, 'password-1');
+  const a = await call('POST', 'reset', RESET({ answer: 'Max' })), b = await call('POST', 'reset', RESET({ email: 'nobody@example.com', answer: 'Max' }));
+  assert.strictEqual(a.status, 400); assert.strictEqual(a.body.error, 'wrong_answer'); assert.deepStrictEqual(a.body, b.body);
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).status, 200);
+  assert.strictEqual((await call('POST', 'reset', RESET({ answer: '' }))).body.error, 'wrong_answer');
 });
-t('reset email has a link to the app it was asked from', async () => {
-  const sent = []; const real = global.fetch;
-  global.fetch = async (url, o) => { sent.push(JSON.parse(o.body)); return new Response('{}', { status: 200 }); };
-  try {
-    fresh(); await signUp('anan', 'a@example.com');
-    env.DEV_CODES = '0'; env.EMAIL_PROVIDER = 'resend'; env.EMAIL_API_KEY = 'k'; env.EMAIL_FROM = 'm@example.com';
-    await call('POST', 'reset', { username: 'anan' }, { origin: 'https://tianruisun.github.io' });
-    assert.ok(/https:\/\/tianruisun\.github\.io\/Student_Practice\/\?reset=[A-Za-z0-9_-]{43}/.test(sent[0].text), sent[0].text);
-    assert.deepStrictEqual(sent[0].to, ['a@example.com']);
-  } finally { global.fetch = real; }
+t('W10 reset: a new password under 8 characters is refused and does not count as a wrong answer', async () => {
+  fresh(); await signUp('anan');
+  for (let i = 0; i < 12; i++) assert.strictEqual((await call('POST', 'reset', RESET({ password: 'short' }))).body.error, 'bad_password');
+  assert.strictEqual((await call('POST', 'reset', RESET())).status, 200);
+});
+t('W10 reset: 10 wrong answers lock that email for 1 hour, even for the right answer', async () => {
+  fresh(); await signUp('anan'); await signUp('leo');
+  for (let i = 0; i < 10; i++) assert.strictEqual((await call('POST', 'reset', RESET({ answer: 'no' + i }))).body.error, 'wrong_answer', 'wrong ' + (i + 1));
+  assert.strictEqual((await call('POST', 'reset', RESET())).status, 429);
+  assert.strictEqual((await call('POST', 'reset', RESET({ email: 'leo@example.com' }))).status, 200, 'another email is not locked');
+  later(59 * MIN); assert.strictEqual((await call('POST', 'reset', RESET())).status, 429, 'still locked at 59 minutes');
+  later(2 * MIN); assert.strictEqual((await call('POST', 'reset', RESET())).status, 200, 'free after the hour');
+});
+t('W10 reset: a school guessing from one address is stopped after 100 wrong answers in an hour; other addresses are not', async () => {
+  fresh(); await signUp('anan');
+  assert.strictEqual(H.ANS_FAIL, 10); assert.strictEqual(H.ANS_IP_FAIL, 100);
+  for (let i = 0; i < 100; i++) await call('POST', 'reset', RESET({ email: 'x' + i + '@example.com', answer: 'no' }), { ip: '10.0.0.9' });
+  assert.strictEqual((await call('POST', 'reset', RESET(), { ip: '10.0.0.9' })).status, 429);
+  assert.strictEqual((await call('POST', 'reset', RESET(), { ip: '10.0.0.10' })).status, 200);
+});
+t('W10 the reset also clears the sign-in lock, so the new password works at once', async () => {
+  fresh(); await signUp('anan', undefined, 'password-1');
+  for (let i = 0; i < 10; i++) await call('POST', 'login', { email: 'anan@example.com', password: 'wrong-' + i });
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).status, 429);
+  assert.strictEqual((await call('POST', 'reset', RESET())).status, 200);
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'new-password' })).status, 200);
+});
+t('W10 Test accounts are wiped once: a database made for email codes (no security question) is dropped and made again', async () => {
+  fresh(); const raw = env.DB.raw;
+  raw.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, email TEXT NOT NULL, pw TEXT NOT NULL, avatar INTEGER NOT NULL DEFAULT 0, code TEXT NOT NULL UNIQUE, created INTEGER NOT NULL, seen INTEGER NOT NULL)");
+  raw.exec("INSERT INTO users (name, email, pw, code, created, seen) VALUES ('old', 'old@example.com', 'x', 'ABCDEF', 1, 1)");
+  raw.exec("CREATE TABLE codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, expires INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0)");
+  assert.strictEqual((await call('GET', 'health')).status, 200);
+  assert.strictEqual(raw.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0, 'old accounts gone');
+  assert.ok(raw.prepare("SELECT name FROM pragma_table_info('users')").all().some(c => c.name === 'qid'));
+  assert.strictEqual(raw.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name IN ('codes', 'resets')").get().n, 0, 'the code tables are gone');
+  assert.strictEqual((await call('POST', 'register', REG({ email: 'old@example.com', username: 'old' }))).status, 200, 'the old email and name can sign up again');
 });
 
 /* ---------- progress ---------- */
@@ -229,7 +231,7 @@ t('progress over the size limit refused', async () => {
 t('progress needs sign-in', async () => { fresh(); assert.strictEqual((await call('GET', 'progress')).status, 401); });
 /* R1.1: two devices on one account */
 t('R1.1 a save from an older copy is refused (stale, 409) with the server copy, and nothing is written', async () => {
-  fresh(); const phone = await signUp('anan'), tablet = (await call('POST', 'login', { username: 'anan', password: 'secret-pass' })).body.token;
+  fresh(); const phone = await signUp('anan'), tablet = (await call('POST', 'login', { email: 'anan@example.com', password: 'secret-pass' })).body.token;
   const p1 = await call('PUT', 'progress', { data: { keys: { history: [{ date: 1 }] } }, base: 0 }, { token: phone });
   assert.strictEqual(p1.status, 200); assert.ok(p1.body.updated > 0);
   const t1 = await call('PUT', 'progress', { data: { keys: { history: [{ date: 2 }] } }, base: 0 }, { token: tablet });
@@ -257,20 +259,15 @@ t('R1.4 at most 300 saves of the records per account in a day', async () => {
 });
 /* R1.3: one address (a school) */
 t('R1.3 a school on one address: 200 right sign-ins in 15 minutes all succeed', async () => {
-  fresh(); await signUp('anan', 'a@example.com', 'password-1');
-  for (let i = 0; i < 200; i++) assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' }, { ip: '10.0.0.1' })).status, 200, 'sign-in ' + (i + 1));
+  fresh(); await signUp('anan', undefined, 'password-1');
+  for (let i = 0; i < 200; i++) assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' }, { ip: '10.0.0.1' })).status, 200, 'sign-in ' + (i + 1));
 });
 t('R1.3 60 wrong passwords from one address stop that address only, and right ones are capped at 600', async () => {
-  fresh(); await signUp('anan', 'a@example.com', 'password-1');
-  for (let i = 0; i < 60; i++) await call('POST', 'login', { username: 'u' + (i % 30) + 'x', password: 'wrong-pass' }, { ip: '10.0.0.2' });
-  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' }, { ip: '10.0.0.2' })).status, 429);
-  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' }, { ip: '10.0.0.3' })).status, 200);
+  fresh(); await signUp('anan', undefined, 'password-1');
+  for (let i = 0; i < 60; i++) await call('POST', 'login', { email: 'u' + (i % 30) + 'x@example.com', password: 'wrong-pass' }, { ip: '10.0.0.2' });
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' }, { ip: '10.0.0.2' })).status, 429);
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' }, { ip: '10.0.0.3' })).status, 200);
   const H2 = H; assert.strictEqual(H2.LOGIN_IP_ALL, 600); assert.strictEqual(H2.LOGIN_IP_FAIL, 60);
-});
-t('R1.3 a class signing up from one address: 100 codes in an hour are sent', async () => {
-  fresh();
-  for (let i = 0; i < 100; i++) assert.strictEqual((await call('POST', 'code', { email: 'kid' + i + '@example.com' }, { ip: '10.0.0.4' })).status, 200, 'code ' + (i + 1));
-  assert.strictEqual(H.CODE_IP, 150);
 });
 /* R1.9 */
 t('R1.9 friends/add counts every try, found or not (60 a day)', async () => {
@@ -514,14 +511,8 @@ t('the score is counted from the right/wrong list, not trusted', async () => {
   const r = await call('POST', 'challenges/' + id + '/result', { score: { ok: [true, false], c: 99, n: 99 } }, { token: a });
   assert.deepStrictEqual([r.body.me.c, r.body.me.n], [1, 2]);
 });
-t('the old challenges table is dropped (it was only on the Test database)', async () => {
-  fresh(); env.DB.raw.exec('CREATE TABLE challenges (id INTEGER PRIMARY KEY)');
-  await call('GET', 'health');
-  await signUp('anan');
-  assert.strictEqual(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'challenges'").get().n, 0);
-});
 t('removing a friend keeps finished challenges readable; deleting an account removes everything', async () => {
-  fresh(); const a = await signUp('anan', 'a@example.com', 'password-1'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
+  fresh(); const a = await signUp('anan', undefined, 'password-1'), b = await signUp('leo'); await befriend(a, b, 'leo', 'anan');
   await send(a);
   await call('PUT', 'progress', { data: { x: 1 } }, { token: a });
   assert.strictEqual((await call('POST', 'account/delete', { password: 'wrong-pass' }, { token: a })).status, 401);
@@ -530,7 +521,7 @@ t('removing a friend keeps finished challenges readable; deleting an account rem
     const rows = env.DB.raw.prepare(`SELECT COUNT(*) AS n FROM ${tb}`).get().n;
     assert.strictEqual(rows, tb === 'users' || tb === 'sessions' ? 1 : 0, tb);
   }
-  assert.strictEqual((await call('POST', 'login', { username: 'anan', password: 'password-1' })).status, 401);
+  assert.strictEqual((await call('POST', 'login', { email: 'anan@example.com', password: 'password-1' })).status, 401);
 });
 
 /* ---------- web rules ---------- */
@@ -553,9 +544,9 @@ t('preflight answers 204 with the allowed headers', async () => {
 t('answers are never cached', async () => { fresh(); assert.strictEqual((await call('GET', 'health')).headers.get('cache-control'), 'no-store'); });
 t('bad JSON: bad_input', async () => { fresh(); assert.strictEqual((await call('POST', 'login', '{nope')).body.error, 'bad_input'); });
 t('a server error says only "server"', async () => {
-  fresh(); const broken = { DB: { prepare() { throw new Error('secret detail'); }, batch: async () => [] }, DEV_CODES: '1' };
+  fresh(); const broken = { DB: { prepare() { throw new Error('secret detail'); }, batch: async () => [] } };
   const real = console.error; console.error = () => {};
-  try { const r = await call('POST', 'login', { username: 'abc', password: 'x' }, { env: broken }); assert.strictEqual(r.status, 500); assert.deepStrictEqual(r.body, { error: 'server' }); }
+  try { const r = await call('POST', 'login', { email: 'abc@example.com', password: 'x' }, { env: broken }); assert.strictEqual(r.status, 500); assert.deepStrictEqual(r.body, { error: 'server' }); }
   finally { console.error = real; }
 });
 t('the Pages Function hands every request to the server module', async () => {

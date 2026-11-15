@@ -1131,12 +1131,9 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .f-hint { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.45; overflow-wrap: anywhere; }
 .f-err { margin: 0.3rem 0 0; color: var(--bad); font-weight: 600; font-size: 0.88rem; }
 .f-msg { margin: 0.3rem 0 0; color: var(--ok); font-weight: 600; font-size: 0.88rem; }
-.f-dev { margin: 0; padding: 0.4rem 0.6rem; border-radius: 10px; background: var(--warn-soft); font-size: 0.85rem; }
+.f-q { margin: 0 0 0.6rem; padding: 0.6rem 0.8rem; border-radius: 12px; background: var(--hair); font-weight: 700; overflow-wrap: anywhere; }
 .f-h { margin: 0 0 0.5rem; font-size: 1.1rem; text-wrap: balance; }
 .f-sec { margin: 0.9rem 0 0.4rem; font-size: 0.85rem; font-weight: 700; color: var(--muted); }
-.f-steps { display: flex; gap: 4px; margin-bottom: 0.8rem; }
-.f-steps i { flex: 1; height: 6px; border-radius: 3px; background: var(--hair); }
-.f-steps i.on { background: var(--pri); }
 .f-pick { border: 0; padding: 0; margin: 0 0 0.6rem; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.35rem; }
 .f-pick legend { margin-bottom: 0.4rem; }
 .f-pick-i { position: relative; display: flex; }

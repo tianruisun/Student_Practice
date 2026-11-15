@@ -1,14 +1,13 @@
-/* Student_Practice server (v2.0.0): accounts, friends, "practise together" challenges and the account's progress.
+/* Student_Practice server (v2.0.0): accounts, friends, challenges and the account's progress.
    Runs as a Cloudflare Pages Function (functions/api/[[path]].js) with a D1 database bound as DB. The same module runs in
    the local tests with a small D1 stand-in on node:sqlite (tests/local-api.js), so every route is tested on this PC.
 
-   Settings (Cloudflare dashboard → Pages → Settings → Variables and Secrets / Bindings):
-     DB              D1 database (Production and Preview each bind their own database)
-     EMAIL_PROVIDER  'resend' or 'brevo'   EMAIL_API_KEY (secret)   EMAIL_FROM ('Maths Practice <no-reply@…>')
-     DEV_CODES       '1' on the Test site only: the verification code and the reset token come back in the answer,
-                     so Test works without an email service. Never honoured on a Production host.
-   Stored per account: username, email, password hash, picture number, friend code, progress (the student's own app data),
-   friends and the last 20 challenges of each student. No real names. */
+   Settings (Cloudflare dashboard → Pages → Settings → Bindings): DB, a D1 database (Production and Preview each bind their own).
+   No email service is used (W10, Terry 2026-11-15): an account is an email address (not checked, only one account per
+   address), a display name (unique), a password and one security question with its answer. A forgotten password is reset
+   with the email address and the answer; with neither the password nor the answer the account cannot be recovered.
+   Stored per account: display name, email, password hash, security question number and answer hash, picture number, friend
+   code, progress (the student's own app data), friends and the last 20 challenges of each student. No real names. */
 
 export const PROD_HOSTS = ['student-practice.pages.dev', 'tianruisun.github.io'];
 const ORIGINS = [/^https:\/\/([a-z0-9-]+\.)?student-practice\.pages\.dev$/, /^https:\/\/tianruisun\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
@@ -19,12 +18,16 @@ const PW_MIN = 8, PW_MAX = 200;
 export const PBKDF2_ITER = 20000;      // Workers allow at most 100000; the free plan's CPU time per request is small
 const DAY = 86400e3, MIN = 60e3;
 const SESSION_DAYS = 90;
-const MAX_ACCOUNTS_PER_EMAIL = 5, MAX_FRIENDS = 50;
+const MAX_FRIENDS = 50;
 const MAX_PROGRESS = 900000, MAX_SET = 200000;   // characters of JSON (a D1 row holds up to 2 MB)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // friend codes: no 0/O or 1/I
 /* R1.3, R1.4, R1.9 (v2.0.0): per-address and per-account caps */
 export const LOGIN_IP_FAIL = 60, LOGIN_IP_ALL = 600;    // per address in 15 minutes: wrong passwords / every sign-in
-export const CODE_IP = 150;                             // sign-up codes per address in an hour (a class signing up together)
+export const REG_IP = 150;                              // sign-ups per address in an hour (a class signing up together)
+export const QUESTIONS = 8;                             // the security questions are numbered 0..7; their words are in js/i18n.js
+export const ANS_MIN = 2, ANS_MAX = 60;                 // characters of a security answer, after cleaning
+export const ANS_FAIL = 10;                             // wrong answers per email address in an hour, then the reset is locked until the hour ends
+export const ANS_IP_FAIL = 100;                         // wrong answers per address in an hour (a class resetting together)
 export const PUT_DAY = 300;                             // saves of the records per account in a day (D1 writes are shared)
 /* W9 (v2.0.0, Terry chose Option A): a challenge not accepted in 24 hours goes; after accepting, both have 24 hours to
    finish (a side that has not finished loses); each student keeps the last 20 challenges */
@@ -32,20 +35,15 @@ export const CH_ACCEPT_MS = DAY, CH_PLAY_MS = DAY, CH_KEEP = 20;
 export const FRIEND_ADD_DAY = 60;                       // friends/add calls per account in a day, found or not
 
 const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, email TEXT NOT NULL, pw TEXT NOT NULL,
-     avatar INTEGER NOT NULL DEFAULT 0, code TEXT NOT NULL UNIQUE, created INTEGER NOT NULL, seen INTEGER NOT NULL)`,
-  `CREATE INDEX IF NOT EXISTS users_email ON users(email)`,
+  `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, pw TEXT NOT NULL,
+     qid INTEGER NOT NULL, ans TEXT NOT NULL, avatar INTEGER NOT NULL DEFAULT 0, code TEXT NOT NULL UNIQUE, created INTEGER NOT NULL, seen INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)`,
-  `CREATE TABLE IF NOT EXISTS codes (email TEXT PRIMARY KEY, hash TEXT NOT NULL, expires INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0)`,
-  `CREATE TABLE IF NOT EXISTS resets (token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS progress (user_id INTEGER PRIMARY KEY, data TEXT NOT NULL, updated INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS friends (from_id INTEGER NOT NULL, to_id INTEGER NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL,
      PRIMARY KEY (from_id, to_id))`,
   `CREATE INDEX IF NOT EXISTS friends_to ON friends(to_id)`,
-  // W9: the R1/R2 table (the sender finished first) was only ever on the Test database; its rows cannot be played the new way
-  `DROP TABLE IF EXISTS challenges`,
   /* a = the sender (from_id), b = the friend (to_id). status: sent → accepted or declined. *_start: when that side first
      opened the set (the server counts the time from it); *_score: { c, n, ok[], time } once that side has finished */
   `CREATE TABLE IF NOT EXISTS duels (id INTEGER PRIMARY KEY, from_id INTEGER NOT NULL, to_id INTEGER NOT NULL, created INTEGER NOT NULL,
@@ -54,9 +52,17 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS duels_from ON duels(from_id)`,
   `CREATE INDEX IF NOT EXISTS duels_to ON duels(to_id)`
 ];
-let schemaReady = null;   // one CREATE pass per database per isolate
+/* W10 (Terry: "wipe the Test accounts"): the Test database was made when an account was an email code. A users table
+   without the security question (qid) is that old kind: every table of accounts is dropped once and made again. A database
+   that already has qid (every new one, and Production) is never touched. */
+const OLD_TABLES = ['users', 'sessions', 'codes', 'resets', 'progress', 'friends', 'challenges', 'duels'];
+async function migrate(db) {
+  const cols = await db.prepare("SELECT name FROM pragma_table_info('users')").all();
+  if (cols.results.length && !cols.results.some(c => c.name === 'qid')) await db.batch(OLD_TABLES.map(t => db.prepare('DROP TABLE IF EXISTS ' + t)));
+}
+let schemaReady = null;   // one pass per database per isolate
 const ensureSchema = db => {
-  if (!schemaReady || schemaReady.db !== db) schemaReady = { db, p: db.batch(SCHEMA.map(s => db.prepare(s))).catch(e => { schemaReady = null; throw e; }) };
+  if (!schemaReady || schemaReady.db !== db) schemaReady = { db, p: migrate(db).then(() => db.batch(SCHEMA.map(s => db.prepare(s)))).catch(e => { schemaReady = null; throw e; }) };
   return schemaReady.p;
 };
 
@@ -108,30 +114,6 @@ async function full(db, key, max, now) {
   return !!row && row.reset > now && row.n >= max;
 }
 
-/* ---------- email ---------- */
-const MAIL = {
-  en: {
-    codeSub: 'Your Maths Practice code', code: c => `Your code is ${c}.\n\nType it in the app within 10 minutes. If you did not ask for it, you can ignore this email.`,
-    resetSub: 'Set a new Maths Practice password', reset: (n, l) => `Someone asked to set a new password for the account "${n}".\n\nOpen this link within 1 hour:\n${l}\n\nIf it was not you, ignore this email: the password stays the same.`
-  },
-  zh: {
-    codeSub: '你的数学练习验证码', code: c => `你的验证码是 ${c}。\n\n请在 10 分钟内在应用里输入。如果不是你要的，请不用理会这封邮件。`,
-    resetSub: '设置新的数学练习密码', reset: (n, l) => `有人要为账号“${n}”设置新密码。\n\n请在 1 小时内打开这个链接：\n${l}\n\n如果不是你，请不用理会这封邮件，密码不会改变。`
-  }
-};
-async function sendEmail(env, to, subject, text) {
-  const p = env.EMAIL_PROVIDER, key = env.EMAIL_API_KEY, from = env.EMAIL_FROM;
-  if (!p || !key || !from) return false;
-  let res;
-  if (p === 'resend') {
-    res = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify({ from, to: [to], subject, text }) });
-  } else if (p === 'brevo') {
-    const m = /^(.*)<([^>]+)>\s*$/.exec(from), sender = m ? { name: m[1].trim(), email: m[2] } : { email: from };
-    res = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'api-key': key, 'Content-Type': 'application/json' }, body: JSON.stringify({ sender, to: [{ email: to }], subject, textContent: text }) });
-  } else return false;
-  return res.ok;
-}
-
 /* ---------- request plumbing ---------- */
 const allowedOrigin = o => !!o && ORIGINS.some(r => r.test(o));
 function cors(origin) {
@@ -162,66 +144,52 @@ async function newSession(db, userId, now) {
 }
 const meOf = u => ({ username: u.name, avatar: u.avatar, friendCode: u.code, email: maskEmail(u.email) });
 
-/* ---------- routes ---------- */
-async function verifyCode(db, email, code, now, consume) {
-  const row = await db.prepare('SELECT hash, expires, tries FROM codes WHERE email = ?').bind(email).first();
-  if (!row || row.expires <= now) fail(400, 'code_expired');
-  if (row.tries >= 5) fail(400, 'code_tries');
-  if (!/^\d{6}$/.test(String(code || '')) || !same(await sha256(email + ':' + code), row.hash)) {
-    await db.prepare('UPDATE codes SET tries = tries + 1 WHERE email = ?').bind(email).run();
-    fail(400, row.tries + 1 >= 5 ? 'code_tries' : 'code_wrong');
-  }
-  if (consume) await db.prepare('DELETE FROM codes WHERE email = ?').bind(email).run();
-}
+/* the security answer: capital letters, extra spaces and full-width characters do not matter */
+const cleanAnswer = a => String(a || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+const okAnswer = a => { const c = cleanAnswer(a); return typeof a === 'string' && a.length <= 200 && c.length >= ANS_MIN && c.length <= ANS_MAX; };
+const okQid = q => Number.isInteger(q) && q >= 0 && q < QUESTIONS;
+/* the question asked for an email that has no account looks like any other: a number worked out from the address */
+const fakeQid = async email => parseInt((await sha256('q:' + email)).slice(0, 6), 16) % QUESTIONS;
 
+/* ---------- routes ---------- */
 const ROUTES = {
   'GET health': async () => ({ ok: true }),
 
-  /* step 1 of sign-up: a 6-digit code to the email */
-  'POST code': async ({ db, env, body, now, ip, dev, lang }) => {
-    const email = normEmail(str(body.email, 260));
-    if (!EMAIL.test(email)) fail(400, 'bad_email');
-    const n = await db.prepare('SELECT COUNT(*) AS n FROM users WHERE email = ?').bind(email).first();
-    if (n.n >= MAX_ACCOUNTS_PER_EMAIL) fail(400, 'email_full');
-    await limitOr429(db, 'code:' + email, 1, MIN, now);
-    await limitOr429(db, 'codeday:' + email, 10, DAY, now);
-    await limitOr429(db, 'codeip:' + ip, CODE_IP, 60 * MIN, now);
-    const code = randomCode6();
-    await db.prepare('INSERT OR REPLACE INTO codes (email, hash, expires, tries) VALUES (?, ?, ?, 0)').bind(email, await sha256(email + ':' + code), now + 10 * MIN).run();
-    if (dev) return { ok: true, devCode: code };
-    if (!(await sendEmail(env, email, MAIL[lang].codeSub, MAIL[lang].code(code)))) fail(503, 'email_off');
-    return { ok: true };
-  },
-  /* step 2: check the code without using it up (wrong tries count) */
-  'POST code/check': async ({ db, body, now }) => {
-    await verifyCode(db, normEmail(str(body.email, 260)), body.code, now, false);
-    return { ok: true };
-  },
-  /* step 3: username, password and picture; the code is used up here */
-  'POST register': async ({ db, body, now }) => {
+  /* sign-up: email, display name, password, picture and one security question with its answer. The email is not checked
+     (no message is sent); one address holds one account and a display name is used once. */
+  'POST register': async ({ db, body, now, ip }) => {
     const email = normEmail(str(body.email, 260)), name = normName(str(body.username, 40)), pw = body.password;
+    if (!EMAIL.test(email)) fail(400, 'bad_email');
     if (!USERNAME.test(name)) fail(400, 'bad_username');
     if (!okPassword(pw)) fail(400, 'bad_password');
+    if (!okQid(body.qid)) fail(400, 'bad_question');
+    if (!okAnswer(body.answer)) fail(400, 'bad_answer');
     const avatar = Number.isInteger(body.avatar) && body.avatar >= 0 && body.avatar < AVATARS.length ? body.avatar : 0;
+    await limitOr429(db, 'regip:' + ip, REG_IP, 60 * MIN, now);
+    if (await db.prepare('SELECT 1 FROM users WHERE email = ?').bind(email).first()) fail(409, 'email_taken');
     if (await db.prepare('SELECT 1 FROM users WHERE name = ?').bind(name).first()) fail(409, 'username_taken');
-    await verifyCode(db, email, body.code, now, true);
-    const n = await db.prepare('SELECT COUNT(*) AS n FROM users WHERE email = ?').bind(email).first();
-    if (n.n >= MAX_ACCOUNTS_PER_EMAIL) fail(400, 'email_full');
     let code;
     for (let i = 0; i < 5 && !code; i++) { const c = friendCode(); if (!(await db.prepare('SELECT 1 FROM users WHERE code = ?').bind(c).first())) code = c; }
     if (!code) fail(500, 'server');
-    const r = await db.prepare('INSERT INTO users (name, email, pw, avatar, code, created, seen) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(name, email, await hashPassword(pw), avatar, code, now, now).run();
+    let r;
+    try {
+      r = await db.prepare('INSERT INTO users (name, email, pw, qid, ans, avatar, code, created, seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(name, email, await hashPassword(pw), body.qid, await hashPassword(cleanAnswer(body.answer)), avatar, code, now, now).run();
+    } catch (e) {   // two sign-ups at the same moment with the same email or name: the UNIQUE columns decide
+      if (/UNIQUE/i.test(String(e && e.message))) fail(409, /email/i.test(e.message) ? 'email_taken' : 'username_taken');
+      throw e;
+    }
     const id = r.meta.last_row_id;
     return { token: await newSession(db, id, now), me: meOf({ name, email, avatar, code }) };
   },
   /* R1.3: a school or a family shares one address, so the per-address guard counts only wrong passwords (60 in 15
      minutes); every sign-in from one address, right or wrong, has a much higher cap (600 in 15 minutes) */
   'POST login': async ({ db, body, now, ip }) => {
-    const name = normName(str(body.username, 40)), pw = typeof body.password === 'string' ? body.password : '';
+    const name = normEmail(str(body.email, 260)), pw = typeof body.password === 'string' ? body.password : '';
     await limitOr429(db, 'loginall:' + ip, LOGIN_IP_ALL, 15 * MIN, now);
     if (await full(db, 'loginip:' + ip, LOGIN_IP_FAIL, now)) fail(429, 'too_many');
     if (await full(db, 'login:' + name, 10, now)) fail(429, 'too_many');
-    const u = USERNAME.test(name) ? await db.prepare('SELECT * FROM users WHERE name = ?').bind(name).first() : null;
+    const u = EMAIL.test(name) ? await db.prepare('SELECT * FROM users WHERE email = ?').bind(name).first() : null;
     if (!u || pw.length > PW_MAX || !(await checkPassword(pw, u.pw))) {
       await limit(db, 'login:' + name, 10, 15 * MIN, now);   // only failures count
       await limit(db, 'loginip:' + ip, LOGIN_IP_FAIL, 15 * MIN, now);
@@ -241,30 +209,31 @@ const ROUTES = {
     await db.prepare('UPDATE users SET avatar = ? WHERE id = ?').bind(a, me.id).run();
     return { ok: true };
   },
-  /* forgot password: a link to the account's email. The answer is the same whether the name exists or not. */
-  'POST reset': async ({ db, env, body, now, ip, dev, lang, origin }) => {
-    const name = normName(str(body.username, 40));
-    await limitOr429(db, 'resetip:' + ip, 20, 60 * MIN, now);
-    const u = USERNAME.test(name) ? await db.prepare('SELECT id, name, email FROM users WHERE name = ?').bind(name).first() : null;
-    if (!u || !(await limit(db, 'reset:' + name, 3, 60 * MIN, now))) return { ok: true };
-    const token = newToken();
-    await db.prepare('INSERT INTO resets (token, user_id, expires) VALUES (?, ?, ?)').bind(await sha256(token), u.id, now + 60 * MIN).run();
-    if (dev) return { ok: true, devToken: token };
-    const base = allowedOrigin(origin) ? origin + (origin.endsWith('github.io') ? '/Student_Practice/' : '/') : 'https://student-practice.pages.dev/';
-    if (!(await sendEmail(env, u.email, MAIL[lang].resetSub, MAIL[lang].reset(u.name, base + '?reset=' + token)))) fail(503, 'email_off');
-    return { ok: true };
+  /* forgot password, step 1: the number of the security question. An address with no account gets a question too, so the
+     answer does not tell whether the address is registered (sign-up does tell, as an address can be used once). */
+  'POST reset/question': async ({ db, body, now, ip }) => {
+    const email = normEmail(str(body.email, 260));
+    await limitOr429(db, 'qip:' + ip, 120, 60 * MIN, now);
+    const u = EMAIL.test(email) ? await db.prepare('SELECT qid FROM users WHERE email = ?').bind(email).first() : null;
+    return { qid: u ? u.qid : await fakeQid(email) };
   },
-  'POST reset/finish': async ({ db, body, now }) => {
-    const token = str(body.token, 100);
+  /* step 2: the email, the answer and a new password. Wrong answers count per address (10 an hour, then locked until the
+     hour ends, even for the right answer) and per network address. */
+  'POST reset': async ({ db, body, now, ip }) => {
+    const email = normEmail(str(body.email, 260));
     if (!okPassword(body.password)) fail(400, 'bad_password');
-    const h = await sha256(token);
-    const r = await db.prepare('SELECT user_id, expires FROM resets WHERE token = ?').bind(h).first();
-    if (!r || r.expires <= now) fail(400, 'reset_expired');
+    if (await full(db, 'ans:' + email, ANS_FAIL, now) || await full(db, 'ansip:' + ip, ANS_IP_FAIL, now)) fail(429, 'too_many');
+    const u = EMAIL.test(email) ? await db.prepare('SELECT id, name, ans FROM users WHERE email = ?').bind(email).first() : null;
+    const answer = typeof body.answer === 'string' && body.answer.length <= 200 ? cleanAnswer(body.answer) : '';
+    if (!u || !answer || !(await checkPassword(answer, u.ans))) {
+      await limit(db, 'ans:' + email, ANS_FAIL, 60 * MIN, now);
+      await limit(db, 'ansip:' + ip, ANS_IP_FAIL, 60 * MIN, now);
+      fail(400, 'wrong_answer');
+    }
     await db.batch([
-      db.prepare('UPDATE users SET pw = ? WHERE id = ?').bind(await hashPassword(body.password), r.user_id),
-      db.prepare('DELETE FROM resets WHERE user_id = ?').bind(r.user_id),
-      db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(r.user_id),   // every device signs in again
-      db.prepare('DELETE FROM limits WHERE key = ?').bind('login:' + (await db.prepare('SELECT name FROM users WHERE id = ?').bind(r.user_id).first()).name)
+      db.prepare('UPDATE users SET pw = ? WHERE id = ?').bind(await hashPassword(body.password), u.id),
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(u.id),   // every device signs in again
+      db.prepare('DELETE FROM limits WHERE key = ? OR key = ?').bind('login:' + email, 'ans:' + email)
     ]);
     return { ok: true };
   },
@@ -273,7 +242,6 @@ const ROUTES = {
     if (typeof body.password !== 'string' || !(await checkPassword(body.password, u.pw))) fail(401, 'wrong_login');
     await db.batch([
       db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(me.id),
-      db.prepare('DELETE FROM resets WHERE user_id = ?').bind(me.id),
       db.prepare('DELETE FROM progress WHERE user_id = ?').bind(me.id),
       db.prepare('DELETE FROM friends WHERE from_id = ? OR to_id = ?').bind(me.id, me.id),
       db.prepare('DELETE FROM duels WHERE from_id = ? OR to_id = ?').bind(me.id, me.id),
@@ -513,16 +481,13 @@ export async function handle(request, env, opts = {}) {
     const db = env.DB;
     if (!db) fail(503, 'not_set_up');
     await ensureSchema(db);
-    const prodHost = PROD_HOSTS.includes(url.hostname) || (origin && PROD_HOSTS.some(h => origin === 'https://' + h));
     const ctx = {
       db, env, now, id, origin,
       ip: request.headers.get('CF-Connecting-IP') || 'local',
-      dev: env.DEV_CODES === '1' && !prodHost,
       body: request.method === 'POST' || request.method === 'PUT' ? await readBody(request) : {},
       me: null
     };
-    ctx.lang = ctx.body.lang === 'zh' ? 'zh' : 'en';
-    const open = ['GET health', 'POST code', 'POST code/check', 'POST register', 'POST login', 'POST reset', 'POST reset/finish'];
+    const open = ['GET health', 'POST register', 'POST login', 'POST reset/question', 'POST reset'];
     if (!open.includes(request.method + ' ' + routePath)) ctx.me = await auth(db, request, now);
     return json(200, await route(ctx), origin);
   } catch (e) {

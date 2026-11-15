@@ -1,6 +1,8 @@
 /* v2.0.0 (W8, Terry chose Option B): accounts, friends and practising together.
-   - An account: sign up with an email (a 6-digit code), then a username, a password and a picture; sign in with the
-     username and password. One email holds up to 5 accounts (brothers and sisters).
+   - An account (W10, Terry 2026-11-15): sign up with an email (not checked, no email is sent; one account per email), a
+     display name (used once), a password, a picture and one security question with its answer; sign in with the email and
+     the password. Forgot the password: the email and the answer to the question set a new one. With neither the password
+     nor the answer the account cannot be recovered.
    - The account's records (history, settings, badges, games, plan) are kept on the server, so they follow the student.
      On this device they live in one student profile linked to the account. Signing out saves them, then removes that
      profile from this device, so the next person on a shared computer cannot see or change them.
@@ -24,10 +26,11 @@
   /* ---------- state ---------- */
   const F = {
     auth: null,            // { token, me: { username, avatar, friendCode, email }, profile: 'p2' }
-    view: 'login',         // signed out: 'login' | 'reg1' | 'reg2' | 'reg3' | 'forgot' | 'reset' | 'move'
+    view: 'login',         // signed out: 'login' | 'reg' | 'forgot' | 'move'
     tab: 'friends',        // signed in: 'friends' | 'challenges'
-    reg: { email: '', code: '', sentAt: 0 },
-    resetToken: '',
+    reg: { avatar: 0 },
+    loginEmail: '',        // filled into the sign-in box after a password reset
+    forgot: { email: '', qid: null },   // qid is set once the server has given the question for the email
     err: '', msg: '', busy: false,
     friends: null,         // { friends, incoming, outgoing } from the server
     challenges: null,      // [ ... ] from the server
@@ -389,20 +392,35 @@
   function draw(box) {
     box.innerHTML = '';
     if (F.compare) return box.append(compareView(F.compare, true));
-    if (F.view === 'reset' || (!signedIn() && F.view !== 'move')) return box.append(accountPanel());
+    if (!signedIn() && F.view !== 'move') return box.append(accountPanel());
     if (F.view === 'move') return box.append(movePanel());
 
     box.append(meCard(), tabsRow(), F.tab === 'friends' ? friendsPart() : challengesPart(), accountPart());
   }
 
+  const QUESTIONS = 8;   // the same count as the server; the words are acc.q0 .. acc.q7
+  function selectField(id, labelKey, placeKey, keys, opts = {}) {
+    const wrap = el('div', 'f-field');
+    const lab = el('label', '', t(labelKey)); lab.htmlFor = id;
+    const sel = el('select', 'combo'); sel.id = id;
+    const o0 = el('option', '', t(placeKey)); o0.value = ''; sel.append(o0);
+    keys.forEach((k, i) => { const o = el('option', '', t(k)); o.value = String(i); sel.append(o); });
+    wrap.append(lab, sel);
+    if (opts.hint) { const h = el('p', 'f-hint', t(opts.hint)); h.id = id + 'Hint'; sel.setAttribute('aria-describedby', h.id); wrap.append(h); }
+    return wrap;
+  }
+  const questionKey = i => 'acc.q' + i;
+  const questionKeys = () => Array.from({ length: QUESTIONS }, (_, i) => questionKey(i));
+  const emailOk = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(e);
+
   function accountPanel() {
     const wrap = el('div', 'f-acc');
     const owl = el('div', 'f-owl', '🦉'); owl.setAttribute('aria-hidden', 'true');
     wrap.append(owl);
-    if (F.view === 'login' || F.view === 'reg1') {
+    if (F.view === 'login' || F.view === 'reg') {
       const seg = el('div', 'seg f-seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', t('acc.choose'));
-      [['login', 'acc.signIn', 'fTabLogin'], ['reg1', 'acc.signUp', 'fTabReg']].forEach(([v, key, id]) => {
-        const b = btn(t(key), 'seg-btn', () => { F.view = v; F.err = ''; A.render(); focusLater(v === 'login' ? '#fUser' : '#fEmail'); }, id);
+      [['login', 'acc.signIn', 'fTabLogin'], ['reg', 'acc.signUp', 'fTabReg']].forEach(([v, key, id]) => {
+        const b = btn(t(key), 'seg-btn', () => { F.view = v; F.err = ''; A.render(); focusLater(v === 'login' ? '#fLoginEmail' : '#fEmail'); }, id);
         b.className = 'seg-btn'; b.setAttribute('aria-pressed', String(F.view === v));
         seg.append(b);
       });
@@ -411,45 +429,17 @@
     const v = F.view;
     if (v === 'login') {
       wrap.append(form('fLogin', async () => {
-        const username = val('fUser'), password = ($('#fPass') || {}).value || '';
-        if (!username || !password) { F.err = t('acc.err.fill'); return; }
-        const r = await api('POST', 'login', { username, password });
+        const email = val('fLoginEmail'), password = ($('#fPass') || {}).value || '';
+        if (!email || !password) { F.err = t('acc.err.fill'); return; }
+        const r = await api('POST', 'login', { email, password });
+        F.loginEmail = '';
         await linkAccount(r.token, r.me, false);
       },
-      field('fUser', 'acc.username', 'text', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 20 }),
+      field('fLoginEmail', 'acc.email', 'email', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 254, value: F.loginEmail }),
       field('fPass', 'acc.password', 'password', { autocomplete: 'current-password', maxLength: 200 }),
-      errLine(), submit('acc.signIn', 'fLoginGo')));
-      wrap.append(btn(t('acc.forgot'), 'ghost small', () => { F.view = 'forgot'; F.err = ''; F.msg = ''; A.render(); focusLater('#fForgotUser'); }, 'fForgot'));
-    } else if (v === 'reg1') {
-      wrap.append(stepDots(1), form('fReg1', async () => {
-        const email = val('fEmail');
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { F.err = t('acc.err.bad_email'); return; }
-        const r = await api('POST', 'code', { email });
-        F.reg = { email, code: '', sentAt: Date.now(), dev: r.devCode || '' };
-        F.view = 'reg2'; focusLater('#fCode');
-      },
-      field('fEmail', 'acc.email', 'email', { autocomplete: 'email', value: F.reg.email, maxLength: 254, hint: 'acc.emailHint' }),
-      errLine(), submit('acc.sendCode', 'fReg1Go')));
-    } else if (v === 'reg2') {
-      const left = Math.max(0, 60 - Math.round((Date.now() - F.reg.sentAt) / 1000));
-      const again = btn(left ? t('acc.againIn', { s: left }) : t('acc.again'), 'ghost small', async () => {
-        F.err = '';
-        try { const r = await api('POST', 'code', { email: F.reg.email }); F.reg.sentAt = Date.now(); F.reg.dev = r.devCode || ''; F.msg = t('acc.codeSent'); }
-        catch (e) { F.err = errText(e); }
-        A.render();
-      }, 'fAgain');
-      again.disabled = !!left;
-      if (left) setTimeout(() => { if (F.view === 'reg2' && A.S.screen === 'friends') { const b = $('#fAgain'); if (b) { const l = Math.max(0, 60 - Math.round((Date.now() - F.reg.sentAt) / 1000)); b.textContent = l ? t('acc.againIn', { s: l }) : t('acc.again'); b.disabled = !!l; } } }, 1000 * Math.min(left, 5));
-      wrap.append(stepDots(2), form('fReg2', async () => {
-        const code = val('fCode');
-        if (!/^\d{6}$/.test(code)) { F.err = t('acc.err.code_wrong'); return; }
-        await api('POST', 'code/check', { email: F.reg.email, code });
-        F.reg.code = code; F.view = 'reg3'; focusLater('#fNewUser');
-      },
-      field('fCode', 'acc.code', 'text', { autocomplete: 'one-time-code', inputMode: 'numeric', maxLength: 6, pattern: '[0-9]*', hint: 'acc.codeHint', hintVars: { email: F.reg.email } }),
-      devLine(F.reg.dev), errLine(), msgLine(), submit('acc.next', 'fReg2Go')), again,
-      btn(t('acc.otherEmail'), 'ghost small', () => { F.view = 'reg1'; F.err = ''; A.render(); }));
-    } else if (v === 'reg3') {
+      errLine(), msgLine(), submit('acc.signIn', 'fLoginGo')));
+      wrap.append(btn(t('acc.forgot'), 'ghost small', () => { F.view = 'forgot'; F.forgot = { email: '', qid: null }; F.err = ''; F.msg = ''; A.render(); focusLater('#fForgotEmail'); }, 'fForgot'));
+    } else if (v === 'reg') {
       const pick = el('fieldset', 'f-pick'); const lg = el('legend', '', t('acc.picture')); pick.append(lg);
       const chosen = F.reg.avatar || 0;
       AVATARS.forEach((a, i) => {
@@ -460,51 +450,58 @@
         lab.append(r, el('span', '', a));
         pick.append(lab);
       });
-      wrap.append(stepDots(3), form('fReg3', async () => {
-        const username = val('fNewUser').toLowerCase(), password = ($('#fNewPass') || {}).value || '';
+      wrap.append(form('fReg', async () => {
+        const email = val('fEmail').toLowerCase(), username = val('fNewUser').toLowerCase(), password = ($('#fNewPass') || {}).value || '';
+        const qv = val('fQuestion'), answer = val('fAnswer');
+        if (!emailOk(email)) { F.err = t('acc.err.bad_email'); return; }
         if (!/^[a-z0-9_]{3,20}$/.test(username)) { F.err = t('acc.err.bad_username'); return; }
         if (password.length < 8) { F.err = t('acc.err.bad_password'); return; }
+        if (qv === '') { F.err = t('acc.err.bad_question'); return; }
+        if (answer.replace(/\s+/g, ' ').length < 2) { F.err = t('acc.err.bad_answer'); return; }
         const avatar = +((document.querySelector('input[name=fAvatar]:checked') || {}).value || 0);
-        const r = await api('POST', 'register', { email: F.reg.email, code: F.reg.code, username, password, avatar });
-        F.reg = { email: '', code: '', sentAt: 0 };
+        const r = await api('POST', 'register', { email, username, password, qid: +qv, answer, avatar });
+        F.reg = { avatar: 0 };
         await linkAccount(r.token, r.me, true);
         A.toast(t('acc.welcome', { name: r.me.username }));
       },
-      field('fNewUser', 'acc.username', 'text', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 20, hint: 'acc.usernameHint' }),
+      field('fEmail', 'acc.email', 'email', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 254, hint: 'acc.emailHint' }),
+      field('fNewUser', 'acc.username', 'text', { autocomplete: 'nickname', autocapitalize: 'none', spellcheck: false, maxLength: 20, hint: 'acc.usernameHint' }),
       field('fNewPass', 'acc.password', 'password', { autocomplete: 'new-password', maxLength: 200, hint: 'acc.passwordHint' }),
-      pick, errLine(), submit('acc.create', 'fReg3Go')));
+      selectField('fQuestion', 'acc.question', 'acc.questionPick', questionKeys()),
+      field('fAnswer', 'acc.answer', 'text', { autocomplete: 'off', autocapitalize: 'none', spellcheck: false, maxLength: 60, hint: 'acc.answerHint' }),
+      pick, errLine(), submit('acc.create', 'fRegGo')));
     } else if (v === 'forgot') {
-      wrap.append(el('h3', 'f-h', t('acc.forgotH')), form('fForgotForm', async () => {
-        const username = val('fForgotUser');
-        if (!username) { F.err = t('acc.err.fill'); return; }
-        const r = await api('POST', 'reset', { username });
-        if (r.devToken) { F.resetToken = r.devToken; F.view = 'reset'; F.msg = t('acc.devReset'); return; }
-        F.msg = t('acc.linkSent');
-      },
-      field('fForgotUser', 'acc.username', 'text', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 20, hint: 'acc.forgotHint' }),
-      errLine(), msgLine(), submit('acc.sendLink', 'fForgotGo')),
-      btn(t('acc.back'), 'ghost small', () => { F.view = 'login'; F.err = ''; F.msg = ''; A.render(); }, 'fBackLogin'));
-    } else if (v === 'reset') {
-      wrap.append(el('h3', 'f-h', t('acc.resetH')), form('fResetForm', async () => {
-        const password = ($('#fResetPass') || {}).value || '';
-        if (password.length < 8) { F.err = t('acc.err.bad_password'); return; }
-        await api('POST', 'reset/finish', { token: F.resetToken, password });
-        if (signedIn()) sessionEnded();   // the server has ended every session of that account
-        F.resetToken = ''; F.view = 'login'; F.msg = ''; A.toast(t('acc.resetDone'), 6000); focusLater('#fUser');
-      },
-      field('fResetPass', 'acc.newPassword', 'password', { autocomplete: 'new-password', maxLength: 200, hint: 'acc.passwordHint' }),
-      msgLine(), errLine(), submit('acc.saveNew', 'fResetGo')));
+      const back = btn(t('acc.back'), 'ghost small', () => {
+        if (F.forgot.qid !== null) { F.forgot.qid = null; F.err = ''; A.render(); focusLater('#fForgotEmail'); }
+        else { F.view = 'login'; F.err = ''; F.msg = ''; A.render(); }
+      }, 'fBackLogin');
+      if (F.forgot.qid === null) {
+        wrap.append(el('h3', 'f-h', t('acc.forgotH')), form('fForgotForm', async () => {
+          const email = val('fForgotEmail').toLowerCase();
+          if (!emailOk(email)) { F.err = t('acc.err.bad_email'); return; }
+          const r = await api('POST', 'reset/question', { email });
+          F.forgot = { email, qid: r.qid }; focusLater('#fForgotAns');
+        },
+        field('fForgotEmail', 'acc.email', 'email', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 254, hint: 'acc.forgotHint', value: F.forgot.email }),
+        errLine(), submit('acc.next', 'fForgotGo')), back);
+      } else {
+        const q = el('p', 'f-q', t(questionKey(F.forgot.qid))); q.id = 'fQuestionText';
+        wrap.append(el('h3', 'f-h', t('acc.forgotH')), el('p', 'f-hint', F.forgot.email), form('fResetForm', async () => {
+          const answer = val('fForgotAns'), password = ($('#fResetPass') || {}).value || '';
+          if (!answer) { F.err = t('acc.err.bad_answer'); return; }
+          if (password.length < 8) { F.err = t('acc.err.bad_password'); return; }
+          await api('POST', 'reset', { email: F.forgot.email, answer, password });
+          if (signedIn()) sessionEnded();   // the server has ended every session of that account
+          F.loginEmail = F.forgot.email;
+          F.forgot = { email: '', qid: null }; F.view = 'login'; F.msg = ''; A.toast(t('acc.resetDone'), 6000); focusLater('#fPass');
+        },
+        q,
+        field('fForgotAns', 'acc.answer', 'text', { autocomplete: 'off', autocapitalize: 'none', spellcheck: false, maxLength: 60 }),
+        field('fResetPass', 'acc.newPassword', 'password', { autocomplete: 'new-password', maxLength: 200, hint: 'acc.passwordHint' }),
+        errLine(), submit('acc.saveNew', 'fResetGo')), el('p', 'f-hint', t('acc.noRecover')), back);
+      }
     }
     return wrap;
-  }
-  /* on the Test site and on this PC the code comes back in the answer instead of by email */
-  function devLine(code) {
-    const p = el('p', 'f-dev', code ? t('acc.devCode', { code }) : ''); p.id = 'fDevCode'; p.hidden = !code; return p;
-  }
-  function stepDots(n) {
-    const d = el('div', 'f-steps'); d.setAttribute('role', 'img'); d.setAttribute('aria-label', t('acc.step', { n, m: 3 }));
-    for (let i = 1; i <= 3; i++) d.append(el('i', i <= n ? 'on' : ''));
-    return d;
   }
 
   function movePanel() {
@@ -780,13 +777,6 @@
     if (F.auth && F.auth.profile && !A.Profiles.list.some(x => x.id === F.auth.profile)) F.auth.profile = null;
     if (F.auth && F.auth.token && !F.auth.profile) F.auth.profile = A.Profiles.addAccount(F.auth.me.username).id;
     saveAuth();
-    // a reset link from the email: ?reset=<token>
-    const m = /[?&]reset=([A-Za-z0-9_-]{20,100})/.exec(location.search);
-    if (m) {
-      F.resetToken = m[1]; F.view = 'reset';
-      try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* ignore */ }
-      setTimeout(() => A.go('friends'), 0);
-    }
     if (signedIn()) { refresh(); pull(); }
     startPolling();
     document.addEventListener('visibilitychange', () => {

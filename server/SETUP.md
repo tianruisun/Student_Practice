@@ -20,35 +20,19 @@ Cloudflare dashboard → **Storage & Databases → D1 SQL Database → Create**:
 |---|---|---|
 | `DB` | `student-practice-prod` | `student-practice-test` |
 
-## 3. Test codes on Test only
+## 3. No email service (W10)
 
-**Settings → Variables and Secrets**, environment **Preview** only:
+From W10 (Terry, 2026-11-15) the app sends no email at all: an account is an email address (not checked), a display name, a
+password and one security question with its answer, and a forgotten password is reset with the email and the answer. So
+there are **no** `EMAIL_*` or `DEV_CODES` settings to add on Test or on Production; the only setting is the `DB` binding
+above. A password cannot be recovered without the answer. If email is wanted again later (to check addresses), it is a
+new change.
 
-| Name | Value |
-|---|---|
-| `DEV_CODES` | `1` |
+## 4. The Test database
 
-With this, the Test site shows the 6-digit code and the reset link on screen instead of emailing them, so Test and
-the automatic tests work without an email service. Do **not** add it to Production (the server ignores it on the
-Production addresses anyway).
-
-## 4. Email (needed before Production)
-
-Production must email the sign-up code and the reset link. Pick one service and add, for **Production**:
-
-| Name | Type | Value |
-|---|---|---|
-| `EMAIL_PROVIDER` | Text | `resend` or `brevo` |
-| `EMAIL_FROM` | Text | for example `Maths Practice <no-reply@your-domain>` |
-| `EMAIL_API_KEY` | **Secret** | the key from the service |
-
-- **Resend**: free plan with a daily and monthly limit; it sends to anyone only from a domain you own and verify.
-- **Brevo**: free plan with a daily limit; it can send from one verified address (for example a Gmail address),
-  but such mail lands in spam more often than mail from your own domain.
-- Cloudflare's own email sending to any address needs the paid Workers plan.
-
-Check each service's current limits before choosing. Without these settings, sign-up on Production answers
-"Emails cannot be sent right now" and nothing else breaks.
+A Test database made for the old email codes (a `users` table without the security question) is wiped once, by the
+server itself, the first time it is used after this version is deployed: accounts, friends and challenges on Test go.
+A database made by this version is never wiped.
 
 ## 5. Deploy
 

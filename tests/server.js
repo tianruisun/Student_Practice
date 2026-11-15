@@ -159,6 +159,13 @@ t('W10 R4.5 reset: the question number comes for an email; an email with no acco
   assert.strictEqual(a.status, 404); assert.strictEqual(a.body.error, 'no_account');
   assert.strictEqual((await call('POST', 'reset/question', { email: 'not an email' })).body.error, 'no_account');
 });
+t('R5.3 a cap that lasts a day says too_many_day, a shorter one too_many', async () => {
+  fresh(); const a = await signUp('anan'); let r;
+  for (let i = 0; i < 61; i++) r = await call('POST', 'friends/add', { who: 'ZZZZZ' + (i % 9 + 1) }, { token: a });
+  assert.strictEqual(r.status, 429); assert.strictEqual(r.body.error, 'too_many_day');
+  for (let i = 0; i < 121; i++) r = await call('POST', 'reset/question', { email: 'y' + i + '@example.com' }, { ip: '10.0.0.7' });
+  assert.strictEqual(r.body.error, 'too_many');
+});
 t('R4.5 asking for questions is limited to 120 an hour per address', async () => {
   fresh();
   for (let i = 0; i < 120; i++) assert.strictEqual((await call('POST', 'reset/question', { email: 'x' + i + '@example.com' }, { ip: '10.0.0.8' })).status, 404);

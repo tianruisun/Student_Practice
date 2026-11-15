@@ -47,12 +47,14 @@
   async function api(method, path, body) {
     const headers = { 'Content-Type': 'application/json' };
     if (F.auth && F.auth.token) headers.Authorization = 'Bearer ' + F.auth.token;
-    let res;
+    /* R5.1: a request that never answers (a phone losing its signal mid-request) must end, or the form stays disabled for good */
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), F.apiTimeout || 25000);
+    let res, data = null;
     try {
-      res = await fetch(API + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(Object.assign({ lang: A.lang() }, body)), cache: 'no-store' });
-    } catch (e) { throw new ApiError('offline', 0); }
-    let data = null;
-    try { data = await res.json(); } catch (e) { /* not JSON: the site has no server yet */ }
+      res = await fetch(API + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(Object.assign({ lang: A.lang() }, body)), cache: 'no-store', signal: ctl.signal });
+      try { data = await res.json(); } catch (e) { if (ctl.signal.aborted) throw e; /* not JSON: the site has no server yet */ }
+    } catch (e) { throw new ApiError(ctl.signal.aborted ? 'timeout' : 'offline', 0); }
+    finally { clearTimeout(timer); }
     if (!res.ok || !data) {
       const code = (data && data.error) || (res.status === 404 || res.status === 405 ? 'not_set_up' : 'server');
       if (code === 'signed_out' && signedIn()) sessionEnded();

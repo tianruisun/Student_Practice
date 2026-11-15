@@ -1924,7 +1924,12 @@ async function run(site) {
     /* ---------- v2.0.0 (W8, Terry chose Option B): accounts, friends, practising together ---------- */
     // Every account made here has a new random name and is deleted at the end, so the flows can run on the Test site
     // (its own database) as well as on this PC (an in-memory database in tests/local-api.js).
-    const errShown = async (page, text) => page.waitForFunction(t => { const e = document.querySelector('#fErr'); return e && !e.hidden && e.textContent === t; }, text, { timeout: 5000 }).then(() => true, () => false);
+    /* R5.2: when the message does not come, say what was on the screen (the error line, and whether a submit button was still off) */
+    const errShown = async (page, text) => page.waitForFunction(t => { const e = document.querySelector('#fErr'); return e && !e.hidden && e.textContent === t; }, text, { timeout: 5000 }).then(() => true, async () => {
+      const seen = await page.evaluate(() => { const e = document.querySelector('#fErr'); return { err: e ? e.textContent : null, off: [...document.querySelectorAll('#frBody button[type=submit]')].filter(b => b.disabled).map(b => b.id) }; }).catch(() => null);
+      console.log('  errShown: wanted "' + text + '", saw ' + JSON.stringify(seen));
+      return false;
+    });
     const tag = () => 't' + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 6);
     const apiCall = async (method, route, body, token) => {
       const res = await fetch(site + 'api/' + route, { method, headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}), body: body === undefined ? undefined : JSON.stringify(body) });
@@ -2187,6 +2192,26 @@ async function run(site) {
         check('W8 the new password signs in', (await page.textContent('.f-me-t b')) === name);
         check('W8 forgot: no page errors', errors.length === 0, errors.join(' | '));
         await dropAccount(await page.evaluate(() => JSON.parse(localStorage.getItem('sp.auth')).token), 'new-pass-' + name);
+        await context.close();
+      });
+
+      /* R5.1: a request that never answers must not leave the forms dead */
+      await flow('v2.0 R5.1 a request that never answers ends with a message and the form works again', async () => {
+        const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings() });
+        await page.click('.tab[data-go="friends"]');
+        await page.evaluate(() => { window.Friends._state.apiTimeout = 1500; });
+        let held = 0;
+        await context.route('**/api/login', route => { held++; /* never answered */ });
+        await page.fill('#fLoginEmail', 'x@example.com'); await page.fill('#fPass', 'password-1');
+        await page.click('#fLoginGo');
+        check('R5.1 the button is off while the request is out', await page.isDisabled('#fLoginGo').catch(() => false));
+        check('R5.1 after the time limit the message says no answer', await errShown(page, 'No answer from the server. Try again.'), await page.textContent('#fErr'));
+        check('R5.1 the sign-in button works again', !(await page.isDisabled('#fLoginGo')));
+        await context.unroute('**/api/login');
+        await page.click('#fTabReg');
+        await page.fill('#fEmail', 'nope'); await page.click('#fRegGo');
+        check('R5.1 Create account answers at once afterwards', (await page.textContent('#fErr')) === 'That does not look like an email address.');
+        check('R5.1: one request was held and no page errors', held === 1 && errors.length === 0, errors.join(' | '));
         await context.close();
       });
 

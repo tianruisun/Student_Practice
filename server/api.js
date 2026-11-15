@@ -105,7 +105,8 @@ async function limit(db, key, max, windowMs, now) {
   await db.prepare('UPDATE limits SET n = n + 1 WHERE key = ?').bind(key).run();
   return true;
 }
-const limitOr429 = async (db, key, max, windowMs, now) => { if (!(await limit(db, key, max, windowMs, now))) fail(429, 'too_many'); };
+/* R5.3: a cap that lasts a day says so (too_many_day), so nobody keeps retrying for a few minutes */
+const limitOr429 = async (db, key, max, windowMs, now) => { if (!(await limit(db, key, max, windowMs, now))) fail(429, windowMs >= DAY ? 'too_many_day' : 'too_many'); };
 /* true when key has already been used max times in its window (reads only, counts nothing) */
 async function full(db, key, max, now) {
   const row = await db.prepare('SELECT n, reset FROM limits WHERE key = ?').bind(key).first();

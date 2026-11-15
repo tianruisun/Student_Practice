@@ -1173,7 +1173,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   });
   t('W8: every word friends.js uses is in English and Chinese, and they differ', () => {
     const used = new Set([...fr.matchAll(/t\('((?:acc|fr|nav|sheet|subject)\.[\w.]+)'/g)].map(m => m[1]));
-    ['acc.err.offline', 'acc.err.not_set_up', 'acc.err.server', 'acc.err.signed_out'].forEach(k => used.add(k));
+    ['acc.err.offline', 'acc.err.not_set_up', 'acc.err.server', 'acc.err.signed_out', 'acc.err.timeout'].forEach(k => used.add(k));
     const missing = [...used].filter(k => !S.en[k] || !S.zh[k]);
     assert.deepStrictEqual(missing, []);
     assert.deepStrictEqual([...used].filter(k => S.en[k] === S.zh[k] && !/^fr\.cOfN$/.test(k)), []);

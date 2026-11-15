@@ -1,6 +1,6 @@
 /* The server (server/api.js) on this PC for the tests: a D1 stand-in on node:sqlite (in memory) and an adapter from
-   Node's http requests to the Fetch Request/Response the Pages Function uses. DEV_CODES is on, as on the Test site,
-   so codes and reset tokens come back in the answer instead of by email. */
+   Node's http requests to the Fetch Request/Response the Pages Function uses. there is no email service,
+   so nothing is sent by email (W10). */
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -32,7 +32,7 @@ const api = () => mod || (mod = import(pathToFileURL(path.join(__dirname, '..', 
 
 /* a handler for tests/serve.js: answers /api/* from one in-memory database per server */
 function localApi(env = {}) {
-  const fullEnv = Object.assign({ DB: fakeD1(), DEV_CODES: '1' }, env);
+  const fullEnv = Object.assign({ DB: fakeD1() }, env);
   return async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);

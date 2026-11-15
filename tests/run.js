@@ -1173,7 +1173,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   });
   t('W8: every word friends.js uses is in English and Chinese, and they differ', () => {
     const used = new Set([...fr.matchAll(/t\('((?:acc|fr|nav|sheet|subject)\.[\w.]+)'/g)].map(m => m[1]));
-    ['acc.err.offline', 'acc.err.not_set_up', 'acc.err.server', 'acc.err.signed_out'].forEach(k => used.add(k));
+    ['acc.err.offline', 'acc.err.not_set_up', 'acc.err.server', 'acc.err.signed_out', 'acc.err.timeout'].forEach(k => used.add(k));
     const missing = [...used].filter(k => !S.en[k] || !S.zh[k]);
     assert.deepStrictEqual(missing, []);
     assert.deepStrictEqual([...used].filter(k => S.en[k] === S.zh[k] && !/^fr\.cOfN$/.test(k)), []);
@@ -1185,6 +1185,24 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     codes.delete('bad_origin');
     assert.ok(codes.has('bad_input') && codes.has('no_route') && codes.has('bad_set') && codes.has('stale'));
     assert.deepStrictEqual([...codes].filter(c => !S.en['acc.err.' + c] || !S.zh['acc.err.' + c]), []);
+  });
+  t('W10: the server and the app agree on the 8 security questions, each in English and Chinese, and all different', () => {
+    const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
+    const n = +/export const QUESTIONS = (\d+);/.exec(api)[1];
+    assert.strictEqual(n, 8);
+    assert.ok(new RegExp('const QUESTIONS = ' + n + ';').test(fr), 'friends.js counts the same questions');
+    for (const L of ['en', 'zh']) {
+      const qs = Array.from({ length: n }, (_, i) => S[L]['acc.q' + i]);
+      assert.ok(qs.every(q => typeof q === 'string' && q.length > 5), L + ' has all ' + n);
+      assert.strictEqual(new Set(qs).size, n, L + ' questions differ');
+      assert.strictEqual(S[L]['acc.q' + n], undefined, L + ' has no extra question');
+    }
+  });
+  t('R4.1: What\'s new and the hints say display name and email, not the old username sign-in', () => {
+    for (const L of ['en', 'zh']) { const w = S[L]['rel.2.0.0.account']; assert.ok(!/username|用户名/.test(w), L + ' ' + w); assert.ok(/email|邮箱/.test(w)); }
+  });
+  t('W10: no sign-up screen mentions a code or a link by email any more', () => {
+    for (const L of ['en', 'zh']) for (const k of Object.keys(S[L])) assert.ok(!/^acc\.(sendCode|code|codeHint|codeSent|again|againIn|otherEmail|sendLink|linkSent|devReset|devCode|err\.(email_off|email_full|code_\w+|reset_expired))$/.test(k), L + ' ' + k);
   });
   t('W9: in a challenge there is no Check answer, and a clock counts the time used', () => {
     const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
@@ -1231,10 +1249,10 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.strictEqual(rel.v, '2.0.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'account,friends,together,fixes');
     rel.items.forEach(i => ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.0.0.' + i.id + sfx] && S.zh['rel.2.0.0.' + i.id + sfx], i.id + sfx)));
   });
-  t('W8: the Pages Function and the server are not offline files and hold no secret', () => {
+  t('W8/W10: the Pages Function and the server are not offline files; the server sends no email and holds no secret', () => {
     assert.ok(!/server\/|functions\//.test(sw));
     const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
-    assert.ok(/env\.EMAIL_API_KEY/.test(api) && !/EMAIL_API_KEY\s*=\s*'/.test(api));
+    assert.ok(!/EMAIL_(PROVIDER|API_KEY|FROM)|fetch\(|resend\.com|brevo\.com/.test(api), 'W10: the server sends no email and calls no other service');
   });
   t('R3.1-R3.5 (v1.12.0): calendar marks, 44 px targets and readable colours', () => {
     const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');

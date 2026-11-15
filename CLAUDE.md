@@ -17,8 +17,7 @@ Maths and reasoning practice PWA (Years 1–12, Extension 1 and 2) for students,
 
 ## Server (v2.0.0)
 - `functions/api/[[path]].js` (Cloudflare Pages Function) → `server/api.js`, with a D1 database bound as `DB`. Production and Preview bind different databases.
-- `DEV_CODES=1` on Preview (Test) only: codes and reset tokens come back in the answer. The server ignores it on Production hosts.
-- Email: `EMAIL_PROVIDER` (`resend` or `brevo`), `EMAIL_API_KEY` (a secret, set in the Cloudflare dashboard, never in the repo), `EMAIL_FROM`. Setup steps: `server/SETUP.md`.
+- No email service (W10, 2026-11-15): sign-up is email (not checked) + display name + password + a security question; a forgotten password is reset with the email and the answer. There are no `EMAIL_*` or `DEV_CODES` settings. Setup steps: `server/SETUP.md`.
 - The service worker never caches `/api/`. The app keeps the account in `sp.auth`.
 
 ## Tests

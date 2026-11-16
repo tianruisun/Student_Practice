@@ -31,7 +31,7 @@
     '$': ['$', 'dollars', 'dollar', '元', '¥', '￥', '£', 'pounds'],
     'km/h': ['km/h', 'kmh', 'kph', 'km/hr', '千米/小时', '公里/小时', '千米每小时', '公里每小时'],
     'm/s': ['m/s', '米/秒', '米每秒'],
-    'items': ['个', '人', '只', '颗', '块', '本', '张', '名', '支', '件', '岁', 'items', 'people', 'years']
+    'items': ['个', '人', '只', '颗', '块', '本', '张', '名', '支', '件', '岁', '年', 'items', 'people', 'years']
   };
   const UNIT_LOOKUP = {};
   for (const canon in UNIT_ALIASES) {

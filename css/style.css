@@ -168,6 +168,9 @@ legend, .label { display: block; font-weight: 700; margin: 0 0 0.5rem; padding: 
 .badge.marks { margin-left: auto; }
 .chips-7 { grid-template-columns: repeat(4, 1fr); }
 @media (min-width: 30rem) { .chips-7 { grid-template-columns: repeat(7, 1fr); } }
+.chips-8 { grid-template-columns: repeat(4, 1fr); }
+@media (min-width: 30rem) { .chips-8 { grid-template-columns: repeat(8, 1fr); } }
+.study-strand.s-fun .study-strand-h { color: var(--pro, #7c3aed); }
 .chip { position: relative; }
 .chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .chip span {

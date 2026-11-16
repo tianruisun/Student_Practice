@@ -300,7 +300,7 @@ t('R1.2 a set with questions the app cannot draw is refused (bad_set)', async ()
   assert.strictEqual((await call('GET', 'challenges', undefined, { token: b })).body.challenges.length, 0);
 });
 t('R1.2 every question the app makes passes the check (all years, subjects, topics and levels)', async () => {
-  for (const f of ['gen-core', 'gen-maths', 'gen-word', 'gen-junior', 'gen-senior', 'gen-charts', 'gen-olympiad', 'gen-amo', 'gen-ga', 'gen-k6', 'scope-k6', 'lessons-k2', 'lessons-36']) require('../js/' + f + '.js');
+  for (const f of ['gen-core', 'gen-maths', 'gen-word', 'gen-junior', 'gen-senior', 'gen-charts', 'gen-olympiad', 'gen-amo', 'gen-ga', 'gen-k6', 'scope-k6', 'lessons-k2', 'lessons-36', 'scope-hs', 'lessons-hs-7', 'lessons-hs-9', 'lessons-hs-11', 'lessons-hs-ext']) require('../js/' + f + '.js');
   const G = globalThis.Gen; let n = 0; const bad = [];
   for (const y of G.YEARS) for (const sub of ['maths', 'ga']) {
     let topics = []; try { topics = ['mixed'].concat(G.topicsFor(sub, y)); } catch (e) { continue; }

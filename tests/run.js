@@ -30,7 +30,8 @@ ok({ value: 7.33, tol: 1e-9 }, '7.33'); no({ value: 7.33, tol: 1e-9 }, '7.3349')
 require('../js/gen-core.js'); require('../js/gen-maths.js'); require('../js/gen-word.js'); require('../js/gen-junior.js');
 require('../js/gen-senior.js'); require('../js/gen-charts.js'); require('../js/gen-olympiad.js'); require('../js/gen-amo.js'); require('../js/gen-ga.js');
 require('../js/gen-k6.js'); require('../js/scope-k6.js'); require('../js/lessons-k2.js'); require('../js/lessons-36.js');
-const G = globalThis.Gen, K6 = globalThis.ScopeK6;
+require('../js/scope-hs.js'); require('../js/lessons-hs-7.js'); require('../js/lessons-hs-9.js'); require('../js/lessons-hs-11.js'); require('../js/lessons-hs-ext.js');
+const G = globalThis.Gen, K6 = globalThis.ScopeK6, HS = globalThis.ScopeHS;
 const FIGR = require('../js/figures.js');
 let gen = 0;
 const BAD = /undefined|NaN|Infinity|null|\[object|function\s*\(/;
@@ -893,7 +894,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
         if (lang === 'zh') assert.ok(/[一-鿿]/.test(c.intro + c.tip), `${y}:${id} zh is Chinese`);
       }
     }
-    assert.strictEqual(Object.keys(LES).length, n);
+    assert.strictEqual(Object.keys(LES).filter(k => +k.split(':')[0] <= 6).length, n);   // the High school lessons (years 7 and up) share the object since v2.2.0
     assert.strictEqual(n, 73);
   });
   t('K–6: a 20-question set on any topic, year and level is full, on its topic and labelled with the year', () => {
@@ -1124,8 +1125,8 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     for (const id of ['subjectBox', 'practiceOptions', 'selOptions', 'compOptions', 'startBtn', 'printHome', 'setupClose', 'studyNote']) assert.ok(sheet.includes('id="' + id + '"'), id);
   });
   t('W6: the new words are in English and Chinese', () => {
-    const keys = ['mode.relax.sub', 'study.k6note', 'sheet.close', 'home.streak', 'home.streak1', 'home.streak0', 'home.carry', 'home.lastTime',
-      'plan.my', 'plan.open', 'plan.today', 'plan.todayNone', 'plan.todayDone', 'plan.start', 'plan.make', 'plan.add', 'plan.weekly', 'plan.byParent', 'mode.study.soon', 'mode.study.soonNote',
+    const keys = ['mode.relax.sub', 'study.note', 'sheet.close', 'home.streak', 'home.streak1', 'home.streak0', 'home.carry', 'home.lastTime',
+      'plan.my', 'plan.open', 'plan.today', 'plan.todayNone', 'plan.todayDone', 'plan.start', 'plan.make', 'plan.add', 'plan.weekly', 'plan.byParent',
       'friends.title', 'tour.schoolT', 'tour.planT', 'tour.todayT', 'tour.friendsT',
       'tour.carryT', 'tour.carry', 'day.1', 'day.2', 'day.3', 'day.4', 'day.5', 'day.6', 'day.7'];
     assert.deepStrictEqual(keys.filter(k => !S.en[k] || !S.zh[k] || S.en[k] === S.zh[k]), []);
@@ -1285,10 +1286,10 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
 
   t('W11: Financial maths (Years 9-10) has the right years, a name and an emoji in both languages', () => {
     assert.deepStrictEqual([G.SUBJECTS.maths.fin.minYear, G.SUBJECTS.maths.fin.maxYear], [9, 10]);
-    assert.deepStrictEqual([G.SUBJECTS.maths.factor.minYear, G.SUBJECTS.maths.factor.maxYear], [8, 10]);
+    assert.deepStrictEqual([G.SUBJECTS.maths.factor.minYear, G.SUBJECTS.maths.factor.maxYear], [9, 10]);   // R1.5 (v2.2.0): Stage 5, so from Year 9
     assert.deepStrictEqual([G.SUBJECTS.maths.formula.minYear, G.SUBJECTS.maths.formula.maxYear], [9, 10]);
     for (const k of ['fin', 'factor', 'formula']) { assert.ok(S.en['topic.' + k] && S.zh['topic.' + k], k); assert.ok(!G.topicsFor('maths', 7).includes(k), k + ' is not in Year 7'); }
-    assert.ok(G.topicsFor('maths', 9).includes('fin') && G.topicsFor('maths', 8).includes('factor') && !G.topicsFor('maths', 11).includes('fin'));
+    assert.ok(G.topicsFor('maths', 9).includes('fin') && G.topicsFor('maths', 9).includes('factor') && !G.topicsFor('maths', 8).includes('factor') && !G.topicsFor('maths', 11).includes('fin'));
   });
   t('W11: every Financial maths answer is right (simple and compound interest, depreciation, wages, GST, budgets), checked from the question text', () => {
     let n = 0;
@@ -1320,7 +1321,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('W11: Factorising answers are right (the product is expanded to check), and the multiple-choice answers expand to the question', () => {
     const exp = (a, b) => [a[0] * b[0], a[0] * b[1] + a[1] * b[0], a[1] * b[1]];   // (a0 x + a1)(b0 x + b1)
     let n = 0, mc = 0;
-    draw('factor', [8, 9, 10], 120, q => {
+    draw('factor', [9, 10], 120, q => {
       const e = M(q.q.en); let m; n++;
       if (q.type === 'mc') {
         const [a, b, c] = poly(/^Factorise (.*)\.$/.exec(e)[1]);
@@ -1338,9 +1339,8 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
         const [a, b, c] = poly(m[1]), k = +m[2]; assert.strictEqual(a, k); const found = [];
         for (let p = -80; p <= 80; p++) for (let qq = -80; qq <= 80; qq++) if (exp([k, p], [1, qq]).join() === [a, b, c].join()) found.push(p + qq);
         assert.deepStrictEqual(found, [q.value], e + ' has more than one way to read it: ' + found);
-      } else if ((m = /^x² - (\d+) = \(x - a\)\(x \+ a\), with a > 0\. Find a\.$/.exec(e))) assert.strictEqual(q.value ** 2, +m[1]);
-      else if ((m = /^(\d+)x² - (\d+) = \(px - q\)\(px \+ q\), with p > 0 and q > 0\. Find p \+ q\.$/.exec(e))) { const p = Math.sqrt(m[1]), qq = Math.sqrt(m[2]); assert.ok(Number.isInteger(p) && Number.isInteger(qq) && q.value === p + qq, e); }
-      else if ((m = /^Factorise (\d*)x \+ (\d*)y(?: \+ (\d+))? fully/.exec(e))) { const a = +m[1] || 1, b = +m[2] || 1, c = m[3] ? +m[3] : 0; let g = a; const gcd = (x, y) => (y ? gcd(y, x % y) : x); g = gcd(gcd(a, b), c || a); assert.strictEqual(q.value, g, e); }
+      } else if ((m = /^(\d+)x² - (\d+) = \(px - q\)\(px \+ q\), with p > 0 and q > 0\. Find p \+ q\.$/.exec(e))) { const p = Math.sqrt(m[1]), qq = Math.sqrt(m[2]); assert.ok(Number.isInteger(p) && Number.isInteger(qq) && q.value === p + qq, e); }
+      else if ((m = /^Factorise (\d*)x \+ (\d*)y(?: \+ (\d+))? fully/.exec(e))) { const a = +m[1] || 1, b = +m[2] || 1, c = m[3] ? +m[3] : 0; let g = a; const gcd = (x, y) => (y ? gcd(y, x % y) : x); g = gcd(gcd(a, b), c || a); assert.strictEqual(q.value, (a + b + c) / g, e); }   // R1.6: a + b (+ c) once the highest common factor is out
       else if (/^Factorise x² - \d+\.$/.test(e) && q.type === 'mc') { /* handled above */ }
       else assert.fail('an unknown Factorising question: ' + e);
     });
@@ -1375,6 +1375,35 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
       if (q.type === 'mc') q.choices.forEach(c => { if (/[a-z]{4,}/i.test(c.en.replace(/sqrt/g, ''))) assert.ok(/[一-鿿]/.test(c.zh), 'English choice with no Chinese: ' + c.en); });
     });
   });
+  t('v2.2.0 R1.1: flat-rate depreciation never goes below $0 (the machine is still worth at least 40% of its price)', () => {
+    let n = 0;
+    draw('fin', [9, 10], 400, q => { const m = /A machine worth \$(\d+) loses \$(\d+) in value each year \(flat rate\)\. What is it worth after (\d+) years\?/.exec(q.q.en); if (!m) return; n++; assert.ok(+m[2] * +m[3] < +m[1] * 0.6 && q.value >= +m[1] * 0.4, q.q.en + ' = ' + q.value); assert.ok(!/-\d/.test(q.answer + ' ' + q.sol.en + ' ' + q.sol.zh), q.sol.en); });
+    assert.ok(n > 20, 'flat-rate questions seen: ' + n);
+  });
+  t('v2.2.0 R1.2: the parallel-line question names the same line in both languages and gives no hint', () => {
+    let n = 0;
+    draw('linear', [9, 10], 150, q => {
+      const m = /^A line is parallel to (y = [^ ]+(?: [+−] \d+)?) and passes through/.exec(q.q.en); if (!m) return; n++;
+      assert.ok(q.q.zh.includes(m[1] + ' 平行'), q.q.en + ' | ' + q.q.zh); assert.ok(!/斜率相同/.test(q.q.zh), q.q.zh);
+    });
+    assert.ok(n > 20, 'parallel questions seen: ' + n);
+  });
+  t('v2.2.0 R1.3: the "how many years" answer has no unit, and 5年 and 5 years are both accepted', () => {
+    let n = 0;
+    draw('fin', [9, 10], 300, q => { if (!/For how many years was it invested\?/.test(q.q.en)) return; n++; assert.ok(!q.unit, 'unit ' + q.unit); assert.ok(Checker.check(q, q.value + '年').ok && Checker.check(q, q.value + ' years').ok && Checker.check(q, String(q.value)).ok); });
+    assert.ok(n > 20, 'seen ' + n);
+  });
+  t('v2.2.0 R1.4: no raw hyphen-minus beside the app\'s minus, no ellipsis in a solution, and full-width commas in Chinese formula questions', () => {
+    for (const topic of ['formula', 'linear', 'fin', 'factor']) draw(topic, [9, 10], 60, q => {
+      for (const s of [q.sol.en, q.sol.zh]) { assert.ok(!/\(-\d/.test(s) && !/ = -\d/.test(s), 'raw hyphen: ' + s); assert.ok(!s.includes('…'), 'ellipsis: ' + s); }
+      if (topic === 'formula' && /然后求当/.test(q.q.zh)) assert.ok(!/\d, [a-z]/i.test(q.q.zh) && /，/.test(q.q.zh), q.q.zh);
+    });
+  });
+  t('v2.2.0 R1.6: a common-factor question asks for what is left inside the brackets, and the difference of two squares is a choice', () => {
+    let hcf = 0, dsq = 0;
+    draw('factor', [9, 10], 150, q => { if (/fully\. It can be written as g\(ax/.test(q.q.en)) { hcf++; assert.ok(q.value >= 2 && /求 a \+ b/.test(q.q.zh)); } if (q.type === 'mc' && /^Factorise x² − \d+\.$/.test(q.q.en)) dsq++; assert.ok(!/outside the brackets/.test(q.q.en) && !/with a > 0/.test(q.q.en), q.q.en); });
+    assert.ok(hcf > 50 && dsq > 20, hcf + ' ' + dsq);
+  });
   t('W11: confirm password: the sign-up and the reset form have a second password box, a label and the message in both languages', () => {
     const fr = fs.readFileSync(path.join(root, 'js/friends.js'), 'utf8');
     assert.ok(/field\('fNewPass2', 'acc\.passwordAgain'/.test(fr) && /field\('fResetPass2', 'acc\.newPasswordAgain'/.test(fr));
@@ -1383,11 +1412,62 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(fr.indexOf('password.length < 8') < fr.indexOf('password !== password2'), 'a short password is reported first');
   });
   t('W11: What\'s new for v2.1.0 lists four items with words in both languages, and it is the newest entry', () => {
-    const rel = box.RELEASES[0];
-    assert.strictEqual(rel.v, '2.1.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'password,money,algebra,lines');
+    const rel = box.RELEASES.find(r => r.v === '2.1.0');
+    assert.ok(rel); assert.strictEqual(rel.items.map(i => i.id).join(), 'password,money,algebra,lines');
     rel.items.forEach(i => ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.1.0.' + i.id + sfx] && S.zh['rel.2.1.0.' + i.id + sfx], i.id + sfx)));
   });
 }
+}
+/* ---------- v2.2.0 (W12, Terry: High school Study, Years 7-12 with Extension 1 and 2) ---------- */
+{
+  const fs = require('fs'), path = require('path'), vm = require('vm'), root = path.join(__dirname, '..');
+  const box = { navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: {} }; box.window = box; box.self = box;
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8'), box); vm.runInNewContext(fs.readFileSync(path.join(root, 'js/releases.js'), 'utf8'), box);
+  const S = box.I18N.STRINGS, LS = globalThis.LessonsK6;
+  t('W12: High school covers Years 7 to 12 and Extension 1 and 2 (13 and 14), and every topic has a name, a strand and a "what is new" line in both languages', () => {
+    assert.deepStrictEqual(HS.YEARS, [7, 8, 9, 10, 11, 12, 13, 14]);
+    assert.deepStrictEqual(HS.topicsFor(6), []); assert.deepStrictEqual(K6.topicsFor(7), []);
+    for (const y of HS.YEARS) assert.ok(HS.topicsFor(y).length >= 5, 'year ' + y);
+    for (const y of HS.YEARS) for (const id of HS.topicsFor(y)) {
+      assert.ok(HS.STRANDS.includes(HS.strandOf(id)), id); assert.ok(S.en['topic.' + id] && S.zh['topic.' + id], 'name ' + id);
+      const w = HS.what(id, y); assert.ok(w.en.length > 10 && /[一-鿿]/.test(w.zh), y + ':' + id);
+    }
+    for (const k of ['study.strand.fun', 'study.ext1', 'study.ext2', 'study.sourceHS', 'study.note']) assert.ok(S.en[k] && S.zh[k] && /[一-鿿]/.test(S.zh[k]), k);
+  });
+  t('W12: every topic and year has a lesson in English and Chinese, with the same shape as the K–6 lessons, and no lesson is left over', () => {
+    let n = 0;
+    for (const y of HS.YEARS) for (const id of HS.topicsFor(y)) {
+      const L = LS[y + ':' + id]; assert.ok(L, 'no lesson ' + y + ':' + id); n++;
+      for (const lg of ['en', 'zh']) {
+        const c = L[lg]; assert.ok(c.intro && c.intro.length > (lg === 'zh' ? 15 : 30), y + ':' + id + ' ' + lg + ' intro');
+        assert.ok(Array.isArray(c.points) && c.points.length === 3 && c.points.every(p => p.length > 5), y + ':' + id + ' ' + lg + ' points');
+        assert.ok(Array.isArray(c.ex) && c.ex.length === 2 && c.ex.every(e => e.length === 2 && e[0].length > 4 && e[1].length > 3), y + ':' + id + ' ' + lg + ' examples');
+        assert.ok(c.tip && c.tip.length > 8, y + ':' + id + ' ' + lg + ' tip');
+      }
+      assert.ok(/[一-鿿]/.test(L.zh.intro) && !/^[\x00-\x7f]+$/.test(L.zh.tip), y + ':' + id + ' Chinese');
+      assert.ok(L.zh.points.length === L.en.points.length && L.zh.ex.length === L.en.ex.length, y + ':' + id + ' the two languages match');
+    }
+    for (const k of Object.keys(LS)) { const [y, id] = k.split(':'); if (+y >= 7) assert.ok(HS.inYear(id, +y), 'a lesson with no topic: ' + k); }
+    assert.ok(n >= 70, 'lessons: ' + n);
+  });
+  t('W12: a topic is practised by a question generator that exists in that year (so Practise always draws questions)', () => {
+    for (const y of HS.YEARS) for (const id of HS.topicsFor(y)) {
+      const gen = HS.gen(id, y), g = gen && G.SUBJECTS.maths[gen]; assert.ok(g, y + ':' + id + ' has no generator ' + gen);
+      assert.ok(y >= g.minYear && y <= g.maxYear, y + ':' + id + ' ' + gen + ' ' + g.minYear + '-' + g.maxYear);
+      const set = G.generateSet('maths', y, gen, 2, 5); assert.strictEqual(set.length, 5, y + ':' + id);
+    }
+  });
+  t('W12: the Study screen and the Home card use the High school scope (no more "Coming soon")', () => {
+    const app = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8'), html = fs.readFileSync(path.join(root, 'index.html'), 'utf8'), sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+    assert.ok(/const scopeOf = y => \(y >= 7 \? window\.ScopeHS : window\.ScopeK6\)/.test(app));
+    assert.ok(!/mode\.study\.soon/.test(app) && !('mode.study.soon' in S.en) && !('mode.study.soonNote' in S.en));
+    assert.ok(/y < 7 \|\| sc\.gen\(id, y\)/.test(app), 'a lesson with no generator has no Practise button');
+    for (const f of ['scope-hs', 'lessons-hs-7', 'lessons-hs-9', 'lessons-hs-11', 'lessons-hs-ext']) { assert.ok(html.includes('./js/' + f + '.js'), f + ' in index.html'); assert.ok(sw.includes("'./js/" + f + ".js'"), f + ' in sw.js'); }
+  });
+  t('W12: What\'s new for v2.2.0 is the newest entry, with words in both languages', () => {
+    const rel = box.RELEASES[0]; assert.strictEqual(rel.v, '2.2.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'study');
+    ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.2.0.study' + sfx] && S.zh['rel.2.2.0.study' + sfx]));
+  });
 }
 
 console.log(`${pass} passed, ${fail} failed (${gen} generated questions checked)`);

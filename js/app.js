@@ -194,7 +194,7 @@
   /* an emoji in front of each topic in the topic list (Terry, v1.12.0: "okay for your suggestion for now") */
   const TOPIC_ICON = {
     mixed: '🌟', place: '🔢', addsub: '➕', muldiv: '✖️', mental: '🧠', numth: '🔍', pattern: '🔁', frac: '🍕', dec: '🔸',
-    pct: '💯', ratio: '⚖️', int: '🌡️', index: '🌱', alg: '🔤', quad: '🌈', linear: '📈', meas: '📏', angle: '📐',
+    pct: '💯', ratio: '⚖️', int: '🌡️', index: '🌱', alg: '🔤', quad: '🌈', fin: '🏦', factor: '🧱', formula: '🔃', linear: '📈', meas: '📏', angle: '📐',
     pyth: '🔺', stats: '📊', prob: '🎲', word: '📝', count: '🧮', add1: '🍎', mult1: '✖️', shape1: '🔷', time1: '🕒',
     money1: '💰', frac1: '🍕', graph1: '📊', func: '📈', explog: '🧪', trig: '📐', calc: '📉', series: '♾️', stats2: '📊',
     graphs: '📈', comb: '🔀', poly: '🧩', vectors: '➡️', invtrig: '🔄', complex: '🌀', integ: '🧮', mech: '🚀',

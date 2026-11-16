@@ -4,7 +4,7 @@
   'use strict';
   const G = root.Gen || require('./gen-core.js');
   const { R, pick, gcd, lcm, round, MINUS, num, paren, sg, coef, fracStr, mk } = G;
-  const MAXY = { quad: 12, index: 12 };
+  const MAXY = { quad: 12, index: 12, fin: 10, factor: 10, formula: 10 };
   const reg = (topic, minYear, fn) => G.register('maths', topic, minYear, fn, { maxYear: MAXY[topic] || 10 });
   const yt = b => (b < 0 ? ` ${MINUS} ` : ' + ') + (Math.abs(b) === 1 ? '' : Math.abs(b)) + 'y';
   const zhNum = n => ({ 10: '十', 100: '百', 1000: '千', 10000: '万', 100000: '十万', 1000000: '百万', 10000000: '千万', 100000000: '亿' }[n]);
@@ -445,9 +445,34 @@
 
   /* ---------- Linear graphs ---------- */
   reg('linear', 8, (y, d) => {
-    const k = pick(['grad', 'eval', 'cross', 'xint']);
+    const k = pick(y >= 9 ? ['grad', 'eval', 'cross', 'xint', 'eqc', 'eqpt', 'par', 'eqmc', 'hv', ...(d >= 3 ? ['perp', 'perp'] : [])] : ['grad', 'eval', 'cross', 'xint']);
     const m = R(-5, 5) || 2, c = R(-9, 9);
     const line = (mm, cc) => `y = ${coef(mm)}${cc ? sg(cc) : ''}`;
+    // W11 (v2.1.0, NSW Stage 5 Linear relationships): the equation of a line, y = mx + c
+    if (k === 'eqc' || k === 'eqpt' || k === 'par' || k === 'perp') {
+      const m1 = R(-5, 5) || 3, c1 = R(-9, 9) || 4, x1 = R(-5, 5), x2 = x1 + R(1, 4), y1 = m1 * x1 + c1, y2 = m1 * x2 + c1;
+      if (k === 'eqc') return mk({ topic: 'linear', value: c1, en: `The line through (${num(x1)}, ${num(y1)}) and (${num(x2)}, ${num(y2)}) has equation y = mx + c. Find c.`, zh: `经过 (${num(x1)}, ${num(y1)}) 和 (${num(x2)}, ${num(y2)}) 的直线方程是 y = mx + c。求 c。`,
+        solEn: `m = (${num(y2)} ${MINUS} ${paren(y1)}) ÷ (${num(x2)} ${MINUS} ${paren(x1)}) = ${num(m1)}; c = ${num(y1)} ${MINUS} ${paren(m1)} × ${paren(x1)} = ${num(c1)}`, solZh: `m = (${num(y2)} ${MINUS} ${paren(y1)}) ÷ (${num(x2)} ${MINUS} ${paren(x1)}) = ${num(m1)}；c = ${num(y1)} ${MINUS} ${paren(m1)} × ${paren(x1)} = ${num(c1)}` });
+      if (k === 'eqpt') return mk({ topic: 'linear', value: c1, en: `A line has gradient ${num(m1)} and passes through (${num(x1)}, ${num(y1)}). Its equation is y = mx + c. Find c.`, zh: `一条直线的斜率是 ${num(m1)}，经过点 (${num(x1)}, ${num(y1)})。它的方程是 y = mx + c。求 c。`,
+        solEn: `${num(y1)} = ${paren(m1)} × ${paren(x1)} + c, so c = ${num(c1)}`, solZh: `${num(y1)} = ${paren(m1)} × ${paren(x1)} + c，所以 c = ${num(c1)}` });
+      if (k === 'par') return mk({ topic: 'linear', value: c1, en: `A line is parallel to ${line(m1, c1 + R(1, 5))} and passes through (${num(x1)}, ${num(y1)}). Its equation is y = mx + c. Find c.`, zh: `一条直线与 ${line(m1, 0)} 平行（斜率相同）并经过点 (${num(x1)}, ${num(y1)})。它的方程是 y = mx + c。求 c。`,
+        solEn: `Parallel lines have the same gradient m = ${num(m1)}. ${num(y1)} = ${paren(m1)} × ${paren(x1)} + c, so c = ${num(c1)}`, solZh: `平行线斜率相同，m = ${num(m1)}。${num(y1)} = ${paren(m1)} × ${paren(x1)} + c，所以 c = ${num(c1)}` });
+      const n = R(2, 4), x0 = n * R(-3, 3), y0 = R(-8, 8), cc = y0 + n * x0, b0 = R(1, 6);   // perpendicular to y = x/n + b0: gradient -n
+      return mk({ topic: 'linear', value: cc, en: `A line is perpendicular to y = x/${n} + ${b0} and passes through (${num(x0)}, ${num(y0)}). Its equation is y = mx + c. Find c.`,
+        zh: `一条直线垂直于 y = x/${n} + ${b0}，并经过点 (${num(x0)}, ${num(y0)})。它的方程是 y = mx + c。求 c。`,
+        solEn: `The gradient of y = x/${n} + … is 1/${n}, so the perpendicular gradient is ${MINUS}${n}. ${num(y0)} = ${MINUS}${n} × ${paren(x0)} + c, so c = ${num(cc)}`, solZh: `原直线斜率是 1/${n}，垂直直线的斜率是 ${MINUS}${n}。${num(y0)} = ${MINUS}${n} × ${paren(x0)} + c，所以 c = ${num(cc)}` });
+    }
+    if (k === 'eqmc') {
+      const m1 = R(2, 7) * (Math.random() < 0.5 ? -1 : 1), c1 = R(1, 9) * (Math.random() < 0.5 ? -1 : 1), f = (a, b) => `y = ${coef(a)}${sg(b)}`;
+      return G.mc({ topic: 'linear', en: `Which is the equation of the line with gradient ${num(m1)} and y-intercept ${num(c1)}?`, zh: `斜率为 ${num(m1)}、y 轴截距为 ${num(c1)} 的直线，方程是哪一个？`, correct: f(m1, c1),
+        wrong: [f(c1, m1), f(m1, -c1), f(-m1, c1)], solEn: `y = mx + c with m = ${num(m1)} and c = ${num(c1)}`, solZh: `y = mx + c，其中 m = ${num(m1)}，c = ${num(c1)}` });
+    }
+    if (k === 'hv') {
+      const a = R(-6, 6) || 2, horiz = Math.random() < 0.5;
+      const HOR = { en: 'horizontal (gradient 0)', zh: '水平线（斜率为 0）' }, VER = { en: 'vertical (no gradient)', zh: '竖直线（没有斜率）' };
+      return G.mc({ topic: 'linear', en: `Which kind of line is ${horiz ? 'y' : 'x'} = ${num(a)}?`, zh: `${horiz ? 'y' : 'x'} = ${num(a)} 是什么样的直线？`, correct: horiz ? HOR : VER,
+        wrong: [horiz ? VER : HOR, { en: 'passes through the origin', zh: '经过原点' }, { en: 'has gradient 1', zh: '斜率为 1' }], solEn: `${horiz ? 'y' : 'x'} = constant is ${horiz ? 'parallel to the x-axis' : 'parallel to the y-axis'}`, solZh: `${horiz ? 'y' : 'x'} = 常数，${horiz ? '平行于 x 轴（水平线）' : '平行于 y 轴（竖直线）'}` });
+    }
     if (k === 'grad') {
       const x1 = R(-6, 3), x2 = x1 + R(1, 6), dy = R(-12, 12) || 5, y1 = R(-9, 9), y2 = y1 + dy;
       return mk({ topic: 'linear', value: dy / (x2 - x1), answer: fracStr(dy, x2 - x1), en: `Find the gradient of the line through (${num(x1)}, ${num(y1)}) and (${num(x2)}, ${num(y2)}).`,
@@ -555,5 +580,143 @@
     if (k === 'norepl') return mk({ topic: 'prob', value: r * (r - 1) / (t * (t - 1)), answer: fracStr(r * (r - 1), t * (t - 1)), en: `A bag has ${r} red, ${b} blue and ${g} green balls. Two balls are taken without replacement. P(both red)? (fraction)`, zh: `袋中有 ${r} 个红球、${b} 个蓝球、${g} 个绿球。不放回地摸出两个球，两个都是红球的概率？（分数）`, solEn: `${r}/${t} × ${r - 1}/${t - 1} = ${fracStr(r * (r - 1), t * (t - 1))}`, solZh: `${r}/${t} × ${r - 1}/${t - 1} = ${fracStr(r * (r - 1), t * (t - 1))}` });
     const not = Math.random() < 0.5, c = not ? t - r : b;
     return mk({ topic: 'prob', value: c / t, answer: fracStr(c, t), en: `A bag has ${r} red, ${b} blue and ${g} green balls. One is picked at random. P(${not ? 'not red' : 'blue'})? (fraction)`, zh: `袋中有 ${r} 个红球、${b} 个蓝球、${g} 个绿球，任意摸一个，摸到${not ? '不是红球' : '蓝球'}的概率？（分数）`, solEn: `${c}/${t} = ${fracStr(c, t)}`, solZh: `${c}/${t} = ${fracStr(c, t)}` });
+  });
+  /* ---------- W11 (v2.1.0): NSW Stage 5 gaps, items 1-2 of nsw-gap-analysis-y7-10.md ---------- */
+  const dp2 = v => round(v, 2), usd = v => '$' + dp2(v).toFixed(2);
+  const money = (topic, v, en, zh, solEn, solZh) => mk({ topic, value: dp2(v), unit: '$', tol: 0.011, answer: usd(v), en, zh, solEn, solZh });
+
+  /* Financial mathematics (Years 9-10): simple interest, earning money, spending money, compound interest, depreciation */
+  reg('fin', 9, (y, d) => {
+    const kinds = d <= 1 ? ['si', 'siAmount', 'wage', 'gst'] : d === 2 ? ['si', 'siRate', 'siTime', 'overtime', 'commission', 'gst', 'budget'] :
+      d === 3 ? ['siPrincipal', 'ci', 'ciInterest', 'depFlat', 'dep', 'overtime', 'budget'] : ['ciHalf', 'depInterest', 'ciInterest', 'dep', 'siPrincipal', 'gstBack'];
+    const k = pick(kinds);
+    const P = R(2, 20) * 500, r = R(2, 9), T = R(2, 8), I = P * r * T / 100;
+    if (k === 'si') return money('fin', I, `$${P} is invested at ${r}% p.a. simple interest for ${T} years. How much interest is earned?`, `${P} 元按年利率 ${r}% 单利计息，${T} 年。利息是多少元？`,
+      `I = P × r × T = ${P} × ${r}/100 × ${T} = $${dp2(I)}`, `I = P × r × T = ${P} × ${r}/100 × ${T} = ${dp2(I)} 元`);
+    if (k === 'siAmount') return money('fin', P + I, `$${P} is invested at ${r}% p.a. simple interest for ${T} years. What is the total amount at the end?`, `${P} 元按年利率 ${r}% 单利计息，${T} 年。到期本息共多少元？`,
+      `I = ${P} × ${r}/100 × ${T} = $${dp2(I)}; total = ${P} + ${dp2(I)} = $${dp2(P + I)}`, `利息 = ${P} × ${r}/100 × ${T} = ${dp2(I)}；本息和 = ${P} + ${dp2(I)} = ${dp2(P + I)} 元`);
+    if (k === 'siRate') return mk({ topic: 'fin', value: r, unit: '%', en: `Simple interest of $${I} is earned on $${P} in ${T} years. What is the rate (% per year)?`, zh: `${P} 元在 ${T} 年里得到单利利息 ${I} 元。年利率是多少（%）？`,
+      solEn: `r = I ÷ (P × T) × 100 = ${I} ÷ (${P} × ${T}) × 100 = ${r}%`, solZh: `r = I ÷ (P × T) × 100 = ${I} ÷ (${P} × ${T}) × 100 = ${r}%` });
+    if (k === 'siTime') return mk({ topic: 'fin', value: T, unit: 'years', en: `$${P} earns $${I} simple interest at ${r}% p.a. For how many years was it invested?`, zh: `${P} 元按年利率 ${r}% 单利计息，得到利息 ${I} 元。存了多少年？`,
+      solEn: `T = I ÷ (P × r/100) = ${I} ÷ ${P * r / 100} = ${T} years`, solZh: `T = I ÷ (P × r/100) = ${I} ÷ ${P * r / 100} = ${T} 年` });
+    if (k === 'siPrincipal') return money('fin', P, `Simple interest of $${I} is earned in ${T} years at ${r}% p.a. How much was invested?`, `按年利率 ${r}% 单利计息，${T} 年得到利息 ${I} 元。本金是多少元？`,
+      `P = I ÷ (r/100 × T) = ${I} ÷ ${r * T / 100} = $${P}`, `P = I ÷ (r/100 × T) = ${I} ÷ ${r * T / 100} = ${P} 元`);
+    if (k === 'wage') { const rate = R(15, 45), h = R(15, 40); return money('fin', rate * h, `A worker is paid $${rate} per hour and works ${h} hours in a week. What is the weekly pay?`, `某人时薪 ${rate} 元，一周工作 ${h} 小时。周薪是多少元？`, `${rate} × ${h} = $${rate * h}`, `${rate} × ${h} = ${rate * h} 元`); }
+    if (k === 'overtime') {
+      const rate = pick([20, 24, 28, 30, 32, 36, 40]), ot = R(2, 8), mult = pick([1.5, 2]), pay = 38 * rate + ot * mult * rate, name = mult === 1.5 ? 'time and a half' : 'double time';
+      return money('fin', pay, `A worker is paid $${rate} per hour for 38 hours, and ${name} for ${ot} extra hours. What is the total pay for the week?`, `某人时薪 ${rate} 元，正常工作 38 小时；另加班 ${ot} 小时，加班费是时薪的 ${mult} 倍。这周总共挣多少元？`,
+        `38 × ${rate} = ${38 * rate}; overtime ${ot} × ${mult} × ${rate} = ${ot * mult * rate}; total $${pay}`, `38 × ${rate} = ${38 * rate}；加班 ${ot} × ${mult} × ${rate} = ${ot * mult * rate}；合计 ${pay} 元`);
+    }
+    if (k === 'commission') {
+      const base = R(3, 9) * 100, S = R(4, 30) * 1000, c = pick([2, 3, 4, 5]), com = S * c / 100;
+      return money('fin', base + com, `A salesperson earns a base wage of $${base} a week plus ${c}% commission on sales. Sales this week were $${S}. What is the total pay?`, `销售员每周底薪 ${base} 元，另加销售额的 ${c}% 作提成。本周销售额 ${S} 元。总收入是多少元？`,
+        `Commission = ${c}% of ${S} = $${com}; total = ${base} + ${com} = $${base + com}`, `提成 = ${S} 的 ${c}% = ${com} 元；总收入 = ${base} + ${com} = ${base + com} 元`);
+    }
+    if (k === 'gst') { const p = R(2, 40) * 10; return money('fin', p * 1.1, `An item costs $${p} before GST. GST is 10%. What is the price including GST?`, `某物税前 ${p} 元，消费税（GST）10%。含税价是多少元？`, `${p} × 1.1 = $${dp2(p * 1.1)}`, `${p} × 1.1 = ${dp2(p * 1.1)} 元`); }
+    if (k === 'gstBack') { const g = R(5, 60), x = 11 * g; return money('fin', g, `A price including 10% GST is $${x}. How much of it is GST?`, `含 10% GST 的价格是 ${x} 元。其中 GST 是多少元？`, `Price before GST = ${x} ÷ 1.1 = ${round(x / 1.1, 2)}; GST = ${x} ${MINUS} ${round(x / 1.1, 2)} = $${g}`, `税前价 = ${x} ÷ 1.1 = ${round(x / 1.1, 2)}；GST = ${x} ${MINUS} ${round(x / 1.1, 2)} = ${g} 元`); }
+    if (k === 'budget') {
+      const inc = R(5, 14) * 100, a = R(2, 8) * 5, b = R(2, 6) * 5, left = inc * (100 - a - b) / 100;
+      return money('fin', left, `A weekly budget of $${inc} has ${a}% for rent and ${b}% for food. How much is left for everything else?`, `每周预算 ${inc} 元，房租占 ${a}%，食物占 ${b}%。剩下多少元可用于其他开支？`,
+        `Spent ${a + b}% → left ${100 - a - b}% of ${inc} = $${left}`, `已花 ${a + b}%，剩 ${100 - a - b}%：${inc} × ${100 - a - b}% = ${left} 元`);
+    }
+    const P2 = R(1, 8) * 1000, rc = pick([2, 3, 4, 5, 6, 8]), n = R(2, 5);
+    if (k === 'ci' || k === 'ciInterest') {
+      const A = P2 * (1 + rc / 100) ** n;
+      return money('fin', k === 'ci' ? A : A - P2, k === 'ci' ? `$${P2} is invested at ${rc}% p.a. compound interest (compounded annually). What is it worth after ${n} years? (to the nearest cent)` : `$${P2} is invested at ${rc}% p.a. compound interest (compounded annually) for ${n} years. How much interest is earned? (to the nearest cent)`,
+        k === 'ci' ? `${P2} 元按年利率 ${rc}% 复利（每年一次）计息，${n} 年后本息和是多少元？（精确到分）` : `${P2} 元按年利率 ${rc}% 复利（每年一次）计息，${n} 年。利息共多少元？（精确到分）`,
+        `A = P(1 + r)^n = ${P2} × ${1 + rc / 100}^${n} = $${usd(A).slice(1)}${k === 'ci' ? '' : `; interest = A ${MINUS} P = $${usd(A - P2).slice(1)}`}`, `A = P(1 + r)^n = ${P2} × ${1 + rc / 100}^${n} = ${usd(A).slice(1)} 元${k === 'ci' ? '' : `；利息 = A ${MINUS} P = ${usd(A - P2).slice(1)} 元`}`);
+    }
+    if (k === 'ciHalf') {
+      const q = pick([2, 4]), rr = pick([4, 6, 8]), nn = R(2, 4), A = P2 * (1 + rr / 100 / q) ** (q * nn);
+      return money('fin', A, `$${P2} is invested at ${rr}% p.a. compounded ${q === 2 ? 'half-yearly' : 'quarterly'}. What is it worth after ${nn} years? (to the nearest cent)`, `${P2} 元按年利率 ${rr}% 复利计息，${q === 2 ? '每半年' : '每季度'}结算一次，${nn} 年后本息和是多少元？（精确到分）`,
+        `${q * nn} periods at ${rr / q}%: A = ${P2} × ${1 + rr / 100 / q}^${q * nn} = $${usd(A).slice(1)}`, `共 ${q * nn} 期，每期 ${rr / q}%：A = ${P2} × ${1 + rr / 100 / q}^${q * nn} = ${usd(A).slice(1)} 元`);
+    }
+    const V = R(4, 40) * 1000;
+    if (k === 'depFlat') { const dpy = R(2, 9) * 100, nn = R(2, 6); return money('fin', V - dpy * nn, `A machine worth $${V} loses $${dpy} in value each year (flat rate). What is it worth after ${nn} years?`, `一台价值 ${V} 元的机器每年固定贬值 ${dpy} 元。${nn} 年后价值多少元？`, `${V} ${MINUS} ${nn} × ${dpy} = $${V - dpy * nn}`, `${V} ${MINUS} ${nn} × ${dpy} = ${V - dpy * nn} 元`); }
+    const rd = pick([10, 15, 20, 25]), nn = R(2, 4), val = V * (1 - rd / 100) ** nn;
+    if (k === 'dep') return money('fin', val, `A car worth $${V} depreciates by ${rd}% each year (reducing balance). What is it worth after ${nn} years? (to the nearest cent)`, `一辆价值 ${V} 元的汽车每年按剩余价值贬值 ${rd}%。${nn} 年后价值多少元？（精确到分）`,
+      `V = ${V} × ${1 - rd / 100}^${nn} = $${usd(val).slice(1)}`, `V = ${V} × ${1 - rd / 100}^${nn} = ${usd(val).slice(1)} 元`);
+    return money('fin', V - val, `A car worth $${V} depreciates by ${rd}% each year (reducing balance). How much value is lost in ${nn} years? (to the nearest cent)`, `一辆价值 ${V} 元的汽车每年按剩余价值贬值 ${rd}%。${nn} 年里共损失多少价值（元）？（精确到分）`,
+      `V = ${V} × ${1 - rd / 100}^${nn} = ${usd(val).slice(1)}; lost = ${V} ${MINUS} ${usd(val).slice(1)} = $${usd(V - val).slice(1)}`, `V = ${V} × ${1 - rd / 100}^${nn} = ${usd(val).slice(1)}；损失 = ${V} ${MINUS} ${usd(val).slice(1)} = ${usd(V - val).slice(1)} 元`);
+  });
+
+  /* Factorising (Years 8-10): common factors, difference of two squares, trinomials */
+  reg('factor', 8, (y, d) => {
+    const lin = (m, c) => `(${coef(m)}${c ? sg(c) : ''})`;
+    const xt = b => (b === 0 ? '' : ` ${b < 0 ? MINUS : '+'} ${Math.abs(b) === 1 ? '' : Math.abs(b)}x`), tm = (a, v) => (a === 1 ? '' : a) + v;
+    const k = pick(d <= 1 ? ['hcf', 'hcf', 'dsq', 'mcTrin'] : d === 2 ? ['hcf2', 'dsq', 'trin', 'mcTrin', 'mcDsq'] : d === 3 ? ['dsq2', 'trin', 'trin', 'trin2', 'mcTrin'] : ['trin2', 'dsq2', 'trin2', 'hcfTrin']);
+    if (k === 'hcf' || k === 'hcf2') {
+      const g = R(2, 12), a = R(1, 9), b = R(1, 9), c = k === 'hcf2' ? R(1, 9) : 0; if (gcd(gcd(a, b), c || a) !== 1) return null;
+      const ex = `${tm(g * a, 'x')} + ${tm(g * b, 'y')}${c ? ` + ${g * c}` : ''}`;
+      return mk({ topic: 'factor', value: g, en: `Factorise ${ex} fully by taking out the highest common factor. What is the number outside the brackets?`, zh: `把 ${ex} 提取最大公因数分解。括号外面的数是多少？`,
+        solEn: `The highest common factor is ${g}: ${ex} = ${g}(${tm(a, 'x')} + ${tm(b, 'y')}${c ? ` + ${c}` : ''})`, solZh: `最大公因数是 ${g}：${ex} = ${g}(${tm(a, 'x')} + ${tm(b, 'y')}${c ? ` + ${c}` : ''})` });
+    }
+    if (k === 'dsq') {
+      const a = R(2, 12);
+      return mk({ topic: 'factor', value: a, en: `x² ${MINUS} ${a * a} = (x ${MINUS} a)(x + a), with a > 0. Find a.`, zh: `x² ${MINUS} ${a * a} = (x ${MINUS} a)(x + a)，其中 a > 0。求 a。`,
+        solEn: `Difference of two squares: x² ${MINUS} ${a}² = (x ${MINUS} ${a})(x + ${a})`, solZh: `平方差公式：x² ${MINUS} ${a}² = (x ${MINUS} ${a})(x + ${a})` });
+    }
+    if (k === 'dsq2') {
+      const p = R(2, 5), q = R(1, 9);
+      return mk({ topic: 'factor', value: p + q, en: `${p * p}x² ${MINUS} ${q * q} = (px ${MINUS} q)(px + q), with p > 0 and q > 0. Find p + q.`, zh: `${p * p}x² ${MINUS} ${q * q} = (px ${MINUS} q)(px + q)，其中 p > 0，q > 0。求 p + q。`,
+        solEn: `(${p}x)² ${MINUS} ${q}² = (${p}x ${MINUS} ${q})(${p}x + ${q}); p + q = ${p + q}`, solZh: `(${p}x)² ${MINUS} ${q}² = (${p}x ${MINUS} ${q})(${p}x + ${q})；p + q = ${p + q}` });
+    }
+    if (k === 'hcfTrin') {
+      const g = R(2, 5), p = R(-6, 6) || 2, q = R(-6, 6) || 3; if (p === q) return null;
+      const lo = Math.min(p, q), hi = Math.max(p, q), expr = `${g}x²${xt(g * (p + q))}${sg(g * p * q)}`;
+      if (p + q === 0 || p * q === 0) return null;
+      return mk({ topic: 'factor', value: lo, en: `${expr} = ${g}(x + p)(x + q), with p < q. Find p.`, zh: `${expr} = ${g}(x + p)(x + q)，其中 p < q。求 p。`,
+        solEn: `Take out ${g} first: ${g}(x²${xt(p + q)}${sg(p * q)}) = ${g}(x${sg(lo)})(x${sg(hi)})`, solZh: `先提公因数 ${g}：${g}(x²${xt(p + q)}${sg(p * q)}) = ${g}(x${sg(lo)})(x${sg(hi)})` });
+    }
+    if (k === 'trin' || k === 'mcTrin') {
+      const p = R(-9, 9) || 2, q = R(-9, 9) || 4; if (p === q) return null;
+      const lo = Math.min(p, q), hi = Math.max(p, q), expr = `x²${xt(p + q)}${p * q ? sg(p * q) : ''}`;
+      if (k === 'mcTrin' && (p + q === 0 || p * q === 0)) return null;
+      if (k === 'trin') return mk({ topic: 'factor', value: lo, en: `${expr} = (x + p)(x + q), with p < q. Find p.`, zh: `${expr} = (x + p)(x + q)，其中 p < q。求 p。`,
+        solEn: `Two numbers that multiply to ${num(p * q)} and add to ${num(p + q)}: ${num(lo)} and ${num(hi)}`, solZh: `找两个数，积为 ${num(p * q)}，和为 ${num(p + q)}：${num(lo)} 和 ${num(hi)}` });
+      const f = (a, b) => `(x${sg(a)})(x${sg(b)})`;
+      return G.mc({ topic: 'factor', en: `Factorise ${expr}.`, zh: `分解因式：${expr}。`, correct: f(lo, hi), wrong: [f(-lo, -hi), f(lo, -hi), f(-lo, hi)],
+        solEn: `Two numbers that multiply to ${num(p * q)} and add to ${num(p + q)}: ${num(lo)} and ${num(hi)}`, solZh: `找两个数，积为 ${num(p * q)}，和为 ${num(p + q)}：${num(lo)} 和 ${num(hi)}` });
+    }
+    if (k === 'mcDsq') {
+      const a = R(2, 12);
+      return G.mc({ topic: 'factor', en: `Factorise x² ${MINUS} ${a * a}.`, zh: `分解因式：x² ${MINUS} ${a * a}。`, correct: `(x ${MINUS} ${a})(x + ${a})`,
+        wrong: [`(x ${MINUS} ${a})²`, `(x + ${a})²`, `(x ${MINUS} ${a * a})(x + 1)`], solEn: `Difference of two squares: (x ${MINUS} ${a})(x + ${a})`, solZh: `平方差：(x ${MINUS} ${a})(x + ${a})` });
+    }
+    // trin2: m x² + (m q + p) x + p q = (m x + p)(x + q); find p + q
+    const m = R(2, 4), p = R(-6, 6) || 3, q = R(-6, 6) || 2; if (m * q + p === 0 || p % m === 0) return null;   // p % m: otherwise (mx + p)(x + q) can also be written the other way round
+    const expr = `${m}x²${xt(m * q + p)}${p * q ? sg(p * q) : ''}`;
+    return mk({ topic: 'factor', value: p + q, en: `${expr} = (${m}x + p)(x + q). Find p + q.`, zh: `${expr} = (${m}x + p)(x + q)。求 p + q。`,
+      solEn: `${lin(m, p)}${lin(1, q)} expands to ${expr}, so p = ${num(p)}, q = ${num(q)}, p + q = ${num(p + q)}`, solZh: `${lin(m, p)}${lin(1, q)} 展开得 ${expr}，所以 p = ${num(p)}，q = ${num(q)}，p + q = ${num(p + q)}` });
+  });
+
+  /* Change the subject of a formula (Years 9-10) */
+  reg('formula', 9, (y, d) => {
+    const items = [
+      { id: 1, eq: 'v = u + at', v: 't', ans: '(v − u)/a', wr: ['v − u/a', '(v + u)/a', 'a(v − u)', '(u − v)/a'], lv: [1, 2, 3],
+        gen: () => { const a = R(2, 9), t = R(2, 12), u = R(1, 20); return { given: `v = ${u + a * t}, u = ${u}, a = ${a}`, val: t, step: `t = (${u + a * t} ${MINUS} ${u}) ÷ ${a}` }; } },
+      { id: 2, eq: 'y = mx + c', v: 'x', ans: '(y − c)/m', wr: ['y − c/m', '(y + c)/m', 'm(y − c)', 'y/m − c'].slice(0, 4), lv: [1, 2, 3],
+        gen: () => { const m = R(2, 7), x = R(-5, 9), c = R(-9, 9) || 4; return { given: `y = ${num(m * x + c)}, m = ${m}, c = ${num(c)}`, val: x, step: `x = (${num(m * x + c)} ${MINUS} ${paren(c)}) ÷ ${m}` }; } },
+      { id: 3, eq: 'A = ½bh', v: 'h', ans: '2A/b', wr: ['A/(2b)', '2Ab', '2b/A', 'A ÷ 2 − b'], lv: [2, 3],
+        gen: () => { const b = R(2, 10) * 2, h = R(2, 12); return { given: `A = ${b * h / 2}, b = ${b}`, val: h, step: `h = 2 × ${b * h / 2} ÷ ${b}` }; } },
+      { id: 4, eq: 'P = 2(l + w)', v: 'w', ans: 'P/2 − l', wr: ['P − 2l', '2P − l', 'P/2 + l', 'P − l/2'], lv: [2, 3],
+        gen: () => { const l = R(3, 15), w = R(2, 12); return { given: `P = ${2 * (l + w)}, l = ${l}`, val: w, step: `w = ${l + w} ${MINUS} ${l}` }; } },
+      { id: 5, eq: 'F = 9C/5 + 32', v: 'C', ans: '5(F − 32)/9', wr: ['5F/9 − 32', '5(F + 32)/9', '9(F − 32)/5', '5F − 32/9'], lv: [3, 4],
+        gen: () => { const c = R(-4, 24) * 5; return { given: `F = ${num(9 * c / 5 + 32)}`, val: c, step: `C = 5 × (${9 * c / 5 + 32} ${MINUS} 32) ÷ 9` }; } },
+      { id: 6, eq: 'V = ⅓Ah', v: 'h', ans: '3V/A', wr: ['V/(3A)', '3VA', 'A/(3V)', 'V − 3A'], lv: [2, 3],
+        gen: () => { const A = R(2, 8) * 3, h = R(2, 12); return { given: `V = ${A * h / 3}, A = ${A}`, val: h, step: `h = 3 × ${A * h / 3} ÷ ${A}` }; } },
+      { id: 7, eq: 'y = k/x', v: 'x', ans: 'k/y', wr: ['ky', 'y/k', 'k − y', 'k + y'], lv: [1, 2],
+        gen: () => { const x = R(2, 12), k = R(2, 9) * x; return { given: `y = ${k / x}, k = ${k}`, val: x, step: `x = ${k} ÷ ${k / x}` }; } },
+      { id: 8, eq: 's = ut + ½at²', v: 'a', ans: '2(s − ut)/t²', wr: ['2(s − ut)/t', '(s − ut)/t²', '2s − ut/t²', '2(s + ut)/t²'], lv: [3, 4],
+        gen: () => { const u = R(1, 9), t = R(2, 6) , a = R(1, 5) * 2; return { given: `s = ${u * t + a * t * t / 2}, u = ${u}, t = ${t}`, val: a, step: `a = 2 × (${u * t + a * t * t / 2} ${MINUS} ${u * t}) ÷ ${t * t}` }; } },
+      { id: 9, eq: 'E = ½mv²', v: 'v', ans: '√(2E/m)', wr: ['2E/m', '√(E/2m)', '√(2E)/m', '√(E/m)'], lv: [4],
+        gen: () => { const m = R(1, 6) * 2, v = R(2, 12); return { given: `E = ${m * v * v / 2}, m = ${m}`, val: v, step: `v = √(2 × ${m * v * v / 2} ÷ ${m}) = √${v * v}` }; } }
+    ].filter(it => it.lv.includes(d));
+    const it = pick(items), asMc = Math.random() < 0.5;
+    if (asMc) return G.mc({ topic: 'formula', en: `Make ${it.v} the subject of ${it.eq}.`, zh: `把公式 ${it.eq} 变形，使 ${it.v} 成为主项。`, correct: `${it.v} = ${it.ans}`, wrong: it.wr.map(w => `${it.v} = ${w}`),
+      solEn: `Undo the operations around ${it.v} one at a time: ${it.v} = ${it.ans}`, solZh: `一步一步还原 ${it.v} 周围的运算：${it.v} = ${it.ans}` });
+    const g = it.gen();
+    return mk({ topic: 'formula', value: g.val, en: `Make ${it.v} the subject of ${it.eq}, then find ${it.v} when ${g.given}.`, zh: `把公式 ${it.eq} 变形，使 ${it.v} 成为主项，然后求当 ${g.given} 时 ${it.v} 的值。`,
+      solEn: `${it.v} = ${it.ans}; ${g.step} = ${num(g.val)}`, solZh: `${it.v} = ${it.ans}；${g.step} = ${num(g.val)}` });
   });
 })(typeof window !== 'undefined' ? window : globalThis);

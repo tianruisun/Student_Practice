@@ -355,6 +355,8 @@ const ROUTES = {
     const r = await duelOf(db, me, id, now);
     if (r.to_id !== me.id) fail(404, 'no_challenge');
     if (r.status !== 'sent') fail(409, r.status === 'declined' ? 'declined' : 'already_answered');
+    if (now > deadlineOf(r)) fail(409, 'too_late');
+    if (body.accept !== true && r.a_score !== null) fail(409, 'has_result');   // v2.1.0 R3.4: a decline would void the sender's result
     if (body.accept === true) await db.prepare(`UPDATE duels SET status = 'accepted', accepted = ? WHERE id = ? AND status = 'sent'`).bind(now, id).run();
     else await db.prepare(`UPDATE duels SET status = 'declined' WHERE id = ? AND status = 'sent'`).bind(id).run();
     return challengeOut(await duelOf(db, me, id, now), me.id, now);
@@ -387,10 +389,14 @@ async function duelOf(db, me, id, now) {
   if (!r || (r.from_id !== me.id && r.to_id !== me.id)) fail(404, 'no_challenge');
   return r;
 }
-const dropUnanswered = (db, uid, now) => db.prepare(`DELETE FROM duels WHERE (from_id = ? OR to_id = ?) AND status = 'sent' AND created < ?`).bind(uid, uid, now - CH_ACCEPT_MS).run();
-/* each student keeps the last 20: older ones go (for both sides) */
-const keepLast = (db, uid) => db.prepare(`DELETE FROM duels WHERE (from_id = ? OR to_id = ?) AND id NOT IN
-  (SELECT id FROM duels WHERE from_id = ? OR to_id = ? ORDER BY id DESC LIMIT ${CH_KEEP})`).bind(uid, uid, uid, uid).run();
+/* v2.1.0 R3.3: only an invitation nobody has touched goes; one the sender started or handed in stays (it is over, nobody won) */
+const dropUnanswered = (db, uid, now) => db.prepare(`DELETE FROM duels WHERE (from_id = ? OR to_id = ?) AND status = 'sent' AND created < ? AND a_start IS NULL AND a_score IS NULL`).bind(uid, uid, now - CH_ACCEPT_MS).run();
+/* each student keeps the last 20: older ones go (for both sides). v2.1.0 R3.5: ones that are not finished (sent, or accepted
+   and still being played) are kept first, so a new invitation nobody has opened is never the one that goes; a finished
+   challenge is one that was declined or that both sides handed in. */
+const keepLast = (db, uid) => db.prepare(`DELETE FROM duels WHERE id IN
+  (SELECT id FROM duels WHERE from_id = ? OR to_id = ?
+   ORDER BY (status = 'declined' OR (a_score IS NOT NULL AND b_score IS NOT NULL)) ASC, id DESC LIMIT -1 OFFSET ${CH_KEEP})`).bind(uid, uid).run();
 /* the time by which this challenge must be done: 24 hours after accepting (before that, the 24 hours to accept) */
 const deadlineOf = r => (r.status === 'accepted' ? r.accepted + CH_PLAY_MS : r.created + CH_ACCEPT_MS);
 function canPlay(r, side, now) {
@@ -452,8 +458,8 @@ function challengeOut(r, me, now) {
   const mine = r.from_id === me;
   const a = r.a_score ? JSON.parse(r.a_score) : null, b = r.b_score ? JSON.parse(r.b_score) : null;
   const deadline = deadlineOf(r);
-  const over = r.status === 'declined' || (!!a && !!b) || (r.status === 'accepted' && now > deadline);
-  const w = over && r.status !== 'declined' ? winnerOf(a, b) : null;
+  const over = r.status === 'declined' || (!!a && !!b) || ((r.status === 'accepted' || r.status === 'sent') && now > deadline);
+  const w = over && r.status !== 'declined' ? (r.status === 'sent' ? 'none' : winnerOf(a, b)) : null;   // R3.3: never accepted in time, so no winner
   const my = mine ? a : b, their = mine ? b : a;
   return {
     id: r.id, created: r.created, mine, status: r.status, accepted: r.accepted || null, deadline, over,

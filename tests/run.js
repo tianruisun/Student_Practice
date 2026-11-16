@@ -1181,6 +1181,10 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
   t('W8: every error the server can send has words in both languages', () => {
     const api = fs.readFileSync(path.join(root, 'server/api.js'), 'utf8');
     const codes = new Set([...api.matchAll(/fail\(\d+, '(\w+)'/g)].map(m => m[1]));
+    // v2.1.0 R6.2: codes sent from a ternary (fail(409, x ? 'declined' : 'already_answered')) and by the rate limiter (too_many, too_many_day) have words too
+    for (const m of api.matchAll(/fail\(\d+, [^;\n]*?\? '(\w+)' : '(\w+)'/g)) { codes.add(m[1]); codes.add(m[2]); }
+    for (const m of api.matchAll(/'(too_many\w*)'/g)) codes.add(m[1]);
+    assert.ok(codes.has('too_many_day') && codes.has('too_many') && codes.has('declined') && codes.has('already_answered') && codes.has('has_result'), 'the wider pattern sees the ternary and limiter codes');
     // R1.5 (v2.0.0): bad_input and no_route have words too; bad_origin goes to a page on another site, never to the app
     codes.delete('bad_origin');
     assert.ok(codes.has('bad_input') && codes.has('no_route') && codes.has('bad_set') && codes.has('stale'));
@@ -1245,8 +1249,8 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(app.includes('delete S.lastQuizSettings.challenge;'));
   });
   t('W8: What\'s new for v2.0.0 lists four items with words in both languages', () => {
-    const rel = box.RELEASES[0];
-    assert.strictEqual(rel.v, '2.0.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'account,friends,together,fixes');
+    const rel = box.RELEASES.find(r => r.v === '2.0.0');
+    assert.ok(rel, 'the 2.0.0 entry stays in the list'); assert.strictEqual(rel.items.map(i => i.id).join(), 'account,friends,together,fixes');
     rel.items.forEach(i => ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.0.0.' + i.id + sfx] && S.zh['rel.2.0.0.' + i.id + sfx], i.id + sfx)));
   });
   t('W8/W10: the Pages Function and the server are not offline files; the server sends no email and holds no secret', () => {
@@ -1263,6 +1267,127 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(/prefers-color-scheme: dark\) \{ \.pb-t em \{ color: #ffb066; \} \}/.test(css), 'R3.4');
     assert.ok(/\.mode-card\.soon \.mc-t \{ opacity: 1; color: var\(--muted\); \}/.test(css), 'R3.5');
   });
+
+/* ---------- v2.1.0 (W11, Terry: NSW Years 7-10 gaps, items 1-2) and confirm password ---------- */
+{
+  const mathsQ = (topic, y, d) => G.generateExact('maths', y, topic, d);
+  const draw = (topic, years, n, fn) => { for (const y of years) for (let d = 1; d <= 4; d++) for (let i = 0; i < n; i++) { const q = mathsQ(topic, y, d); if (q) fn(q, y, d); } };
+  const M = s => s.replace(/−/g, '-');
+  const near = (a, b, tol = 0.006) => Math.abs(a - b) <= tol;
+  /* "x² + 5x − 6", "2x² − 7x − 4", "x² − 4" → [a, b, c] */
+  const poly = str => {
+    const s = M(str).replace(/\s+/g, '');
+    const m = /^(\d*)x²(?:([+-]\d*)x)?(?:([+-]\d+))?$/.exec(s); assert.ok(m, 'cannot read ' + str);
+    const co = v => (v === '+' || v === '-' ? v + '1' : v);
+    return [m[1] === '' ? 1 : +m[1], m[2] ? +co(m[2]) : 0, m[3] ? +m[3] : 0];
+  };
+  const seen = {};
+
+  t('W11: Financial maths (Years 9-10) has the right years, a name and an emoji in both languages', () => {
+    assert.deepStrictEqual([G.SUBJECTS.maths.fin.minYear, G.SUBJECTS.maths.fin.maxYear], [9, 10]);
+    assert.deepStrictEqual([G.SUBJECTS.maths.factor.minYear, G.SUBJECTS.maths.factor.maxYear], [8, 10]);
+    assert.deepStrictEqual([G.SUBJECTS.maths.formula.minYear, G.SUBJECTS.maths.formula.maxYear], [9, 10]);
+    for (const k of ['fin', 'factor', 'formula']) { assert.ok(S.en['topic.' + k] && S.zh['topic.' + k], k); assert.ok(!G.topicsFor('maths', 7).includes(k), k + ' is not in Year 7'); }
+    assert.ok(G.topicsFor('maths', 9).includes('fin') && G.topicsFor('maths', 8).includes('factor') && !G.topicsFor('maths', 11).includes('fin'));
+  });
+  t('W11: every Financial maths answer is right (simple and compound interest, depreciation, wages, GST, budgets), checked from the question text', () => {
+    let n = 0;
+    draw('fin', [9, 10], 120, q => {
+      const e = M(q.q.en); let m;
+      if ((m = /^\$(\d+) is invested at (\d+)% p\.a\. simple interest for (\d+) years\. How much interest/.exec(e))) { assert.ok(near(q.value, +m[1] * m[2] * m[3] / 100), e); seen.si = 1; }
+      else if ((m = /^\$(\d+) is invested at (\d+)% p\.a\. simple interest for (\d+) years\. What is the total/.exec(e))) { assert.ok(near(q.value, +m[1] * (1 + m[2] * m[3] / 100)), e); seen.siAmount = 1; }
+      else if ((m = /^Simple interest of \$(\d+) is earned on \$(\d+) in (\d+) years\. What is the rate/.exec(e))) { assert.ok(near(q.value, m[1] / (m[2] * m[3]) * 100), e); seen.siRate = 1; }
+      else if ((m = /^\$(\d+) earns \$(\d+) simple interest at (\d+)% p\.a\. For how many years/.exec(e))) { assert.ok(near(q.value, m[2] / (m[1] * m[3] / 100)), e); seen.siTime = 1; }
+      else if ((m = /^Simple interest of \$(\d+) is earned in (\d+) years at (\d+)% p\.a\. How much was invested/.exec(e))) { assert.ok(near(q.value, m[1] / (m[3] * m[2] / 100)), e); seen.siPrincipal = 1; }
+      else if ((m = /^\$(\d+) is invested at (\d+)% p\.a\. compound interest \(compounded annually\)\. What is it worth after (\d+) years/.exec(e))) { assert.ok(near(q.value, +m[1] * (1 + m[2] / 100) ** m[3]), e); seen.ci = 1; }
+      else if ((m = /^\$(\d+) is invested at (\d+)% p\.a\. compound interest \(compounded annually\) for (\d+) years\. How much interest/.exec(e))) { assert.ok(near(q.value, +m[1] * ((1 + m[2] / 100) ** m[3] - 1)), e); seen.ciInterest = 1; }
+      else if ((m = /^\$(\d+) is invested at (\d+)% p\.a\. compounded (half-yearly|quarterly)\. What is it worth after (\d+) years/.exec(e))) { const per = m[3] === 'quarterly' ? 4 : 2; assert.ok(near(q.value, +m[1] * (1 + m[2] / 100 / per) ** (per * m[4])), e); seen.ciHalf = 1; }
+      else if ((m = /^A car worth \$(\d+) depreciates by (\d+)% each year \(reducing balance\)\. What is it worth after (\d+) years/.exec(e))) { assert.ok(near(q.value, +m[1] * (1 - m[2] / 100) ** m[3]), e); seen.dep = 1; }
+      else if ((m = /^A car worth \$(\d+) depreciates by (\d+)% each year \(reducing balance\)\. How much value is lost in (\d+) years/.exec(e))) { assert.ok(near(q.value, m[1] - m[1] * (1 - m[2] / 100) ** m[3]), e); seen.depInterest = 1; }
+      else if ((m = /^A machine worth \$(\d+) loses \$(\d+) in value each year \(flat rate\)\. What is it worth after (\d+) years/.exec(e))) { assert.ok(near(q.value, m[1] - m[2] * m[3]), e); seen.depFlat = 1; }
+      else if ((m = /^A worker is paid \$(\d+) per hour for 38 hours, and (time and a half|double time) for (\d+) extra hours/.exec(e))) { assert.ok(near(q.value, 38 * m[1] + m[3] * (m[2] === 'double time' ? 2 : 1.5) * m[1]), e); seen.overtime = 1; }
+      else if ((m = /^A worker is paid \$(\d+) per hour and works (\d+) hours/.exec(e))) { assert.ok(near(q.value, m[1] * m[2]), e); seen.wage = 1; }
+      else if ((m = /^A salesperson earns a base wage of \$(\d+) a week plus (\d+)% commission on sales\. Sales this week were \$(\d+)/.exec(e))) { assert.ok(near(q.value, +m[1] + m[3] * m[2] / 100), e); seen.commission = 1; }
+      else if ((m = /^An item costs \$(\d+) before GST\. GST is 10%/.exec(e))) { assert.ok(near(q.value, m[1] * 1.1), e); seen.gst = 1; }
+      else if ((m = /^A price including 10% GST is \$(\d+)\. How much of it is GST/.exec(e))) { assert.ok(near(q.value, m[1] - m[1] / 1.1), e); seen.gstBack = 1; }
+      else if ((m = /^A weekly budget of \$(\d+) has (\d+)% for rent and (\d+)% for food/.exec(e))) { assert.ok(near(q.value, m[1] * (100 - m[2] - m[3]) / 100), e); seen.budget = 1; }
+      else assert.fail('an unknown Financial maths question: ' + e);
+      n++;
+    });
+    assert.ok(n >= 900, 'checked ' + n);
+    assert.strictEqual(Object.keys(seen).length, 17, 'kinds seen: ' + Object.keys(seen).join());
+  });
+  t('W11: Factorising answers are right (the product is expanded to check), and the multiple-choice answers expand to the question', () => {
+    const exp = (a, b) => [a[0] * b[0], a[0] * b[1] + a[1] * b[0], a[1] * b[1]];   // (a0 x + a1)(b0 x + b1)
+    let n = 0, mc = 0;
+    draw('factor', [8, 9, 10], 120, q => {
+      const e = M(q.q.en); let m; n++;
+      if (q.type === 'mc') {
+        const [a, b, c] = poly(/^Factorise (.*)\.$/.exec(e)[1]);
+        const fac = z => [...M(z).matchAll(/\(x\s*([+-])\s*(\d+)\)/g)].map(w => +(w[1] + w[2]));
+        const [p1, p2] = fac(q.choices[q.correct].en);
+        assert.ok(a === 1 && p1 + p2 === b && p1 * p2 === c, e + ' -> ' + q.choices[q.correct].en);
+        q.choices.forEach((ch, i) => { if (i !== q.correct) { const f = fac(ch.en); if (f.length === 2) assert.ok(!(f[0] + f[1] === b && f[0] * f[1] === c), 'a wrong option is also right: ' + ch.en + ' for ' + e); } });
+        assert.strictEqual(new Set(q.choices.map(ch => ch.en)).size, q.choices.length); mc++;
+      } else if ((m = /^(.*) = \(x \+ p\)\(x \+ q\), with p < q\. Find p\.$/.exec(e))) {
+        const [a, b, c] = poly(m[1]), r = Math.sqrt(b * b - 4 * c); assert.ok(a === 1 && near(q.value, (b - r) / 2), e + ' = ' + q.value);
+      } else if ((m = /^(.*) = (\d+)\(x \+ p\)\(x \+ q\), with p < q\. Find p\.$/.exec(e))) {
+        const [a, b, c] = poly(m[1]), g = +m[2]; assert.ok(a === g && b % g === 0 && c % g === 0, e); const bb = b / g, cc = c / g, r = Math.sqrt(bb * bb - 4 * cc);
+        assert.ok(near(q.value, (bb - r) / 2), e + ' = ' + q.value);
+      } else if ((m = /^(.*) = \((\d+)x \+ p\)\(x \+ q\)\. Find p \+ q\.$/.exec(e))) {
+        const [a, b, c] = poly(m[1]), k = +m[2]; assert.strictEqual(a, k); const found = [];
+        for (let p = -80; p <= 80; p++) for (let qq = -80; qq <= 80; qq++) if (exp([k, p], [1, qq]).join() === [a, b, c].join()) found.push(p + qq);
+        assert.deepStrictEqual(found, [q.value], e + ' has more than one way to read it: ' + found);
+      } else if ((m = /^x² - (\d+) = \(x - a\)\(x \+ a\), with a > 0\. Find a\.$/.exec(e))) assert.strictEqual(q.value ** 2, +m[1]);
+      else if ((m = /^(\d+)x² - (\d+) = \(px - q\)\(px \+ q\), with p > 0 and q > 0\. Find p \+ q\.$/.exec(e))) { const p = Math.sqrt(m[1]), qq = Math.sqrt(m[2]); assert.ok(Number.isInteger(p) && Number.isInteger(qq) && q.value === p + qq, e); }
+      else if ((m = /^Factorise (\d*)x \+ (\d*)y(?: \+ (\d+))? fully/.exec(e))) { const a = +m[1] || 1, b = +m[2] || 1, c = m[3] ? +m[3] : 0; let g = a; const gcd = (x, y) => (y ? gcd(y, x % y) : x); g = gcd(gcd(a, b), c || a); assert.strictEqual(q.value, g, e); }
+      else if (/^Factorise x² - \d+\.$/.test(e) && q.type === 'mc') { /* handled above */ }
+      else assert.fail('an unknown Factorising question: ' + e);
+    });
+    assert.ok(n > 800 && mc > 100, `checked ${n}, ${mc} multiple-choice`);
+  });
+  t('W11: Change the subject: each worked answer is in the solution, the choices are distinct, and the right one is among them', () => {
+    let num = 0, mcs = 0;
+    draw('formula', [9, 10], 120, q => {
+      if (q.type === 'mc') { mcs++; assert.strictEqual(new Set(q.choices.map(c => c.en)).size, 4); assert.ok(q.choices[q.correct].en.startsWith(/^Make (\S+) the subject/.exec(q.q.en)[1] + ' = '), q.q.en); }
+      else { num++; assert.ok(Number.isFinite(q.value) && q.sol.en.replace(/−/g, '-').includes(String(q.value)), q.q.en + ' / ' + q.sol.en); }
+      assert.ok(!/NaN|undefined|Infinity/.test(JSON.stringify(q)));
+    });
+    assert.ok(num > 100 && mcs > 100, `${num} typed, ${mcs} multiple-choice`);
+  });
+  t('W11: Linear graphs from Year 9 ask for the equation of a line; the answers are right; Year 8 does not get them yet', () => {
+    let seenKinds = new Set();
+    draw('linear', [9, 10], 150, q => {
+      const e = M(q.q.en); let m;
+      if ((m = /^The line through \((-?\d+), (-?\d+)\) and \((-?\d+), (-?\d+)\) has equation y = mx \+ c\. Find c\.$/.exec(e))) { const [x1, y1, x2, y2] = m.slice(1).map(Number), g = (y2 - y1) / (x2 - x1); assert.ok(Number.isInteger(g) && near(q.value, y1 - g * x1, 1e-9), e); seenKinds.add('eqc'); }
+      else if ((m = /^A line has gradient (-?\d+) and passes through \((-?\d+), (-?\d+)\)\. Its equation is y = mx \+ c\. Find c\.$/.exec(e))) { assert.ok(near(q.value, m[3] - m[1] * m[2], 1e-9), e); seenKinds.add('eqpt'); }
+      else if ((m = /^A line is parallel to y = (-?\d*)x(?: [+-] \d+)? and passes through \((-?\d+), (-?\d+)\)\. Its equation is y = mx \+ c\. Find c\.$/.exec(e))) { const g = m[1] === '' ? 1 : m[1] === '-' ? -1 : +m[1]; assert.ok(near(q.value, m[3] - g * m[2], 1e-9), e); seenKinds.add('par'); }
+      else if ((m = /^A line is perpendicular to y = x\/(\d) \+ (\d+) and passes through \((-?\d+), (-?\d+)\)\. Its equation is y = mx \+ c\. Find c\.$/.exec(e))) { assert.ok(near(q.value, +m[4] + m[1] * m[3], 1e-9), e); seenKinds.add('perp'); }
+      else if (q.type === 'mc' && /^Which is the equation of the line with gradient/.test(e)) { const mm = /gradient (-?\d+) and y-intercept (-?\d+)/.exec(e); const want = 'y = ' + (mm[1] === '1' ? '' : mm[1] === '-1' ? '-' : mm[1]) + 'x' + (mm[2] < 0 ? ' - ' + (-mm[2]) : ' + ' + mm[2]); assert.strictEqual(M(q.choices[q.correct].en), want, e); seenKinds.add('eqmc'); }
+      else if (q.type === 'mc' && /^Which kind of line is/.test(e)) { const horiz = /^Which kind of line is y =/.test(e); assert.ok(q.choices[q.correct].en.startsWith(horiz ? 'horizontal' : 'vertical'), e); seenKinds.add('hv'); }
+    });
+    assert.deepStrictEqual([...seenKinds].sort(), ['eqc', 'eqmc', 'eqpt', 'hv', 'par', 'perp']);
+    draw('linear', [8], 200, q => assert.ok(!/y = mx \+ c|Which kind of line|Which is the equation/.test(q.q.en), 'Year 8 gets an equation-of-a-line question: ' + q.q.en));
+  });
+  t('W11: the new questions read well in Chinese too (no English left in a Chinese question or its choices except formulas)', () => {
+    for (const topic of ['fin', 'factor', 'formula', 'linear']) draw(topic, [9, 10], 40, q => {
+      assert.ok(/[一-鿿]/.test(q.q.zh), 'no Chinese in ' + q.q.zh);
+      if (q.type === 'mc') q.choices.forEach(c => { if (/[a-z]{4,}/i.test(c.en.replace(/sqrt/g, ''))) assert.ok(/[一-鿿]/.test(c.zh), 'English choice with no Chinese: ' + c.en); });
+    });
+  });
+  t('W11: confirm password: the sign-up and the reset form have a second password box, a label and the message in both languages', () => {
+    const fr = fs.readFileSync(path.join(root, 'js/friends.js'), 'utf8');
+    assert.ok(/field\('fNewPass2', 'acc\.passwordAgain'/.test(fr) && /field\('fResetPass2', 'acc\.newPasswordAgain'/.test(fr));
+    assert.strictEqual((fr.match(/password !== password2/g) || []).length, 2, 'both forms compare the two passwords before sending');
+    for (const k of ['acc.passwordAgain', 'acc.newPasswordAgain', 'acc.err.pass_mismatch']) { assert.ok(S.en[k] && S.zh[k], k); assert.ok(/[一-鿿]/.test(S.zh[k]), k + ' zh'); }
+    assert.ok(fr.indexOf('password.length < 8') < fr.indexOf('password !== password2'), 'a short password is reported first');
+  });
+  t('W11: What\'s new for v2.1.0 lists four items with words in both languages, and it is the newest entry', () => {
+    const rel = box.RELEASES[0];
+    assert.strictEqual(rel.v, '2.1.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'password,money,algebra,lines');
+    rel.items.forEach(i => ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.1.0.' + i.id + sfx] && S.zh['rel.2.1.0.' + i.id + sfx], i.id + sfx)));
+  });
+}
 }
 
 console.log(`${pass} passed, ${fail} failed (${gen} generated questions checked)`);

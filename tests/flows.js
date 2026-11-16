@@ -1556,7 +1556,7 @@ async function run(site) {
       const v = await appVersion(page);
       check('v1.11 What\'s new: opens on its own for a browser that used an earlier version', await isOpen(page));
       check('v1.11 What\'s new: the title names this version', (await page.textContent('#newsTitle')).includes(v), await page.textContent('#newsTitle'));
-      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 4, await page.locator('#newsBody li').count());   // v2.0.0: four items
+      check('v1.11 What\'s new: only this version\'s items, without a version heading', (await page.locator('#newsBody .news-ver').count()) === 1 && (await page.locator('#newsBody h4').count()) === 0 && (await page.locator('#newsBody li').count()) === 1, await page.locator('#newsBody li').count());   // v2.2.0: one item
       const sizes = await page.evaluate(() => ['#newsShow', '#newsClose'].map(s => document.querySelector(s).getBoundingClientRect().height));
       check('v1.11 What\'s new: Show me and Got it are at least 44 px tall', sizes.every(h => h >= 44), sizes);
       check('v1.11 What\'s new: nothing is stored until it is closed', (await page.evaluate(() => localStorage.getItem('sp.news'))) === null);
@@ -1587,7 +1587,7 @@ async function run(site) {
       // a browser that last saw v1.10.0 gets everything after it, each under its own version heading
       ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.10.0"' }, null, { news: true }));
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 5 && heads[0].includes(await appVersion(page)) && heads[1].includes('2.0.0') && heads[2].includes('1.12.0') && heads[3].includes('1.11.0') && heads[4].includes('1.10.1'), JSON.stringify(heads));
+      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 6 && heads[0].includes(await appVersion(page)) && heads[1].includes('2.1.0') && heads[2].includes('2.0.0') && heads[3].includes('1.12.0') && heads[4].includes('1.11.0') && heads[5].includes('1.10.1'), JSON.stringify(heads));
       // R1.2: one Show me only (the one at the bottom), never one per version as well
       check('v1.11 skipped versions: a single Show me', (await page.locator('#newsBody .news-show-v').count()) === 0 && (await page.locator('#newsShow').isVisible()), String(await page.locator('#newsBody .news-show-v').count()));
       // R1.6: Escape closes it and remembers this version, like Got it
@@ -1620,9 +1620,9 @@ async function run(site) {
       check(`v1.11 ${W}: the Release history button is at least 44 px tall`, nb && nb.height >= 44, JSON.stringify(nb));
       await page.click('#newsBtn');
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 6 && heads[0].includes(await appVersion(page)) && heads[5].includes('1.10.0'), JSON.stringify(heads));
+      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 7 && heads[0].includes(await appVersion(page)) && heads[6].includes('1.10.0'), JSON.stringify(heads));
       check(`v1.11 ${W}: the newest version is marked as this version`, (await page.locator('#newsBody .news-ver').first().locator('.news-cur').count()) === 1);
-      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 5);
+      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 6);
       const box = await page.evaluate(() => { const r = document.querySelector('#newsDlg').getBoundingClientRect(); return [r.top, r.bottom, innerHeight]; });
       check(`v1.11 ${W}: the dialog fits the screen (its list scrolls)`, box[0] >= 0 && box[1] <= box[2], JSON.stringify(box));
       check(`v1.11 ${W}: Close is reachable`, await page.locator('#newsClose').isVisible());
@@ -1881,7 +1881,7 @@ async function run(site) {
       await context.close();
     });
 
-    // W7: Primary school or High school on Home; each keeps its own year; Study is K–6, so in High school it is coming
+    // W7: Primary school or High school on Home; each keeps its own year (v2.2.0: Study has High school lessons too)
     await flow('v1.12 W7 school switch', async () => {
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 5 }) });
       const pressed = () => page.locator('#schoolSwitch button[aria-pressed="true"]').getAttribute('data-school');
@@ -1889,36 +1889,79 @@ async function run(site) {
       check('W7 a Year 5 student is in Primary school', (await pressed()) === 'primary');
       await page.click('#schoolSwitch [data-school="high"]');
       check('W7 High school: Year 7, the button is chosen, focus stays on it', (await pressed()) === 'high' && (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 7 && (await page.evaluate(() => document.activeElement.dataset.school)) === 'high');
-      check('W7 High school: the Study card says Coming soon', (await page.textContent('#cardStudy .mc-s')) === 'Coming soon' && (await page.getAttribute('#cardStudy', 'aria-disabled')) === 'true');
-      await page.click('#cardStudy', { force: true });   // aria-disabled: Playwright would wait for it; a finger does not
-      check('W7 High school: tapping Study says the lessons are K–6, no sheet', !(await sheetOpen(page)) && /Primary school for the K–6 lessons/.test(await page.textContent('#toast')), await page.textContent('#toast'));
-      await page.evaluate(() => { document.querySelector('#toast').hidden = true; });
+      check('W7 High school: the Study card says Maths lessons and can be tapped (v2.2.0: no more Coming soon)', (await page.textContent('#cardStudy .mc-s')) === 'Maths lessons' && (await page.getAttribute('#cardStudy', 'aria-disabled')) === null);
+      await page.click('#cardStudy');
+      check('W7 High school: tapping Study opens the sheet with the High school years', (await sheetOpen(page)) && (await page.locator('#yearSel option').evaluateAll(o => o.map(x => +x.value))).join() === '7,8,9,10,11,12,13,14');
+      await page.keyboard.press('Escape');
       await openSheet(page, 'practice');
       const years = await page.locator('#yearSel option').evaluateAll(o => o.map(x => +x.value));
       check('W7 High school: the Practice years are Year 7 and up', years.length > 3 && years.every(y => y >= 7), JSON.stringify(years));
       await page.selectOption('#yearSel', '10');
       await page.keyboard.press('Escape');
       await page.click('#schoolSwitch [data-school="primary"]');
-      check('W7 back to Primary school: Year 5 again, Study says K–6 lessons', (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 5 && (await page.textContent('#cardStudy .mc-s')) === 'K–6 lessons');
+      check('W7 back to Primary school: Year 5 again, Study says Maths lessons', (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 5 && (await page.textContent('#cardStudy .mc-s')) === 'Maths lessons');
       await page.click('#schoolSwitch [data-school="high"]');
       check('W7 High school again: Year 10, as left', (await page.evaluate(k => JSON.parse(localStorage.getItem(k)).year, SETTINGS)) === 10);
       check('W7 school switch: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
 
-    // R1.3 (v1.12.0): a Year 7–12 student who opens Study is told that the lessons are Kindergarten to Year 6
+    // R1.3 (v1.12.0, v2.2.0): the Study sheet says what the lessons cover
     await flow('R1.3 Study for an older student', async () => {
       const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 10 }) });
-      check('R1.3 a Year 10 student: the Study card says Coming soon (W7: High school)', (await page.textContent('#cardStudy .mc-s')) === 'Coming soon');
+      check('R1.3 a Year 10 student: the Study card says Maths lessons (v2.2.0)', (await page.textContent('#cardStudy .mc-s')) === 'Maths lessons');
       await page.click('#schoolSwitch [data-school="primary"]');
-      check('R1.3 in Primary school the Study card says K–6 lessons', (await page.textContent('#cardStudy .mc-s')) === 'K–6 lessons');
+      check('R1.3 in Primary school the Study card says Maths lessons', (await page.textContent('#cardStudy .mc-s')) === 'Maths lessons');
       await page.click('#cardStudy');
-      check('R1.3 the Study sheet says the lessons are for Kindergarten to Year 6', (await page.isVisible('#studyNote')) && (await page.textContent('#studyNote')) === 'Lessons are for Kindergarten to Year 6.');
+      check('R1.3 the Study sheet says what the lessons cover', (await page.isVisible('#studyNote')) && (await page.textContent('#studyNote')) === 'Lessons cover Kindergarten to Year 12, with Extension 1 and 2.');
       await page.keyboard.press('Escape');
       await page.click('#schoolSwitch [data-school="high"]');
       await page.click('#cardPractice');
       check('R1.3 Practice still has Year 10', (await page.inputValue('#yearSel')) === '10');
       check('R1.3: no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+    /* v2.2.0 (W12): High school Study, Years 7 to 12 with Extension 1 and 2 (Terry chose layout A: the year chips of Primary) */
+    await flow('v2.2 W12 High school Study', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 9 }) });
+      await page.setViewportSize({ width: 320, height: 640 });
+      const wide = () => page.evaluate(() => document.documentElement.scrollWidth - (window.visualViewport ? visualViewport.width : innerWidth));
+      await openSheet(page, 'study');
+      check('W12 a Year 9 student: Study offers Years 7 to 12, Extension 1 and 2, and starts on Year 9', (await page.inputValue('#yearSel')) === '9' && (await page.locator('#yearSel option').count()) === 8 && (await page.textContent('#startBtn')) === 'Read the lesson');
+      await startSet(page);
+      await page.click('#studyLesson .study-back');   // Read the lesson opens the lesson chosen on Home; back to the list
+      check('W12 the study screen shows eight year chips, the last two named Ext 1 and Ext 2, and Year 9 is chosen', (await page.locator('#studyYears input').count()) === 8 && (await page.locator('#studyYears label').allTextContents()).slice(-2).join() === 'Ext 1,Ext 2' && (await page.locator('#studyYears input:checked').getAttribute('value')) === '9');
+      check('W12 the chips are named for screen readers (Year 12 Extension 1 (3U))', (await page.locator('#studyYears input').nth(6).getAttribute('aria-label')) === 'Year 12 Extension 1 (3U)');
+      const fin = await page.locator('.study-topic').evaluateAll(bs => bs.map(b => b.dataset.topic));
+      check('W12 Year 9 lists its topics, grouped by strand, with Financial maths and Factorising', fin.includes('fin') && fin.includes('factor') && fin.length === 11 && (await page.locator('#studyTopics h4').count()) === 3, fin.join());
+      check('W12 the note says the topics follow the NSW K–10 and Stage 6 syllabuses', /K–10 syllabus/.test(await page.textContent('#studySource')));
+      check('W12 no sideways pan on the High school topic list at 320 px', (await wide()) <= 0, String(await wide()));
+      await page.locator('.study-topic[data-topic="fin"]').click();
+      check('W12 the lesson opens, with key ideas, worked examples, a tip and a Practise button', (await page.locator('#studyLesson').isVisible()) && (await page.textContent('#lessonH')).includes('Financial maths') && (await page.locator('#studyLesson li').count()) >= 3 && (await page.locator('#studyLesson .study-ex').count()) === 2 && (await page.locator('#studyLesson .study-tip').count()) === 1 && (await page.locator('#studyPractise').count()) === 1);
+      check('W12 no sideways pan on the lesson at 320 px', (await wide()) <= 0, String(await wide()));
+      await page.click('#studyPractise');
+      await page.waitForSelector('#screen-quiz:not([hidden])');
+      const st = await page.evaluate(k => JSON.parse(localStorage.getItem(k)), SETTINGS);
+      check('W12 Practise this topic starts Financial maths at Year 9', st.year === 9 && st.topic === 'fin' && st.subject === 'maths', JSON.stringify(st));
+      await page.goto(site + '/', { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#modeCards');
+      await openSheet(page, 'study');
+      await page.selectOption('#yearSel', '14'); await startSet(page);
+      await page.click('#studyLesson .study-back');
+      const ext2 = await page.locator('.study-topic').evaluateAll(bs => bs.map(b => b.dataset.topic));
+      check('W12 Extension 2 lists Complex numbers, Integration, Mechanics, Polynomials and Vectors', ['complex', 'integ', 'mech', 'poly', 'vectors'].every(k => ext2.includes(k)) && ext2.length === 5, ext2.join());
+      await page.locator('.study-topic[data-topic="complex"]').click();
+      check('W12 an Extension 2 lesson opens', (await page.textContent('#lessonH')).includes('Complex numbers') && (await page.locator('#studyPractise').count()) === 1);
+      await page.click('#studyLesson .study-back');
+      await page.locator('#studyYears label').first().click();
+      check('W12 the Year 7 chip lists 12 topics, and its first lesson says what is new this year', (await page.locator('.study-topic').count()) === 12);
+      await page.locator('.study-topic').first().click();
+      check('W12 a Year 7 lesson shows "New this year"', /New this year/.test(await page.textContent('#studyLesson .study-new')));
+      await page.click('#langBtn');
+      check('W12 in Chinese the lesson is in Chinese', /[一-鿿]/.test(await page.textContent('#studyLesson .study-intro')) && /今年新学/.test(await page.textContent('#studyLesson .study-new')));
+      await page.click('#studyLesson .study-back');
+      check('W12 in Chinese the chips read 拓展一 and 拓展二', (await page.locator('#studyYears label').allTextContents()).slice(-2).join() === '拓展一,拓展二');
+      check('W12 High school Study: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
     /* ---------- v2.0.0 (W8, Terry chose Option B): accounts, friends, practising together ---------- */

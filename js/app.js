@@ -389,7 +389,7 @@
     const kindLabel = k => (k === 'study' ? t('mode.study') : (isTimed(k) ? t('mode.test') : t('mode.practice')) + ' · ' + t('subject.' + k));
     combo($('#planWhat'), kinds.map(k => [k, kindLabel(k)]), f.what, v => { f.what = v; f.topic = null; renderPlanForm(); });
     const prac = f.what === 'maths' || f.what === 'ga';
-    const keys = f.what === 'study' ? ScopeK6.topicsFor(studyYearOf(st)) : prac ? topicOptions(f.what, planYear(f.what)).map(x => x[0]) : [];
+    const keys = f.what === 'study' ? scopeOf(studyYearOf(st)).topicsFor(studyYearOf(st)) : prac ? topicOptions(f.what, planYear(f.what)).map(x => x[0]) : [];
     $('#planTopicField').hidden = !keys.length;
     if (keys.length) {
       if (!keys.includes(f.topic)) f.topic = keys[0];
@@ -438,12 +438,11 @@
     const goKey = next ? 'plan.start' : items.length ? 'plan.see' : 'plan.make';
     const tg = $('#todayGo'); tg.dataset.i18n = goKey; tg.textContent = t(goKey);
     tg.onclick = () => (next ? startPlanItem(next) : openPlan());
-    // the four cards: big pictures; Study is Kindergarten to Year 6, so in High school it says it is coming
+    // the four cards: big pictures
     document.querySelectorAll('#modeCards .mode-card').forEach(b => { b.querySelector('.mc-ic').innerHTML = MODE_ART[b.dataset.mode]; });
-    const soon = school === 'high', sc = $('#cardStudy'), sub = sc.querySelector('.mc-s');
-    sc.classList.toggle('soon', soon);
-    if (soon) sc.setAttribute('aria-disabled', 'true'); else sc.removeAttribute('aria-disabled');
-    sub.dataset.i18n = soon ? 'mode.study.soon' : 'mode.study.sub'; sub.textContent = t(sub.dataset.i18n);
+    const sc = $('#cardStudy'), sub = sc.querySelector('.mc-s');
+    sc.classList.remove('soon'); sc.removeAttribute('aria-disabled');
+    sub.dataset.i18n = 'mode.study.sub'; sub.textContent = t(sub.dataset.i18n);
     $('#modeCards').dataset.mode = homeMode(st);
     // Carry on: the last set, to start it again with the same choices
     const h = historyList(), last = h[h.length - 1];
@@ -515,7 +514,7 @@
     $('#setupSub').textContent = mode === 'study' ? '' : t('mode.' + mode + '.sub');   // R2.3: the note by the year says K–6
     $('#setupSub').hidden = mode === 'study';
     $('#subjectBox').hidden = mode === 'study';
-    $('#studyNote').hidden = mode !== 'study';   // R1.3: Study is Kindergarten to Year 6, said where the year is chosen
+    $('#studyNote').hidden = mode !== 'study';   // R1.3: what the lessons cover, said where the year is chosen
     if (mode !== 'study') {
       const subs = mode === 'test' ? ['sel', 'comp'] : ['maths', 'ga'];
       tiles($('#subjectChips'), 'subject', subs.map(s => [s, t('subject.' + s), SUBJECT_ICON[s], t('subject.sub.' + s)]), st.subject, v => { st.subject = v; st.topic = 'mixed'; saveSettings(); renderHome(); const c = document.querySelector('#subjectChips input:checked'); if (c) c.focus(); });
@@ -541,10 +540,10 @@
       $('#setupSub').hidden = false;
       $('#printHome').hidden = true;
     }
-    if (mode === 'study') {   // Kindergarten to Year 6 only: the year and the topic of the lesson
-      const y = studyYearOf(st), keys = ScopeK6.topicsFor(y);
+    if (mode === 'study') {   // the year and the topic of the lesson: Primary years from ScopeK6, High school years from ScopeHS
+      const y = studyYearOf(st), sc = scopeOf(y), keys = sc.topicsFor(y);
       if (!keys.includes(st.studyTopic)) st.studyTopic = keys[0];
-      combo($('#yearSel'), ScopeK6.YEARS.map(k => [k, yearLabel(k)]), y, v => { st.studyYear = +v; saveSettings(); renderHome(); });
+      combo($('#yearSel'), sc.YEARS.map(k => [k, yearLabel(k)]), y, v => { st.studyYear = +v; saveSettings(); renderHome(); });
       combo($('#topicSel'), keys.map(k => [k, topicLabel(k)]), st.studyTopic, v => { st.studyTopic = v; saveSettings(); });
       return;
     }
@@ -1115,15 +1114,21 @@
      Terry: "Student can choose to study first base on the scope and sequence ... for each topic, generate learning
      material for student to study before they practice their questions." Topics: js/scope-k6.js; lessons:
      js/lessons-k2.js and js/lessons-36.js. The year picked here is kept in the settings as studyYear. */
-  const STRAND_ICON = { num: '🔢', mes: '📏', sta: '📊' };
-  const studyYearOf = st => (window.ScopeK6 && ScopeK6.YEARS.includes(st.studyYear) ? st.studyYear : st.year <= 6 ? st.year : 6);
+  const STRAND_ICON = { num: '🔢', mes: '📏', sta: '📊', fun: '📈' };
+  /* v2.2.0 (W12): Years 7 to 12, Extension 1 (13) and Extension 2 (14) have their own scope, js/scope-hs.js, with the same shape */
+  const scopeOf = y => (y >= 7 ? window.ScopeHS : window.ScopeK6);
+  const studyYearOf = st => {
+    const sc = scopeOf(st.year);
+    return sc && sc.YEARS.includes(st.studyYear) && (st.studyYear >= 7) === (st.year >= 7) ? st.studyYear : st.year >= 7 ? st.year : Math.min(st.year, 6);
+  };
+  const studyYearName = y => (y === 13 ? t('study.ext1') : y === 14 ? t('study.ext2') : y === 0 ? t('year.0short') : String(y));
   const studied = () => (S.settings.studied && typeof S.settings.studied === 'object' ? S.settings.studied : {});
   let studyTopic = null;   // the lesson on screen, or null for the topic list
   function openStudy(topic, year) {
     const st = S.settings;
     st.studyYear = year != null ? year : studyYearOf(st);
     saveSettings();
-    studyTopic = topic && ScopeK6.inYear(topic, st.studyYear) ? topic : null;
+    studyTopic = topic && scopeOf(st.studyYear).inYear(topic, st.studyYear) ? topic : null;
     go('study');
     if (studyTopic) focusLesson();
   }
@@ -1131,23 +1136,26 @@
   function showLesson(id) { studyTopic = id; renderStudy(); focusLesson(); }
 
   function renderStudy() {
-    const st = S.settings, y = studyYearOf(st);
-    if (studyTopic && !ScopeK6.inYear(studyTopic, y)) studyTopic = null;
+    const st = S.settings, y = studyYearOf(st), sc = scopeOf(y);
+    if (studyTopic && !sc.inYear(studyTopic, y)) studyTopic = null;
     $('#studyList').hidden = !!studyTopic;
     $('#studyLesson').hidden = !studyTopic;
     if (studyTopic) { renderLesson(y, studyTopic); return; }
-    chips($('#studyYears'), 'studyYear', ScopeK6.YEARS.map(v => [v, v === 0 ? t('year.0short') : String(v)]), y, v => { st.studyYear = +v; saveSettings(); renderStudy(); });
-    $('#studyYears').querySelectorAll('input').forEach((inp, i) => inp.setAttribute('aria-label', yearLabel(ScopeK6.YEARS[i])));
+    chips($('#studyYears'), 'studyYear', sc.YEARS.map(v => [v, studyYearName(v)]), y, v => { st.studyYear = +v; saveSettings(); renderStudy(); });
+    $('#studyYears').classList.remove('chips-7', 'chips-8');
+    $('#studyYears').classList.add('chips-' + sc.YEARS.length);
+    $('#studyYears').querySelectorAll('input').forEach((inp, i) => inp.setAttribute('aria-label', yearLabel(sc.YEARS[i])));
+    const src = $('#studySource'); src.dataset.i18n = y >= 7 ? 'study.sourceHS' : 'study.source'; src.textContent = t(src.dataset.i18n);
     const box = $('#studyTopics'), done = studied();
     box.innerHTML = '';
     box.append(el('h3', 'study-year-h', yearLabel(y)));
-    ScopeK6.STRANDS.forEach(sd => {
-      const ids = ScopeK6.topicsFor(y).filter(id => ScopeK6.strandOf(id) === sd);
+    sc.STRANDS.forEach(sd => {
+      const ids = sc.topicsFor(y).filter(id => sc.strandOf(id) === sd);
       if (!ids.length) return;
       const sec = el('section', 'study-strand s-' + sd), ul = el('ul', 'study-topics');
       sec.append(el('h4', 'study-strand-h', STRAND_ICON[sd] + ' ' + t('study.strand.' + sd)));
       ids.forEach(id => {
-        const li = el('li'), b = el('button', 'study-topic'), w = ScopeK6.what(id, y);
+        const li = el('li'), b = el('button', 'study-topic'), w = sc.what(id, y);
         b.type = 'button'; b.dataset.topic = id;
         b.append(el('span', 'study-topic-name', t('topic.' + id)), el('span', 'study-topic-what', w[lang()] || w.en));
         if (done[y + ':' + id]) b.append(el('span', 'study-done', t('study.done')));
@@ -1159,7 +1167,7 @@
   }
 
   function renderLesson(y, id) {
-    const st = S.settings, art = $('#studyLesson'), sd = ScopeK6.strandOf(id), w = ScopeK6.what(id, y);
+    const st = S.settings, art = $('#studyLesson'), sc = scopeOf(y), sd = sc.strandOf(id), w = sc.what(id, y);
     const L = window.LessonsK6 && window.LessonsK6[y + ':' + id], c = L && (L[lang()] || L.en);
     art.innerHTML = '';
     const back = el('button', 'btn ghost small study-back', '‹ ' + t('study.back')); back.type = 'button';
@@ -1182,10 +1190,12 @@
       art.append(tip);
     }
     const act = el('div', 'study-actions');
-    const go1 = el('button', 'btn primary big', t('study.practise', { n: st.count })); go1.type = 'button'; go1.id = 'studyPractise';
-    go1.addEventListener('click', () => practiseTopic(y, id));
-    act.append(go1, el('p', 'muted small', t('study.practiseNote', { diff: t('diff.' + st.diff) })));
-    const list = ScopeK6.topicsFor(y), nx = list[list.indexOf(id) + 1];
+    if (y < 7 || sc.gen(id, y)) {   // a High school lesson with no question generator yet has no Practise button
+      const go1 = el('button', 'btn primary big', t('study.practise', { n: st.count })); go1.type = 'button'; go1.id = 'studyPractise';
+      go1.addEventListener('click', () => practiseTopic(y, id));
+      act.append(go1, el('p', 'muted small', t('study.practiseNote', { diff: t('diff.' + st.diff) })));
+    }
+    const list = sc.topicsFor(y), nx = list[list.indexOf(id) + 1];
     if (nx) {
       const b = el('button', 'btn secondary', t('study.next', { topic: t('topic.' + nx) })); b.type = 'button'; b.id = 'studyNext';
       b.addEventListener('click', () => showLesson(nx));
@@ -1198,7 +1208,7 @@
   /* practise the lesson's topic at the student's own level and number of questions (set on Home) */
   function practiseTopic(y, id) {
     const st = S.settings;
-    st.subject = 'maths'; st.mode = 'practice'; st.year = y; st.topic = id; st.yearPicked = true; saveSettings();
+    st.subject = 'maths'; st.mode = 'practice'; st.year = y; st.topic = y >= 7 ? ScopeHS.gen(id, y) : id; st.yearPicked = true; saveSettings();
     startQuiz(st);
   }
 
@@ -2143,7 +2153,6 @@
   document.querySelectorAll('#modeCards .mode-card').forEach(b => b.addEventListener('click', () => {
     const m = b.dataset.mode;
     if (m === 'relax') return go('games');
-    if (m === 'study' && schoolOf(S.settings.year) === 'high') return toast(t('mode.study.soonNote'));
     openSetup(m);
   }));
   // v1.12.0 W7: Primary school or High school; each keeps its own year, so switching back gives the same year

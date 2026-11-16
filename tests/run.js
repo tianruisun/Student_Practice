@@ -1474,6 +1474,10 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     none(11, 'calc', /∫|Find the area|dy\/dx/, 'integration or the chain rule is Year 12'); some(12, 'calc', /∫|dy\/dx/, 'integration or the chain rule');
     none(11, 'series', /limiting sum/, 'the sum to infinity is Year 12'); some(12, 'series', /limiting sum/, 'the limiting sum');
     none(11, 'func', /f⁻¹/, 'inverse functions are Year 12'); some(12, 'func', /f⁻¹/, 'an inverse function');
+    none(11, 'func', /Find f\(g\(|minimum value|positive solution/, 'composite functions are Year 12; vertex and roots belong to Quadratics');
+    none(11, 'explog', /invested|compounded/, 'compound interest is not in the Year 11 lesson'); none(12, 'explog', /invested|compounded|log_|log\d|Evaluate log/, 'Year 11 logarithm or interest content'); some(12, 'explog', /e\^|ln /, 'e or ln');
+    none(12, 'graphs', /gradient of the line|cross the y-axis/, 'Year 11 line gradients'); some(12, 'graphs', /decreasing|stationary|concave/, 'f′, stationary points or concavity');
+    none(12, 'trig', /\+ −|\+ 0\b/, 'a plus sign before a minus, or + 0');
     none(11, 'stats2', /Bin\(|E\(X\)|z-score/, 'Year 12 and 13 content'); none(12, 'stats2', /Bin\(/, 'the binomial is Extension 1');
     some(13, 'stats2', /Bin\(/, 'the binomial distribution');
     none(12, 'trig', /exact value|sine rule|included angle/, 'Year 11 content');

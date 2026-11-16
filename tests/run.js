@@ -1266,7 +1266,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(/\.cal-d \{ min-height: 44px; \}/.test(css), 'R3.2');
     assert.ok(/\.school-sw button \{ min-height: 44px; \}/.test(css), 'R3.3');
     assert.ok(/prefers-color-scheme: dark\) \{ \.pb-t em \{ color: #ffb066; \} \}/.test(css), 'R3.4');
-    assert.ok(/\.mode-card\.soon \.mc-t \{ opacity: 1; color: var\(--muted\); \}/.test(css), 'R3.5');
+    assert.ok(!/\.mode-card\.soon/.test(css), 'v2.2.0 R1.4: no dead .soon rules');
   });
 
 /* ---------- v2.1.0 (W11, Terry: NSW Years 7-10 gaps, items 1-2) and confirm password ---------- */
@@ -1463,6 +1463,22 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(!/mode\.study\.soon/.test(app) && !('mode.study.soon' in S.en) && !('mode.study.soonNote' in S.en));
     assert.ok(/y < 7 \|\| sc\.gen\(id, y\)/.test(app), 'a lesson with no generator has no Practise button');
     for (const f of ['scope-hs', 'lessons-hs-7', 'lessons-hs-9', 'lessons-hs-11', 'lessons-hs-ext']) { assert.ok(html.includes('./js/' + f + '.js'), f + ' in index.html'); assert.ok(sw.includes("'./js/" + f + ".js'"), f + ' in sw.js'); }
+  });
+  t('v2.2.0 R1.2: topicsFor lists topics strand by strand, so "Next topic" follows the list on screen', () => {
+    for (const y of HS.YEARS) assert.deepStrictEqual(HS.topicsFor(y), HS.STRANDS.flatMap(sd => HS.topicsFor(y).filter(id => HS.strandOf(id) === sd)), 'year ' + y);
+  });
+  t('v2.2.0 R1.1: Practise at a year asks only what that year\'s lesson teaches (no later-year kinds, and the Extension 1 kinds appear)', () => {
+    const draw = (y, id) => { const out = []; for (const d of [1, 2, 3]) for (let i = 0; i < 120; i++) { const q = G.generateExact('maths', y, id, d); out.push(q.q.en + ' | ' + q.sol.en); } return out; };
+    const none = (y, id, re, why) => { for (const s of draw(y, id)) assert.ok(!re.test(s), y + ':' + id + ' ' + why + ': ' + s); };
+    const some = (y, id, re, why) => assert.ok(draw(y, id).some(s => re.test(s)), y + ':' + id + ' never asks ' + why);
+    none(11, 'calc', /∫|Find the area|dy\/dx/, 'integration or the chain rule is Year 12'); some(12, 'calc', /∫|dy\/dx/, 'integration or the chain rule');
+    none(11, 'series', /limiting sum/, 'the sum to infinity is Year 12'); some(12, 'series', /limiting sum/, 'the limiting sum');
+    none(11, 'func', /f⁻¹/, 'inverse functions are Year 12'); some(12, 'func', /f⁻¹/, 'an inverse function');
+    none(11, 'stats2', /Bin\(|E\(X\)|z-score/, 'Year 12 and 13 content'); none(12, 'stats2', /Bin\(/, 'the binomial is Extension 1');
+    some(13, 'stats2', /Bin\(/, 'the binomial distribution');
+    none(12, 'trig', /exact value|sine rule|included angle/, 'Year 11 content');
+    none(13, 'trig', /exact value|included angle|0° ≤ x < 360°|opposite/, 'Year 11 content'); some(13, 'trig', /sin 2θ|t = tan|R sin\(x \+ α\)/, 'a double-angle, t or auxiliary-angle question');
+    none(13, 'calc', /Evaluate ∫ from \d to \d of \(/, 'a plain polynomial integral'); some(13, 'calc', /dy\/dx = \dy|growing|grows at|substitution/, 'a rate, differential equation or substitution');
   });
   t('W12: What\'s new for v2.2.0 is the newest entry, with words in both languages', () => {
     const rel = box.RELEASES[0]; assert.strictEqual(rel.v, '2.2.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'study');

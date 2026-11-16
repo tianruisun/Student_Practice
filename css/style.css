@@ -985,7 +985,6 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .mc-t, .mc-s { min-width: 0; width: 100%; overflow-wrap: anywhere; }
 .mc-t { font-weight: 700; font-size: 1rem; line-height: 1.25; }
 .mc-s { font-size: 0.74rem; line-height: 1.3; color: #4f4870; }
-.mode-card.soon .mc-ic, .mode-card.soon .mc-t { opacity: .5; }
 .m-study { background: #dff5e9; } .m-practice { background: #ece6ff; } .m-test { background: #ffefd6; } .m-relax { background: #ffe3ee; }
 /* Carry on and badges */
 .home-sec { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin: 0 0 0.4rem; font-size: 1rem; }
@@ -1111,8 +1110,6 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .school-sw button { min-height: 44px; }
 /* R3.4: the run beside the calendar is readable in dark mode */
 @media (prefers-color-scheme: dark) { .pb-t em { color: #ffb066; } }
-/* R3.5: in High school only the Study picture is dimmed; the name keeps a readable colour */
-.mode-card.soon .mc-t { opacity: 1; color: var(--muted); }
 
 /* ---------- v2.0.0 (W8, Terry chose Option B): five tabs, the Friends tab, accounts and practising together ---------- */
 .bottom-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.2rem; padding-left: 0.4rem; padding-right: 0.4rem; }

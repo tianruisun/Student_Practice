@@ -125,7 +125,8 @@
 
   const has = id => Object.prototype.hasOwnProperty.call(T, id);
   const inYear = (id, y) => has(id) && Object.prototype.hasOwnProperty.call(T[id].years, y);
-  function topicsFor(y) { return ORDER.filter(id => inYear(id, y)); }
+  /* in the order the Study screen shows them: strand by strand (so "Next topic" follows the list) */
+  function topicsFor(y) { return STRANDS.flatMap(s => ORDER.filter(id => inYear(id, y) && T[id].strand === s)); }
   function strandOf(id) { return has(id) ? T[id].strand : null; }
   function what(id, y) { return inYear(id, y) ? T[id].years[y].what : null; }
   /* the generator that practises the topic in that year, or null */

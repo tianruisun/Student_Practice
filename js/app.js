@@ -1142,7 +1142,8 @@
     $('#studyLesson').hidden = !studyTopic;
     if (studyTopic) { renderLesson(y, studyTopic); return; }
     chips($('#studyYears'), 'studyYear', sc.YEARS.map(v => [v, studyYearName(v)]), y, v => { st.studyYear = +v; saveSettings(); renderStudy(); });
-    $('#studyYears').classList.toggle('chips-8', sc.YEARS.length === 8);
+    $('#studyYears').classList.remove('chips-7', 'chips-8');
+    $('#studyYears').classList.add('chips-' + sc.YEARS.length);
     $('#studyYears').querySelectorAll('input').forEach((inp, i) => inp.setAttribute('aria-label', yearLabel(sc.YEARS[i])));
     const src = $('#studySource'); src.dataset.i18n = y >= 7 ? 'study.sourceHS' : 'study.source'; src.textContent = t(src.dataset.i18n);
     const box = $('#studyTopics'), done = studied();

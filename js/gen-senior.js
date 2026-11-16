@@ -15,7 +15,8 @@
 
   /* ---------- functions ---------- */
   reg('func', 11, (y, d) => {
-    const k = pick(d <= 1 ? ['eval', 'comp'] : ['comp', 'inv', 'vertex', 'solve']);
+    /* Year 11 lesson: functions, domain, graphs; Year 12 lesson: composite and inverse functions */
+    const k = pick(y >= 12 ? ['comp', 'inv'] : d <= 1 ? ['eval', 'comp'] : ['eval', 'vertex', 'solve']);
     const a = R(1, 4), b = R(-6, 6), c = R(-9, 9), f = x => a * x * x + b * x + c, fs = poly([[a, 2], [b, 1], [c, 0]]);
     if (k === 'eval') { const x = R(-4, 5); return mk({ topic: 'func', value: f(x), en: `If f(x) = ${fs}, find f(${num(x)}).`, zh: `已知 f(x) = ${fs}，求 f(${num(x)})。`, solEn: `Substitute x = ${num(x)}: ${num(f(x))}`, solZh: `代入 x = ${num(x)}：${num(f(x))}` }); }
     if (k === 'comp') { const m = R(2, 5), n = R(-5, 5), g = x => m * x + n, x = R(-3, 3); return mk({ topic: 'func', value: f(g(x)), en: `f(x) = ${fs} and g(x) = ${coef(m)}${n ? sg(n) : ''}. Find f(g(${num(x)})).`, zh: `f(x) = ${fs}，g(x) = ${coef(m)}${n ? sg(n) : ''}，求 f(g(${num(x)}))。`, solEn: `g(${num(x)}) = ${num(g(x))}; f(${num(g(x))}) = ${num(f(g(x)))}`, solZh: `g(${num(x)}) = ${num(g(x))}；f(${num(g(x))}) = ${num(f(g(x)))}` }); }
@@ -39,7 +40,14 @@
 
   /* ---------- trigonometry ---------- */
   reg('trig', 11, (y, d) => {
-    const k = pick(d <= 1 ? ['exact', 'solveDeg', 'sineRule'] : ['solveDeg', 'sineRule', 'cosRule', 'area', 'count']);
+    /* Year 11: radians, ratios beyond 90°, sine and cosine rules; Year 12: graphs, identities, equations; Year 13 (Ext 1): double angle, t-formulas, auxiliary angle */
+    const k = pick(y >= 13 ? ['dbl', 'tform', 'aux'] : y === 12 ? (d <= 1 ? ['ident', 'maxv', 'solveDeg'] : ['ident', 'maxv', 'count', 'solveDeg']) : d <= 1 ? ['exact', 'rad', 'sineRule'] : ['solveDeg', 'rad', 'sineRule', 'cosRule', 'area']);
+    if (k === 'rad') { const [deg, p, q] = pick([[30, 1, 6], [45, 1, 4], [60, 1, 3], [90, 1, 2], [120, 2, 3], [135, 3, 4], [150, 5, 6], [180, 1, 1], [270, 3, 2], [360, 2, 1]]); return mk({ topic: 'trig', value: p / q, answer: fracStr(p, q), en: `Write ${deg}° in radians as a multiple of π. (For example, answer 1/2 for π/2.)`, zh: `把 ${deg}° 化成弧度，写成 π 的几倍。（例如 π/2 写 1/2。）`, solEn: `${deg}° = ${deg}/180 × π = ${fracStr(p, q)}π`, solZh: `${deg}° = ${deg}/180 × π = ${fracStr(p, q)}π` }); }
+    if (k === 'ident') { const [p, q, r] = pick([[3, 4, 5], [5, 12, 13], [8, 15, 17], [7, 24, 25]]); return mk({ topic: 'trig', value: q / r, answer: fracStr(q, r), en: `θ is acute and sin θ = ${p}/${r}. Use sin²θ + cos²θ = 1 to find cos θ.`, zh: `θ 是锐角，sin θ = ${p}/${r}。用 sin²θ + cos²θ = 1 求 cos θ。`, solEn: `cos²θ = 1 − ${p * p}/${r * r} = ${q * q}/${r * r}, so cos θ = ${fracStr(q, r)}`, solZh: `cos²θ = 1 − ${p * p}/${r * r} = ${q * q}/${r * r}，所以 cos θ = ${fracStr(q, r)}` }); }
+    if (k === 'maxv') { const a = R(2, 6), n = R(2, 4), c = R(-3, 5); return mk({ topic: 'trig', value: a + c, en: `Find the maximum value of y = ${a} sin(${n}x) ${c < 0 ? MINUS : '+'} ${Math.abs(c) || 0}.`, zh: `求 y = ${a} sin(${n}x) ${c < 0 ? MINUS : '+'} ${Math.abs(c) || 0} 的最大值。`, solEn: `The amplitude is ${a}, so the maximum is ${a} + ${num(c)} = ${num(a + c)}`, solZh: `振幅为 ${a}，最大值 ${a} + ${num(c)} = ${num(a + c)}` }); }
+    if (k === 'dbl') { const [p, q, r] = pick([[3, 4, 5], [5, 12, 13], [8, 15, 17], [7, 24, 25]]); return mk({ topic: 'trig', value: 2 * p * q / (r * r), answer: fracStr(2 * p * q, r * r), en: `θ is acute and sin θ = ${p}/${r}. Find sin 2θ.`, zh: `θ 是锐角，sin θ = ${p}/${r}，求 sin 2θ。`, solEn: `cos θ = ${q}/${r}; sin 2θ = 2 sin θ cos θ = ${fracStr(2 * p * q, r * r)}`, solZh: `cos θ = ${q}/${r}；sin 2θ = 2 sin θ cos θ = ${fracStr(2 * p * q, r * r)}` }); }
+    if (k === 'tform') { const [p, q] = pick([[1, 2], [1, 3], [2, 3], [1, 4], [3, 4], [2, 5]]); return mk({ topic: 'trig', value: 2 * p * q / (p * p + q * q), answer: fracStr(2 * p * q, p * p + q * q), en: `t = tan(x/2) = ${p}/${q}. Use sin x = 2t/(1 + t²) to find sin x.`, zh: `t = tan(x/2) = ${p}/${q}。用 sin x = 2t/(1 + t²) 求 sin x。`, solEn: `sin x = 2(${p}/${q}) / (1 + ${p * p}/${q * q}) = ${fracStr(2 * p * q, p * p + q * q)}`, solZh: `sin x = 2(${p}/${q}) / (1 + ${p * p}/${q * q}) = ${fracStr(2 * p * q, p * p + q * q)}` }); }
+    if (k === 'aux') { const [a, b, r] = pick([[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [6, 8, 10]]); return mk({ topic: 'trig', value: r, en: `Write ${a} sin x + ${b} cos x in the form R sin(x + α) with R > 0. Find R.`, zh: `把 ${a} sin x + ${b} cos x 写成 R sin(x + α)（R > 0）的形式，求 R。`, solEn: `R = √(${a}² + ${b}²) = ${r}`, solZh: `R = √(${a}² + ${b}²) = ${r}` }); }
     if (k === 'exact') { const [e, v, z] = pick([['sin 30°', 0.5, '1/2'], ['cos 60°', 0.5, '1/2'], ['tan 45°', 1, '1'], ['sin² 45°', 0.5, '1/2'], ['cos² 30°', 0.75, '3/4'], ['tan² 60°', 3, '3']]); return mk({ topic: 'trig', value: v, answer: z, en: `Find the exact value of ${e}.`, zh: `求 ${e} 的精确值。`, solEn: `${e} = ${z}`, solZh: `${e} = ${z}` }); }
     if (k === 'solveDeg') { const [fn, c, base] = pick([['sin', '1/2', 30], ['cos', '1/2', 60], ['tan', '1', 45], ['sin', '√3/2', 60], ['cos', '√2/2', 45]]), q = pick([2, 3]); // second solution in [0°, 360°)
       const sols = fn === 'sin' ? [base, 180 - base] : fn === 'cos' ? [base, 360 - base] : [base, 180 + base], v = q === 2 ? sols[1] : sols[0] + sols[1];
@@ -57,8 +65,12 @@
 
   /* ---------- calculus ---------- */
   reg('calc', 11, (y, d) => {
-    const k = pick(d <= 1 ? ['deriv', 'integ'] : ['deriv', 'tangent', 'stat', 'integ', 'area', 'chain']);
+    /* Year 11: the derivative and the power rule (and tangents); Year 12: more rules, curve sketching, integration; Year 13 (Ext 1): rates, differential equations, substitution */
+    const k = pick(y >= 13 ? ['de', 'rates', 'sub'] : y === 12 ? (d <= 1 ? ['chain', 'integ'] : ['chain', 'stat', 'integ', 'area']) : d <= 1 ? ['deriv'] : ['deriv', 'tangent']);
     const a = R(1, 4), b = R(-6, 6), c = R(-9, 9), x0 = R(-3, 3);
+    if (k === 'de') { const kk = R(2, 5), A = R(1, 5), m = pick([2, 3, 4, 5]); return mk({ topic: 'calc', value: A * m, en: `dy/dx = ${kk}y and y = ${A} when x = 0. Find y when x = (ln ${m})/${kk}.`, zh: `dy/dx = ${kk}y，且 x = 0 时 y = ${A}。求 x = (ln ${m})/${kk} 时 y 的值。`, solEn: `y = ${A}e^(${kk}x); at x = (ln ${m})/${kk}: y = ${A} × ${m} = ${A * m}`, solZh: `y = ${A}e^(${kk}x)；当 x = (ln ${m})/${kk} 时，y = ${A} × ${m} = ${A * m}` }); }
+    if (k === 'rates') { const s = R(2, 6), r = R(1, 4); return mk({ topic: 'calc', value: 3 * s * s * r, en: `The side x cm of a cube grows at ${r} cm/s. How fast is the volume increasing (cm³/s) when x = ${s}?`, zh: `正方体棱长 x 厘米以每秒 ${r} 厘米的速度增大。当 x = ${s} 时，体积每秒增大多少立方厘米？`, solEn: `V = x³, dV/dt = 3x² · dx/dt = 3 × ${s * s} × ${r} = ${3 * s * s * r}`, solZh: `V = x³，dV/dt = 3x² · dx/dt = 3 × ${s * s} × ${r} = ${3 * s * s * r}` }); }
+    if (k === 'sub') { const n = R(2, 5); return mk({ topic: 'calc', value: (2 ** (n + 1) - 1) / (n + 1), answer: fracStr(2 ** (n + 1) - 1, n + 1), en: `Use the substitution u = x² + 1 to evaluate ∫ from 0 to 1 of 2x(x² + 1)^${n} dx.`, zh: `用代换 u = x² + 1 求 ∫ 从 0 到 1 的 2x(x² + 1)^${n} dx。`, solEn: `∫ from 1 to 2 of u^${n} du = (2^${n + 1} − 1)/${n + 1} = ${fracStr(2 ** (n + 1) - 1, n + 1)}`, solZh: `∫ 从 1 到 2 的 u^${n} du = (2^${n + 1} − 1)/${n + 1} = ${fracStr(2 ** (n + 1) - 1, n + 1)}` }); }
     if (k === 'deriv') { const n = R(2, 4), v = n * a * x0 ** (n - 1) + b; return mk({ topic: 'calc', value: v, en: `If f(x) = ${poly([[a, n], [b, 1], [c, 0]])}, find f′(${num(x0)}).`, zh: `已知 f(x) = ${poly([[a, n], [b, 1], [c, 0]])}，求 f′(${num(x0)})。`, solEn: `f′(x) = ${poly([[n * a, n - 1], [b, 0]])}; f′(${num(x0)}) = ${num(v)}`, solZh: `f′(x) = ${poly([[n * a, n - 1], [b, 0]])}，f′(${num(x0)}) = ${num(v)}` }); }
     if (k === 'tangent') { const f = x => a * x * x + b * x + c, m = 2 * a * x0 + b, yi = f(x0) - m * x0; return mk({ topic: 'calc', value: yi, en: `Find the y-intercept of the tangent to y = ${poly([[a, 2], [b, 1], [c, 0]])} at x = ${num(x0)}.`, zh: `求曲线 y = ${poly([[a, 2], [b, 1], [c, 0]])} 在 x = ${num(x0)} 处切线的 y 轴截距。`, solEn: `Gradient ${num(m)}, point (${num(x0)}, ${num(f(x0))}); y = ${num(m)}x + ${num(yi)}`, solZh: `斜率 ${num(m)}，切点 (${num(x0)}, ${num(f(x0))})，截距 ${num(yi)}` }); }
     if (k === 'stat') { const p = R(-4, 1), q = p + R(1, 5), A = 2, B = -3 * (p + q), Cc = 6 * p * q; // f' = 6(x−p)(x−q)
@@ -73,7 +85,8 @@
 
   /* ---------- sequences & series ---------- */
   reg('series', 11, (y, d) => {
-    const k = pick(d <= 1 ? ['apN', 'gpN'] : ['apS', 'gpS', 'limit', 'apFind']);
+    /* Year 11: arithmetic and geometric sequences and series; Year 12: geometric series, the sum to infinity */
+    const k = pick(y >= 12 ? (d <= 1 ? ['gpN', 'limit'] : ['gpS', 'limit']) : d <= 1 ? ['apN', 'gpN'] : ['apS', 'gpS', 'apFind']);
     const a = R(-5, 12), dd = R(2, 7), n = R(10, 30);
     if (k === 'apN') return mk({ topic: 'series', value: a + (n - 1) * dd, en: `An arithmetic sequence has first term ${num(a)} and common difference ${dd}. Find the ${n}th term.`, zh: `等差数列首项 ${num(a)}，公差 ${dd}。求第 ${n} 项。`, solEn: `a + (n − 1)d = ${num(a)} + ${n - 1} × ${dd} = ${num(a + (n - 1) * dd)}`, solZh: `a + (n − 1)d = ${num(a + (n - 1) * dd)}` });
     if (k === 'apS') { const S = n * (2 * a + (n - 1) * dd) / 2; return mk({ topic: 'series', value: S, en: `Find the sum of the first ${n} terms of ${a}, ${a + dd}, ${a + 2 * dd}, …`, zh: `求等差数列 ${a}，${a + dd}，${a + 2 * dd}，……前 ${n} 项的和。`, solEn: `S = n/2 (2a + (n − 1)d) = ${S}`, solZh: `S = n/2 (2a + (n − 1)d) = ${S}` }); }
@@ -87,7 +100,11 @@
 
   /* ---------- statistics & probability ---------- */
   reg('stats2', 11, (y, d) => {
-    const k = pick(d <= 1 ? ['ev', 'z'] : ['binom', 'ev', 'z', 'cond']);
+    /* Year 11: probability rules, conditional probability, independence; Year 12: random variables, E(X), z-scores; Year 13 (Ext 1): the binomial distribution */
+    const k = pick(y >= 13 ? ['binom', 'bmean'] : y === 12 ? ['ev', 'z'] : d <= 1 ? ['indep', 'union'] : ['indep', 'union', 'cond']);
+    if (k === 'indep') { const [p, q] = pick([[1, 2], [1, 3], [2, 3], [1, 4], [3, 4]]), [s, t] = pick([[1, 2], [1, 5], [2, 5], [1, 3]]); return mk({ topic: 'stats2', value: (p * s) / (q * t), answer: fracStr(p * s, q * t), en: `A and B are independent events with P(A) = ${fracStr(p, q)} and P(B) = ${fracStr(s, t)}. Find P(A and B).`, zh: `A、B 是独立事件，P(A) = ${fracStr(p, q)}，P(B) = ${fracStr(s, t)}。求 P(A 且 B)。`, solEn: `P(A ∩ B) = P(A) × P(B) = ${fracStr(p * s, q * t)}`, solZh: `P(A ∩ B) = P(A) × P(B) = ${fracStr(p * s, q * t)}` }); }
+    if (k === 'union') { const D = R(5, 12) * 2, a = R(2, D - 3), b = R(2, D - 3), ab = R(1, Math.min(a, b) - 1); if (a + b - ab >= D) return null; return mk({ topic: 'stats2', value: (a + b - ab) / D, answer: fracStr(a + b - ab, D), en: `P(A) = ${fracStr(a, D)}, P(B) = ${fracStr(b, D)} and P(A ∩ B) = ${fracStr(ab, D)}. Find P(A ∪ B).`, zh: `P(A) = ${fracStr(a, D)}，P(B) = ${fracStr(b, D)}，P(A ∩ B) = ${fracStr(ab, D)}。求 P(A ∪ B)。`, solEn: `P(A ∪ B) = P(A) + P(B) − P(A ∩ B) = ${fracStr(a + b - ab, D)}`, solZh: `P(A ∪ B) = P(A) + P(B) − P(A ∩ B) = ${fracStr(a + b - ab, D)}` }); }
+    if (k === 'bmean') { const [n, pn, pd] = pick([[20, 1, 2], [40, 1, 4], [30, 1, 3], [50, 1, 5], [60, 2, 3]]); return mk({ topic: 'stats2', value: n * pn / pd, en: `X ~ Bin(${n}, ${fracStr(pn, pd)}). Find E(X).`, zh: `X ~ B(${n}, ${fracStr(pn, pd)})，求 E(X)。`, solEn: `E(X) = np = ${n} × ${fracStr(pn, pd)} = ${n * pn / pd}`, solZh: `E(X) = np = ${n} × ${fracStr(pn, pd)} = ${n * pn / pd}` }); }
     if (k === 'ev') { const xs = [0, 1, 2, 3], w = [R(1, 4), R(1, 4), R(1, 4), R(1, 4)], T = w.reduce((a, b) => a + b, 0), E = xs.reduce((s, x, i) => s + x * w[i], 0);
       return mk({ topic: 'stats2', value: E / T, answer: fracStr(E, T), en: `A random variable X takes values 0, 1, 2, 3 with probabilities ${w.map(v => fracStr(v, T)).join(', ')}. Find E(X).`, zh: `随机变量 X 取 0、1、2、3 的概率分别为 ${w.map(v => fracStr(v, T)).join('、')}，求 E(X)。`, solEn: `Σ x·P(x) = ${fracStr(E, T)}`, solZh: `E(X) = Σ x·P(x) = ${fracStr(E, T)}` }); }
     if (k === 'z') { const mu = R(40, 80), sd = R(2, 12), z = pick([-2, -1, 1, 1.5, 2, 2.5]), x = mu + z * sd; return mk({ topic: 'stats2', value: z, en: `Test scores have mean ${mu} and standard deviation ${sd}. What is the z-score of a mark of ${num(x)}?`, zh: `成绩平均分 ${mu}，标准差 ${sd}。${num(x)} 分的 z 分数是多少？`, solEn: `z = (${num(x)} − ${mu}) / ${sd} = ${num(z)}`, solZh: `z = (${num(x)} − ${mu}) / ${sd} = ${num(z)}` }); }

@@ -1291,7 +1291,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     for (const k of ['fin', 'factor', 'formula']) { assert.ok(S.en['topic.' + k] && S.zh['topic.' + k], k); assert.ok(!G.topicsFor('maths', 7).includes(k), k + ' is not in Year 7'); }
     assert.ok(G.topicsFor('maths', 9).includes('fin') && G.topicsFor('maths', 9).includes('factor') && !G.topicsFor('maths', 8).includes('factor') && !G.topicsFor('maths', 11).includes('fin'));
   });
-  t('W11: every Financial maths answer is right (simple and compound interest, depreciation, wages, GST, budgets), checked from the question text', () => {
+  t('W11: every Financial maths answer is right (simple and compound interest, depreciation, wages, GST), checked from the question text', () => {
     let n = 0;
     draw('fin', [9, 10], 120, q => {
       const e = M(q.q.en); let m;
@@ -1316,7 +1316,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
       n++;
     });
     assert.ok(n >= 900, 'checked ' + n);
-    assert.strictEqual(Object.keys(seen).length, 17, 'kinds seen: ' + Object.keys(seen).join());
+    assert.strictEqual(Object.keys(seen).length, 15, 'kinds seen (v2.2.0 R4: Year 9 pay, GST and simple interest; Year 10 compound interest and depreciation): ' + Object.keys(seen).join());
   });
   t('W11: Factorising answers are right (the product is expanded to check), and the multiple-choice answers expand to the question', () => {
     const exp = (a, b) => [a[0] * b[0], a[0] * b[1] + a[1] * b[0], a[1] * b[1]];   // (a0 x + a1)(b0 x + b1)
@@ -1366,7 +1366,7 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
       else if (q.type === 'mc' && /^Which is the equation of the line with gradient/.test(e)) { const mm = /gradient (-?\d+) and y-intercept (-?\d+)/.exec(e); const want = 'y = ' + (mm[1] === '1' ? '' : mm[1] === '-1' ? '-' : mm[1]) + 'x' + (mm[2] < 0 ? ' - ' + (-mm[2]) : ' + ' + mm[2]); assert.strictEqual(M(q.choices[q.correct].en), want, e); seenKinds.add('eqmc'); }
       else if (q.type === 'mc' && /^Which kind of line is/.test(e)) { const horiz = /^Which kind of line is y =/.test(e); assert.ok(q.choices[q.correct].en.startsWith(horiz ? 'horizontal' : 'vertical'), e); seenKinds.add('hv'); }
     });
-    assert.deepStrictEqual([...seenKinds].sort(), ['eqc', 'eqmc', 'eqpt', 'hv', 'par', 'perp']);
+    assert.deepStrictEqual([...seenKinds].sort(), ['eqc', 'eqmc', 'eqpt', 'par', 'perp']);   // v2.2.0 R4: the Year 9 lesson (gradient, y = mx + b) and the Year 10 lesson (equation of a line); horizontal and vertical lines are in neither
     draw('linear', [8], 200, q => assert.ok(!/y = mx \+ c|Which kind of line|Which is the equation/.test(q.q.en), 'Year 8 gets an equation-of-a-line question: ' + q.q.en));
   });
   t('W11: the new questions read well in Chinese too (no English left in a Chinese question or its choices except formulas)', () => {
@@ -1375,10 +1375,10 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
       if (q.type === 'mc') q.choices.forEach(c => { if (/[a-z]{4,}/i.test(c.en.replace(/sqrt/g, ''))) assert.ok(/[一-鿿]/.test(c.zh), 'English choice with no Chinese: ' + c.en); });
     });
   });
-  t('v2.2.0 R1.1: flat-rate depreciation never goes below $0 (the machine is still worth at least 40% of its price)', () => {
+  t('v2.2.0 R1.1 (R4): depreciation never goes below $0, and Year 10 asks the reducing-balance formula its lesson teaches (no flat-rate question any more)', () => {
     let n = 0;
-    draw('fin', [9, 10], 400, q => { const m = /A machine worth \$(\d+) loses \$(\d+) in value each year \(flat rate\)\. What is it worth after (\d+) years\?/.exec(q.q.en); if (!m) return; n++; assert.ok(+m[2] * +m[3] < +m[1] * 0.6 && q.value >= +m[1] * 0.4, q.q.en + ' = ' + q.value); assert.ok(!/-\d/.test(q.answer + ' ' + q.sol.en + ' ' + q.sol.zh), q.sol.en); });
-    assert.ok(n > 20, 'flat-rate questions seen: ' + n);
+    draw('fin', [10], 400, q => { assert.ok(!/flat rate/.test(q.q.en), q.q.en); if (/depreciates by/.test(q.q.en)) { n++; assert.ok(q.value > 0 && !/-\d/.test(q.answer + ' ' + q.sol.en + ' ' + q.sol.zh), q.q.en + ' = ' + q.value); } });
+    assert.ok(n > 20, 'depreciation questions seen: ' + n);
   });
   t('v2.2.0 R1.2: the parallel-line question names the same line in both languages and gives no hint', () => {
     let n = 0;
@@ -1483,6 +1483,61 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     none(12, 'trig', /exact value|sine rule|included angle/, 'Year 11 content');
     none(13, 'trig', /exact value|included angle|0° ≤ x < 360°|opposite/, 'Year 11 content'); some(13, 'trig', /sin 2θ|t = tan|R sin\(x \+ α\)/, 'a double-angle, t or auxiliary-angle question');
     none(13, 'calc', /Evaluate ∫ from \d to \d of \(/, 'a plain polynomial integral'); some(13, 'calc', /dy\/dx = \dy|growing|grows at|substitution/, 'a rate, differential equation or substitution');
+  });
+  t('v2.2.0 R4 (R3.1): Practise at Years 7 to 10 asks what that year\'s lesson teaches: every key point of the lesson is asked, and nothing from another year\'s lesson', () => {
+    const cache = {};
+    const qs = (y, id) => cache[y + ':' + id] || (cache[y + ':' + id] = [1, 2, 3, 4].flatMap(d => Array.from({ length: 100 }, () => { const q = G.generateExact('maths', y, id, d); return q.q.en; })));
+    const some = (y, id, re, why) => assert.ok(qs(y, id).some(s => re.test(s)), y + ':' + id + ' never asks ' + why);
+    const none = (y, id, re, why) => { for (const s of qs(y, id)) assert.ok(!re.test(s), y + ':' + id + ' asks ' + why + ': ' + s); };
+    /* Number */
+    some(7, 'frac', /missing (top|bottom) number/, 'equivalent fractions'); some(7, 'frac', /^Work out \d+\/\d+ [+−] \d+\/\d+\./, 'adding and subtracting fractions'); some(7, 'frac', /mixed number|\d+ \d+\/\d+/, 'mixed numbers'); none(7, 'frac', /[×÷]/, 'multiplying or dividing fractions (Year 8)');
+    some(8, 'frac', /×/, 'multiplying fractions'); some(8, 'frac', /÷/, 'dividing fractions'); some(8, 'frac', /^What is \d+\/\d+ of/, 'a fraction of an amount'); none(8, 'frac', /missing (top|bottom)|mixed number|\d+ \d+\/\d+/, 'Year 7 fractions');
+    some(7, 'pct', /^What is [\d.]+% of/, 'a percentage of an amount'); some(7, 'pct', /^What percentage of/, 'one amount as a percentage of another'); some(7, 'pct', /^Write .* as a percentage/, 'a fraction or decimal as a percentage'); none(7, 'pct', /sale|profit|loss|increased|decreased|rises/, 'percentage change (Year 8)');
+    some(8, 'pct', /increased|decreased/, 'an increase or decrease'); some(8, 'pct', /on sale/, 'a discount'); some(8, 'pct', /profit|loss/, 'profit or loss'); none(8, 'pct', /^What percentage of|^What is [\d.]+% of|^Write |original price|rises/, 'Year 7 percentages or a successive change');
+    some(7, 'ratio', /^Simplify/, 'simplifying a ratio'); some(7, 'ratio', /shared between/, 'sharing in a ratio'); none(7, 'ratio', /km\/h|per kg|minutes|boys to girls/, 'rates (Year 8)');
+    some(8, 'ratio', /km\/h/, 'speed'); some(8, 'ratio', /per kg/, 'a unit rate'); some(8, 'ratio', /minutes/, 'changing minutes to hours'); none(8, 'ratio', /^Simplify|shared (between|among)|boys to girls/, 'Year 7 ratios');
+    some(7, 'index', /^Work out \d+\^\d+/, 'a power'); some(7, 'index', /^Work out [√∛]/, 'a root'); some(7, 'index', /^Work out [\d(].*[+−]/, 'the order of operations'); none(7, 'index', /standard form|\(x\^|\^\(/, 'index laws (Year 9)');
+    some(9, 'index', /\(x\^/, 'an index law'); some(9, 'index', /\^\(−/, 'a negative power'); some(9, 'index', /standard form/, 'scientific notation'); none(9, 'index', /√|∛|\^\(1\//, 'surds or fractional indices (Year 10)');
+    some(10, 'index', /can be written as k√/, 'simplifying a surd'); some(10, 'index', /\^\(1\/[23]\)/, 'a fractional index'); some(10, 'index', /√\d+ [×÷] √\d+/, 'multiplying or dividing surds'); none(10, 'index', /standard form|\(x\^|\^\(−/, 'Year 9 index laws');
+    /* Algebra and graphs */
+    some(7, 'alg', /^Find the value of/, 'substitution'); some(7, 'alg', /^Simplify/, 'collecting like terms'); some(7, 'alg', /^Solve for x: \d+x \+ \d+ =/, 'a simple equation'); none(7, 'alg', /Expand|Collect|simultaneous| > |\(x \+/, 'Year 8 algebra');
+    some(8, 'alg', /^Expand/, 'expanding brackets'); some(8, 'alg', /^Collect like terms/, 'collecting like terms'); some(8, 'alg', /smallest integer/, 'an inequality'); some(8, 'alg', /x < k/, 'an inequality with a negative coefficient (reverse the sign)'); none(8, 'alg', /simultaneous|x\/\d \+|\)\/\d|Find the value of|^Simplify/, 'Year 7 or Year 9 algebra');
+    some(9, 'alg', /x\/\d \+ x\/\d/, 'adding algebraic fractions'); some(9, 'alg', /^Solve for x: [^=]*x[^=]*= [^=]*x/, 'unknowns on both sides'); some(9, 'alg', /\)\/\d/, 'an equation with fractions'); none(9, 'alg', /simultaneous|Expand| > /, 'Year 8 or Year 10 algebra');
+    some(10, 'alg', /simultaneous/, 'simultaneous equations'); some(10, 'alg', /^Expand \(/, 'expanding two brackets (FOIL)'); none(10, 'alg', /^Solve for x|smallest integer|x\/\d \+/, 'Year 7 to 9 algebra');
+    some(8, 'linear', /^A table of values/, 'a table of values'); some(8, 'linear', /^Which point lies on/, 'a point on a line'); some(8, 'linear', /Which rule says this/, 'the rule from words'); some(8, 'linear', /find y when x/, 'substituting into the rule'); none(8, 'linear', /gradient|x-axis|equation of the line|y = mx \+ c/, 'Year 9 or 10 lines');
+    some(9, 'linear', /^Find the gradient/, 'the gradient'); some(9, 'linear', /x-axis/, 'the x-intercept'); some(9, 'linear', /^Which is the equation of the line with gradient/, 'y = mx + b'); some(9, 'linear', /what is the (gradient|y-intercept)/, 'reading m and b'); none(9, 'linear', /perpendicular|parallel to|Its equation is/, 'Year 10 lines');
+    some(10, 'linear', /perpendicular/, 'perpendicular lines'); some(10, 'linear', /parallel to/, 'parallel lines'); some(10, 'linear', /gradient .* and passes through/, 'a line from its gradient and a point'); some(10, 'linear', /^The line through/, 'a line from two points'); none(10, 'linear', /^Which is the equation|x-axis|^Find the gradient|what is the (gradient|y-intercept)/, 'Year 9 lines');
+    some(10, 'quad', /quadratic formula/, 'the quadratic formula'); some(10, 'quad', /parabola/, 'which way the parabola opens'); some(10, 'quad', /^Solve .* root/, 'solving by factorising'); none(10, 'quad', /discriminant|real roots|axis of symmetry|turning point|sum of the roots|\)² \+ q/, 'Year 11 quadratics');
+    some(11, 'quad', /discriminant/, 'the discriminant'); some(11, 'quad', /real roots/, 'the number of roots'); some(11, 'quad', /axis of symmetry/, 'the axis of symmetry'); some(11, 'quad', /\)² \+ q/, 'completing the square'); some(11, 'quad', /turning point/, 'the vertex'); none(11, 'quad', /quadratic formula|parabola|^Solve .* root|sum of the roots/, 'Year 10 quadratics');
+    some(9, 'factor', /^Factorise \d*x \+/, 'a common factor'); some(9, 'factor', /^Factorise x² − \d+\.|px − q/, 'a difference of two squares'); none(9, 'factor', /x² [+−] \d+x|\(x \+ p\)/, 'trinomials (Year 10)');
+    some(10, 'factor', /^x² [+−] \d*x .*\(x \+ p\)\(x \+ q\)|^Factorise x² [+−] \d+x/, 'a trinomial'); some(10, 'factor', /^\d+x² .*\d+\(x \+ p\)\(x \+ q\)/, 'taking out a common factor first'); none(10, 'factor', /^Factorise \d*x \+|^Factorise x² − \d+\.|px/, 'Year 9 factorising');
+    some(9, 'formula', /v = u \+ at|y = mx \+ c|A = ½bh|P = 2\(l \+ w\)|V = ⅓Ah|y = k\/x/, 'a one-step-at-a-time formula'); none(9, 'formula', /c² = a² \+ b²|A = P \+ Prn|F = 9C|E = ½mv²|s = ut/, 'a Year 10 formula');
+    some(10, 'formula', /c² = a² \+ b²|E = ½mv²/, 'a formula with a square or a root'); some(10, 'formula', /F = 9C\/5/, 'a formula with a fraction'); some(10, 'formula', /A = P \+ Prn/, 'a formula with the letter in two places'); none(10, 'formula', /v = u \+ at|y = mx \+ c|A = ½bh|P = 2\(l \+ w\)|V = ⅓Ah|y = k\/x/, 'a Year 9 formula');
+    some(9, 'fin', /commission|per hour/, 'pay'); some(9, 'fin', /GST/, 'GST'); some(9, 'fin', /simple interest/, 'simple interest'); none(9, 'fin', /compound|depreciat/, 'compound interest or depreciation (Year 10)');
+    some(10, 'fin', /compound/, 'compound interest'); some(10, 'fin', /depreciates/, 'depreciation'); some(10, 'fin', /interest is earned/, 'the interest earned'); none(10, 'fin', /simple interest|commission|GST|per hour|budget/, 'Year 9 financial maths');
+    /* Measurement and geometry */
+    some(7, 'meas', /rectangle/, 'a rectangle'); some(7, 'meas', /^A triangle has base/, 'a triangle'); some(7, 'meas', /parallelogram/, 'a parallelogram'); some(7, 'meas', /m² to cm²|cm² to m²/, 'square-metre conversions'); none(7, 'meas', /circle|cylinder|prism|cone|sphere|pyramid|ring|L-shaped/, 'Year 8 to 10 measurement');
+    some(8, 'meas', /circle/, 'a circle'); some(8, 'meas', /ring|L-shaped|semicircle/, 'a composite shape'); some(8, 'meas', /prism/, 'the volume of a prism'); none(8, 'meas', /cylinder|cone|sphere|pyramid|parallelogram|Convert/, 'Year 7, 9 or 10 measurement');
+    some(9, 'meas', /prism/, 'a prism'); some(9, 'meas', /cylinder.*volume/, 'the volume of a cylinder'); some(9, 'meas', /total surface area/, 'the surface area of a cylinder'); some(9, 'meas', /litre/, 'volume units'); none(9, 'meas', /cone|sphere|pyramid|circle has|ring|L-shaped|semicircle/, 'Year 8 or 10 measurement');
+    some(10, 'meas', /pyramid/, 'a pyramid'); some(10, 'meas', /cone has base radius \d+ cm and height/, 'the volume of a cone'); some(10, 'meas', /volume of a sphere/, 'the volume of a sphere'); some(10, 'meas', /surface area of a sphere/, 'the surface area of a sphere'); some(10, 'meas', /curved surface area/, 'the curved surface area of a cone'); none(10, 'meas', /cylinder|prism|parallelogram|Convert/, 'Year 7 to 9 measurement');
+    some(7, 'angle', /straight line/, 'angles on a line'); some(7, 'angle', /meet at a point/, 'angles at a point'); some(7, 'angle', /vertically opposite/, 'vertically opposite angles'); some(7, 'angle', /corresponding|alternate|co-interior/, 'parallel lines'); none(7, 'angle', /triangle|quadrilateral|congruent|similar|circle|cyclic/, 'Year 8 to 10 geometry');
+    some(8, 'angle', /Two angles of a triangle/, 'the angles of a triangle'); some(8, 'angle', /isosceles/, 'an isosceles triangle'); some(8, 'angle', /exterior angle/, 'the exterior angle'); some(8, 'angle', /quadrilateral/, 'the angles of a quadrilateral'); none(8, 'angle', /parallel|straight line|congruent|cyclic|similar/, 'Year 7, 9 or 10 geometry');
+    some(9, 'angle', /congruent/, 'congruent figures'); some(9, 'angle', /similar to/, 'similar figures'); some(9, 'angle', /scale factor of/, 'the area scale factor'); none(9, 'angle', /isosceles|exterior|cyclic|diameter|touches|at the centre/, 'Year 8 or 10 geometry');
+    some(10, 'angle', /at the centre|at the circumference/, 'the angle at the centre'); some(10, 'angle', /diameter/, 'the angle in a semicircle'); some(10, 'angle', /cyclic/, 'a cyclic quadrilateral'); some(10, 'angle', /touches/, 'a tangent'); none(10, 'angle', /congruent|similar|isosceles|parallel/, 'Year 7 to 9 geometry');
+    some(8, 'pyth', /hypotenuse/, 'the hypotenuse'); some(8, 'pyth', /ladder/, 'a shorter side'); some(8, 'pyth', /Pythagorean triple/, 'Pythagorean triples'); none(8, 'pyth', /bearing|elevation|depression|sin|°/, 'trigonometry (Year 9 and 10)');
+    some(9, 'pyth', /side opposite/, 'the opposite side'); some(9, 'pyth', /adjacent/, 'the adjacent side'); some(9, 'pyth', /nearest degree/, 'finding an angle'); none(9, 'pyth', /elevation|depression|bearing|ladder|legs/, 'Year 8 or 10 content');
+    some(10, 'pyth', /elevation/, 'the angle of elevation'); some(10, 'pyth', /depression/, 'the angle of depression'); some(10, 'pyth', /bearing/, 'a bearing'); none(10, 'pyth', /hypotenuse|ladder|nearest degree|adjacent to/, 'Year 8 or 9 content');
+    /* Statistics and probability */
+    some(7, 'stats', /frequency table/, 'a frequency table'); some(7, 'stats', /column graph/, 'a column graph'); some(7, 'stats', /dot plot/, 'a dot plot'); none(7, 'stats', /^Find the|Set A|box plot|stem-and-leaf|quartile/, 'Year 8 to 10 statistics');
+    some(8, 'stats', /^Find the mean/, 'the mean'); some(8, 'stats', /^Find the median/, 'the median'); some(8, 'stats', /^Find the mode/, 'the mode'); some(8, 'stats', /^Find the range/, 'the range'); none(8, 'stats', /frequency table|dot plot|column graph|stem-and-leaf|Set A|Q1|box plot|best fit|Class A/, 'Year 7, 9 or 10 statistics');
+    some(9, 'stats', /stem-and-leaf/, 'a stem-and-leaf plot'); some(9, 'stats', /mean of A/, 'comparing the means of two sets'); some(9, 'stats', /range of each set/, 'comparing the spread of two sets'); none(9, 'stats', /Q1|box plot|best fit|^Find the|frequency table/, 'Year 7, 8 or 10 statistics');
+    some(10, 'stats', /Q1 is the median/, 'quartiles'); some(10, 'stats', /box plot/, 'a box plot'); some(10, 'stats', /best fit/, 'a scatter plot and its line of best fit'); none(10, 'stats', /stem-and-leaf|Set A|^Find the/, 'Year 7 to 9 statistics');
+    some(7, 'prob', /^A bag has .* P\(blue\)/, 'a probability as a fraction'); some(7, 'prob', /as a percentage/, 'a probability as a percentage'); some(7, 'prob', /Two fair dice/, 'equally likely outcomes'); none(7, 'prob', /not red|two-way|Venn|replacement|combinations|outfits/, 'Year 8 to 10 probability');
+    some(8, 'prob', /not red/, 'the complement'); some(8, 'prob', /two-way table/, 'a two-way table'); some(8, 'prob', /Venn/, 'a Venn diagram'); none(8, 'prob', /replacement|replaced|combinations|outfits|Two fair dice|P\(blue\)/, 'Year 7, 9 or 10 probability');
+    some(9, 'prob', /combinations|outfits|How many outcomes/, 'counting the outcomes of two steps'); some(9, 'prob', /Two fair dice/, 'a table of two dice'); none(9, 'prob', /replacement|replaced|tree|not red|Venn|two-way|P\(blue\)/, 'Year 7, 8 or 10 probability');
+    some(10, 'prob', /both red/, 'multiplying along a path'); some(10, 'prob', /exactly one red/, 'adding paths'); some(10, 'prob', /without replacement/, 'without replacement'); none(10, 'prob', /not red|Venn|outfits|Two fair dice|P\(blue\)/, 'Year 7 to 9 probability');
+    /* Year 11 functions: the second key idea, shifts and reflections (R3.2) */
+    some(11, 'func', /f\(x\) \+ \d+ passes|f\(x − \d+\) passes|−f\(x\) passes/, 'a shift or a reflection');
   });
   t('W12: What\'s new for v2.2.0 is the newest entry, with words in both languages', () => {
     const rel = box.RELEASES[0]; assert.strictEqual(rel.v, '2.2.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'study');

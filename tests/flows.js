@@ -1587,7 +1587,7 @@ async function run(site) {
       // a browser that last saw v1.10.0 gets everything after it, each under its own version heading
       ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.10.0"' }, null, { news: true }));
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 4 && heads[0].includes(await appVersion(page)) && heads[1].includes('1.12.0') && heads[2].includes('1.11.0') && heads[3].includes('1.10.1'), JSON.stringify(heads));
+      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 5 && heads[0].includes(await appVersion(page)) && heads[1].includes('2.0.0') && heads[2].includes('1.12.0') && heads[3].includes('1.11.0') && heads[4].includes('1.10.1'), JSON.stringify(heads));
       // R1.2: one Show me only (the one at the bottom), never one per version as well
       check('v1.11 skipped versions: a single Show me', (await page.locator('#newsBody .news-show-v').count()) === 0 && (await page.locator('#newsShow').isVisible()), String(await page.locator('#newsBody .news-show-v').count()));
       // R1.6: Escape closes it and remembers this version, like Got it
@@ -1620,9 +1620,9 @@ async function run(site) {
       check(`v1.11 ${W}: the Release history button is at least 44 px tall`, nb && nb.height >= 44, JSON.stringify(nb));
       await page.click('#newsBtn');
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 5 && heads[0].includes(await appVersion(page)) && heads[4].includes('1.10.0'), JSON.stringify(heads));
+      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 6 && heads[0].includes(await appVersion(page)) && heads[5].includes('1.10.0'), JSON.stringify(heads));
       check(`v1.11 ${W}: the newest version is marked as this version`, (await page.locator('#newsBody .news-ver').first().locator('.news-cur').count()) === 1);
-      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 4);
+      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 5);
       const box = await page.evaluate(() => { const r = document.querySelector('#newsDlg').getBoundingClientRect(); return [r.top, r.bottom, innerHeight]; });
       check(`v1.11 ${W}: the dialog fits the screen (its list scrolls)`, box[0] >= 0 && box[1] <= box[2], JSON.stringify(box));
       check(`v1.11 ${W}: Close is reachable`, await page.locator('#newsClose').isVisible());
@@ -1942,6 +1942,12 @@ async function run(site) {
       if (r.status !== 200) throw new Error('register: ' + JSON.stringify(r.data));
       return r.data;
     };
+    // R6.1 (v2.1.0): a fill that was lost (the cause is still unknown: the forgot flow's new-password box was once empty at Save with no request sent)
+    // is read back and entered again, and a run that still cannot enter it fails here, by name, instead of as a wrong message later.
+    const fillOk = async (page, sel, value) => {
+      for (let i = 0; i < 4; i++) { await page.fill(sel, value); if ((await page.inputValue(sel)) === value) return true; await page.waitForTimeout(150); }
+      throw new Error('could not enter ' + sel);
+    };
     const dropAccount = (token, password) => apiCall('POST', 'account/delete', { password }, token).catch(() => null);
     /* a browser already signed in to an account (as after a sign-in on that device) */
     const signedInPage = (acc) => freshPage(browser, site, {
@@ -1995,7 +2001,7 @@ async function run(site) {
         await page.click('#friendsCta');
         check('W8 signed out, the Friends tab shows Sign in and Create account', (await visible(page, '#fLogin')) && (await page.getAttribute('#fTabLogin', 'aria-pressed')) === 'true' && (await page.textContent('#fTabReg')) === 'Create account');
         await page.click('#fTabReg');
-        check('W10 sign-up is one page: email, display name, password, security question, answer, 12 pictures', (await page.locator('#fReg input:not([type=radio]), #fReg select').count()) === 5 && (await page.locator('.f-pick input[type=radio]').count()) === 12 && (await page.getAttribute('#fNewPass', 'autocomplete')) === 'new-password');
+        check('W10 sign-up is one page: email, display name, password twice, security question, answer, 12 pictures', (await page.locator('#fReg input:not([type=radio]), #fReg select').count()) === 6 && (await page.locator('.f-pick input[type=radio]').count()) === 12 && (await page.getAttribute('#fNewPass', 'autocomplete')) === 'new-password');
         check('R4.2 the question list shows a dropdown arrow and keeps room for it', await page.$eval('#fQuestion', e => { const c = getComputedStyle(e); return c.backgroundImage !== 'none' && parseFloat(c.paddingRight) >= 36; }));
         check('W10 the question list has the 8 questions and a first line "Choose a question"', JSON.stringify(await page.locator('#fQuestion option').allTextContents()) === JSON.stringify(['Choose a question', 'What is the name of your first pet?', 'What is the name of your favourite teacher?', 'What is the name of your favourite toy?', 'What is the name of the street you live on?', 'What is your favourite food?', 'What is the name of your first school?', 'In which city were you born?', 'What is your favourite book or film?']));
         check('W10 the page says no email is sent and the answer is the way back', /No email is sent/.test(await page.textContent('#fEmailHint')) && /way back in/.test(await page.textContent('#fAnswerHint')));
@@ -2006,7 +2012,11 @@ async function run(site) {
         await page.click('#fRegGo');
         check('W8 a short password is refused in words', (await page.textContent('#fErr')) === 'The password needs at least 8 characters.');
         check('W8 what was typed stays after the error', (await page.inputValue('#fNewUser')) === name && (await page.inputValue('#fEmail')) === name + '@example.com');
-        await page.fill('#fNewPass', pw);
+        await page.fill('#fNewPass', pw); await page.fill('#fNewPass2', pw + 'x');
+        await page.click('#fRegGo');
+        check('W11 two different passwords are refused in words, and no account is made', (await page.textContent('#fErr')) === 'The two passwords are not the same.' && (await apiCall('POST', 'login', { email: name + '@example.com', password: pw })).status === 401);
+        check('W11 the sign-up has a box to type the password again, and it keeps what was typed', (await page.textContent('label[for=fNewPass2]')) === 'Type the password again' && (await page.inputValue('#fNewPass')) === pw);
+        await page.fill('#fNewPass2', pw);
         await page.click('#fRegGo');
         check('W10 no question chosen is refused in words', (await page.textContent('#fErr')) === 'Choose a security question.');
         await page.selectOption('#fQuestion', '0');
@@ -2089,7 +2099,7 @@ async function run(site) {
         await pa.page.click('#startBtn');
         await pa.page.waitForSelector('#screen-friends:not([hidden]) .f-card');
         check('W9 sent: the toast says so, and the challenge waits for me too', (await pa.page.textContent('#toast')) === 'Challenge sent to ' + nb + '.' && (await pa.page.textContent('.f-card')).includes(nb + ' has not accepted yet') && (await pa.page.textContent('.f-card')).includes('h left'), await pa.page.textContent('#frBody'));
-        check('W9 the challenge names its year, level and count', (await pa.page.textContent('.f-card')).includes('5 questions · Level 3'), await pa.page.textContent('.f-card'));
+        check('W9 the challenge names its year, level and count', (await pa.page.textContent('.f-card')).includes('5 questions · Challenging'), await pa.page.textContent('.f-card'));   // R3.6 (v2.1.0): the level has the name the sheet gives it
         // B is told, and accepts
         await pb.page.evaluate(() => window.Friends.refresh());
         await pb.page.waitForSelector('#friendsDot:not([hidden])');
@@ -2117,7 +2127,7 @@ async function run(site) {
         await pa.page.waitForSelector('#resVs #fCompare');
         const cmp = await pa.page.textContent('#resVs');
         check('W9 who won, and why: higher accuracy', cmp.includes('🏆 You won!') && cmp.includes('The higher accuracy wins.') && cmp.includes('80%') && cmp.includes('60%') && /⏱ \d+:\d\d/.test(cmp), cmp);
-        check('W9 the comparison names the set: 5 questions, Level 3', cmp.includes('5 questions · Level 3'), cmp);
+        check('W9 the comparison names the set: 5 questions, Challenging', cmp.includes('5 questions · Challenging'), cmp);
         const dots = await pa.page.locator('#resVs .f-dots').first().locator('span').evaluateAll(x => x.map(e => e.className).join());
         check('W9 each question right or wrong, in order', dots === 'y,n,y,y,y', dots);
         check('W9 the comparison has no answers or worked solutions', !/Answer:|Worked solution/.test(cmp));
@@ -2176,14 +2186,19 @@ async function run(site) {
         await page.fill('#fForgotEmail', name + '@example.com');
         await page.click('#fForgotGo');
         await page.waitForSelector('#fResetPass');
-        // R5.2: the form draws the next step once more when its request ends; typing into the first copy loses the text (the password box was empty, about one run in four)
+        // R5.2 guessed that the form draws the next step once more when its request ends; R6.1 showed that this wait does not change anything.
+        // The cause of the lost fill is unknown. The fills below are read back (fillOk) and entered again until they are there.
         await page.waitForFunction(() => !window.Friends._state.busy);
         check('W10 forgot: the question of the account is shown, with an answer box', (await page.textContent('#fQuestionText')) === 'What is the name of your first pet?' && (await visible(page, '#fForgotAns')));
         check('W10 forgot: it says that without the answer the account cannot be recovered', /cannot be recovered/.test(await page.textContent('#frBody')));
-        await page.fill('#fForgotAns', 'max'); await page.fill('#fResetPass', 'new-pass-' + name);
+        await fillOk(page, '#fForgotAns', 'max'); await fillOk(page, '#fResetPass', 'new-pass-' + name); await fillOk(page, '#fResetPass2', 'other-pass-' + name);
+        await page.click('#fResetGo');
+        check('W11 forgot: two different new passwords are refused in words, and nothing changes', (await errShown(page, 'The two passwords are not the same.')) && (await apiCall('GET', 'me', undefined, A.token)).status === 200);
+        check('W11 forgot: the box to type the new password again has its label', (await page.textContent('label[for=fResetPass2]')) === 'Type the new password again');
+        await fillOk(page, '#fResetPass2', 'new-pass-' + name);
         await page.click('#fResetGo');
         check('W10 forgot: a wrong answer is refused in words and nothing changes', (await errShown(page, 'That answer is not right.')) && (await apiCall('GET', 'me', undefined, A.token)).status === 200);
-        await page.fill('#fForgotAns', '  REX ');
+        await fillOk(page, '#fForgotAns', '  REX ');
         await page.click('#fResetGo');
         await page.waitForSelector('#fLogin');
         check('W8 after a reset: back to Sign in, the old session ends', /Password changed/.test(await page.textContent('#toast')) && (await apiCall('GET', 'me', undefined, A.token)).status === 401);
@@ -2274,6 +2289,46 @@ async function run(site) {
         check('R1.1: no page errors', phone.errors.length === 0 && tablet.errors.length === 0, phone.errors.concat(tablet.errors).join(' | '));
         await dropAccount(A.token, pw);
         await phone.context.close(); await tablet.context.close();
+      });
+
+      /* v2.1.0: the open lows R3.1, R3.2, R3.8 (a long friend name at 320 px; the Chinese Challenge button) and the failed-save notice */
+      await flow('v2.1 R3.1 R3.2 R3.8 a long friend name at 320 px, the Chinese button, and a save that fails is said', async () => {
+        const na = tag(), nb = ('longfriend' + tag()).slice(0, 20), pw = 'pass-' + na;
+        const A = await makeAccount(na, pw, 1), B = await makeAccount(nb, 'pass-' + nb, 2);
+        await apiCall('POST', 'friends/add', { who: nb }, A.token);
+        await apiCall('POST', 'friends/answer', { username: na, accept: true }, B.token);
+        const { context, page, errors } = await signedInPage(A);
+        await page.setViewportSize({ width: 320, height: 568 });
+        await page.click('.tab[data-go="friends"]');
+        await page.waitForSelector('#fFriendList .f-li');
+        const row = await page.evaluate(() => {
+          const li = document.querySelector('#fFriendList .f-li'), r = e => { const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), right: Math.round(b.right), h: Math.round(b.height) }; };
+          const go = [...li.querySelectorAll('button')].find(b => !b.classList.contains('f-x')), x = li.querySelector('.f-x'), b = li.querySelector('.f-name b');
+          return { li: r(li), go: r(go), x: r(x), cut: b.scrollWidth > b.clientWidth, over: getComputedStyle(b).textOverflow, doc: document.documentElement.scrollWidth, text: b.textContent };
+        });
+        check('R3.1 at 320 px the name, Challenge and ✕ stay on one row (✕ level with Challenge, row one line high)', row.li.h < 70 && Math.abs(row.go.top - row.x.top) < 10 && row.x.right <= 320, JSON.stringify(row));
+        check('R3.1 the long name (20 letters) is cut with … inside its box, and the page does not pan sideways', row.text === nb && row.cut && row.over === 'ellipsis' && row.doc <= 320, JSON.stringify(row));
+        await page.getByRole('button', { name: 'Challenge ' + nb, exact: true }).click();
+        await page.waitForFunction(() => document.querySelector('#setupDlg').open);
+        const tt = await page.evaluate(() => { const h = document.querySelector('#setupTitle').getBoundingClientRect(), x = document.querySelector('#setupClose').getBoundingClientRect(); return { hr: Math.round(h.right), xl: Math.round(x.left), hh: Math.round(h.height), w: document.querySelector('#setupTitle').textContent }; });
+        check('R3.2 a long friend name in the sheet title wraps and stays left of the ✕ at 320 px', tt.w === 'Challenge ' + nb && tt.hr <= tt.xl + 1, JSON.stringify(tt));
+        await page.click('#setupClose');
+        await page.click('#langBtn');
+        const zh = await page.evaluate(() => ({ tab: document.querySelector('#fTabCh').textContent.replace(/\s*\d+$/, '').trim(), btn: [...document.querySelectorAll('#fFriendList .f-li button')].find(b => !b.classList.contains('f-x')).textContent.trim() }));
+        check('R3.8 in Chinese the Challenges tab and the per-friend button have different names', zh.tab === '挑战' && zh.btn === '发起挑战' && zh.tab !== zh.btn, JSON.stringify(zh));
+        await page.click('#langBtn');
+        // a save that fails is said on the Friends tab, and the notice goes when a save works again
+        await page.route('**/api/progress', r => (r.request().method() === 'PUT' ? r.abort() : r.continue()));
+        await page.evaluate(() => window.Friends.upload());
+        await page.waitForSelector('#fSyncWarn');
+        check('v2.1 a failed save says so and that the records stay on this device', /could not be saved to your account/.test(await page.textContent('#fSyncWarn')) && /safe on this device/.test(await page.textContent('#fSyncWarn')) && (await page.getAttribute('#fSyncWarn', 'role')) === 'status', await page.textContent('#fSyncWarn'));
+        await page.unroute('**/api/progress');
+        await page.evaluate(() => window.Friends.upload());
+        await page.waitForSelector('#fSyncWarn', { state: 'detached' });
+        check('v2.1 the notice goes when a save works again', (await page.locator('#fSyncWarn').count()) === 0);
+        check('v2.1 R3.1 no page errors', errors.length === 0, errors.join(' | '));
+        await dropAccount(A.token, pw); await dropAccount(B.token, 'pass-' + nb);
+        await context.close();
       });
 
       /* R1.8 (v2.0.0): a session that ends by itself on a shared computer */

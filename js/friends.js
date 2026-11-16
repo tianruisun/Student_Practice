@@ -125,14 +125,20 @@
         if (!F.auth || F.auth.profile !== id) return false;
         // still unsaved when a change came in during this save (its own save is waiting on the timer)
         F.auth.synced = r.updated; F.auth.base = window.Records.baseOf(data); F.auth.dirty = !!F.syncTimer; saveAuth();
-        F.lastSync = Date.now(); F.syncFailed = false;
+        F.lastSync = Date.now(); setSyncFailed(false);
         return true;
       } catch (e) {
         if (e.code === 'stale' && e.data && F.auth && F.auth.profile === id) { absorb(e.data.data, e.data.updated); continue; }
-        F.syncFailed = true; return false;
+        setSyncFailed(true); return false;
       }
     }
-    F.syncFailed = true; return false;
+    setSyncFailed(true); return false;
+  }
+  /* v2.1.0: a save that fails is said so on the Friends tab (the records stay on this device and are saved again) */
+  function setSyncFailed(v) {
+    if (F.syncFailed === v) return;
+    F.syncFailed = v;
+    if (A.S.screen === 'friends') A.render();
   }
   /* the server copy into this device's records: merged, never simply replaced. Returns true when this device has
      records the server copy does not (so they still need saving). */
@@ -453,11 +459,12 @@
         pick.append(lab);
       });
       wrap.append(form('fReg', async () => {
-        const email = val('fEmail').toLowerCase(), username = val('fNewUser').toLowerCase(), password = ($('#fNewPass') || {}).value || '';
+        const email = val('fEmail').toLowerCase(), username = val('fNewUser').toLowerCase(), password = ($('#fNewPass') || {}).value || '', password2 = ($('#fNewPass2') || {}).value || '';
         const qv = val('fQuestion'), answer = val('fAnswer');
         if (!emailOk(email)) { F.err = t('acc.err.bad_email'); return; }
         if (!/^[a-z0-9_]{3,20}$/.test(username)) { F.err = t('acc.err.bad_username'); return; }
         if (password.length < 8) { F.err = t('acc.err.bad_password'); return; }
+        if (password !== password2) { F.err = t('acc.err.pass_mismatch'); return; }
         if (qv === '') { F.err = t('acc.err.bad_question'); return; }
         if (answer.replace(/\s+/g, ' ').length < 2) { F.err = t('acc.err.bad_answer'); return; }
         const avatar = +((document.querySelector('input[name=fAvatar]:checked') || {}).value || 0);
@@ -469,6 +476,7 @@
       field('fEmail', 'acc.email', 'email', { autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxLength: 254, hint: 'acc.emailHint' }),
       field('fNewUser', 'acc.username', 'text', { autocomplete: 'nickname', autocapitalize: 'none', spellcheck: false, maxLength: 20, hint: 'acc.usernameHint' }),
       field('fNewPass', 'acc.password', 'password', { autocomplete: 'new-password', maxLength: 200, hint: 'acc.passwordHint' }),
+      field('fNewPass2', 'acc.passwordAgain', 'password', { autocomplete: 'new-password', maxLength: 200 }),
       selectField('fQuestion', 'acc.question', 'acc.questionPick', questionKeys()),
       field('fAnswer', 'acc.answer', 'text', { autocomplete: 'off', autocapitalize: 'none', spellcheck: false, maxLength: 60, hint: 'acc.answerHint' }),
       pick, errLine(), submit('acc.create', 'fRegGo')));
@@ -489,9 +497,10 @@
       } else {
         const q = el('p', 'f-q', t(questionKey(F.forgot.qid))); q.id = 'fQuestionText';
         wrap.append(el('h3', 'f-h', t('acc.forgotH')), el('p', 'f-hint', F.forgot.email), form('fResetForm', async () => {
-          const answer = val('fForgotAns'), password = ($('#fResetPass') || {}).value || '';
+          const answer = val('fForgotAns'), password = ($('#fResetPass') || {}).value || '', password2 = ($('#fResetPass2') || {}).value || '';
           if (!answer) { F.err = t('acc.err.bad_answer'); return; }
           if (password.length < 8) { F.err = t('acc.err.bad_password'); return; }
+          if (password !== password2) { F.err = t('acc.err.pass_mismatch'); return; }
           await api('POST', 'reset', { email: F.forgot.email, answer, password });
           if (signedIn()) sessionEnded();   // the server has ended every session of that account
           F.loginEmail = F.forgot.email;
@@ -500,6 +509,7 @@
         q,
         field('fForgotAns', 'acc.answer', 'text', { autocomplete: 'off', autocapitalize: 'none', spellcheck: false, maxLength: 60 }),
         field('fResetPass', 'acc.newPassword', 'password', { autocomplete: 'new-password', maxLength: 200, hint: 'acc.passwordHint' }),
+        field('fResetPass2', 'acc.newPasswordAgain', 'password', { autocomplete: 'new-password', maxLength: 200 }),
         errLine(), submit('acc.saveNew', 'fResetGo')), el('p', 'f-hint', t('acc.noRecover')), back);
       }
     }
@@ -522,6 +532,7 @@
     const out = btn(t('acc.signOut'), 'ghost small', () => signOut(false), 'fSignOut');
     c.append(av(me.avatar, 'big'), who, out);
     const box = el('div', 'f-mewrap'); box.append(c);
+    if (F.syncFailed && !F.confirmOut) { const w = el('p', 'f-hint f-warn', t('acc.syncFailed')); w.id = 'fSyncWarn'; w.setAttribute('role', 'status'); box.append(w); }
     if (F.confirmOut) {
       const q = el('div', 'f-confirm'); q.setAttribute('role', 'alert');
       q.append(el('p', '', F.err), btn(t('acc.out.anyway'), 'secondary small', () => signOut(true), 'fOutAnyway'), btn(t('acc.out.stay'), 'ghost small', () => { F.confirmOut = false; F.err = ''; A.render(); }));
@@ -599,7 +610,7 @@
   function chTitle(c) {
     const s = c.settings || {};
     const topic = s.topic && s.topic !== 'mixed' ? t('topic.' + s.topic) : t('subject.' + (s.subject || 'maths'));
-    return t('fr.chTitle', { year: s.year !== undefined ? A.yearLabel(s.year) : '', topic, n: s.count || '', diff: t('fr.diffN', { n: s.diff || 2 }) });
+    return t('fr.chTitle', { year: s.year !== undefined ? A.yearLabel(s.year) : '', topic, n: s.count || '', diff: t('diff.' + (s.diff || 2)) });
   }
   const pct = sc => Math.round(100 * sc.c / sc.n) + '%';
   function timeLeft(c) {

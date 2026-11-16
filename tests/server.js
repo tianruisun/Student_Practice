@@ -499,6 +499,46 @@ t('W9 each student keeps the last 20 challenges', async () => {
   assert.strictEqual(la[0].id, ids[22]); assert.strictEqual(la[19].id, ids[3]);
   assert.strictEqual(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM duels').get().n, 20);
 });
+/* ---------- v2.1.0: the open lows of v2.0.0 (R3.3, R3.4, R3.5) ---------- */
+t('R3.3 a challenge the sender started stays after 24 hours with nobody accepting: over, no winner, no answer, and the hand-in is told so', async () => {
+  const { a, b } = await pair();
+  const idStarted = (await send(a)).body.id, idDone = (await send(a)).body.id, idUntouched = (await send(a)).body.id;
+  await start(a, idStarted); await start(a, idDone); assert.strictEqual((await result(a, idDone, [true, false])).status, 200);
+  later(25 * HOUR);
+  const la = await list(a), lb = await list(b);
+  assert.deepStrictEqual(la.map(c => c.id).sort(), [idStarted, idDone].sort(), 'the untouched one is gone, the two the sender used stay');
+  assert.strictEqual(lb.length, 2);
+  la.forEach(c => assert.deepStrictEqual([c.status, c.over, c.winner], ['sent', true, 'none']));
+  assert.strictEqual((await answer(b, idStarted, true)).body.error, 'too_late', 'too late to accept');
+  assert.strictEqual((await answer(b, idDone, false)).body.error, 'too_late', 'too late to decline');
+  assert.strictEqual((await result(a, idStarted, [true, true])).body.error, 'too_late', 'the hand-in is told, not a 404');
+  assert.strictEqual((await answer(b, idUntouched, true)).status, 404);
+});
+t('R3.4 the friend cannot decline after the sender has handed in; before that, and after a start only, a decline works', async () => {
+  const { a, b } = await pair();
+  const idDone = (await send(a)).body.id, idOpen = (await send(a)).body.id, idStarted = (await send(a)).body.id;
+  await start(a, idDone); assert.strictEqual((await result(a, idDone, [true, true])).status, 200);
+  const no = await answer(b, idDone, false);
+  assert.deepStrictEqual([no.status, no.body.error], [409, 'has_result']);
+  assert.strictEqual((await list(a)).find(c => c.id === idDone).status, 'sent', 'the sender\'s result is not voided');
+  assert.strictEqual((await answer(b, idDone, true)).body.status, 'accepted', 'the friend can still accept and play');
+  assert.strictEqual((await answer(b, idOpen, false)).body.status, 'declined');
+  await start(a, idStarted);
+  assert.strictEqual((await answer(b, idStarted, false)).body.status, 'declined', 'a start with no result is not a result');
+});
+t('R3.5 the last 20: finished challenges go first, so an invitation nobody has opened is kept', async () => {
+  const { a, b } = await pair();
+  const invite = (await send(a)).body.id, declined = [];
+  for (let i = 0; i < 20; i++) { const id = (await send(a)).body.id; await answer(b, id, false); declined.push(id); }
+  for (const tok of [a, b]) {
+    const ids = (await list(tok)).map(c => c.id);
+    assert.strictEqual(ids.length, 20, 'still the last 20');
+    assert.ok(ids.includes(invite), 'the old invitation stays');
+    assert.ok(!ids.includes(declined[0]), 'the oldest declined one went');
+    assert.ok(ids.includes(declined[19]), 'the newest stays');
+  }
+  assert.strictEqual(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM duels').get().n, 20);
+});
 t('W9 the sender chooses the set: year, subject, topic, level and count are kept', async () => {
   const { a, b } = await pair();
   const set = { subject: 'ga', year: 3, topic: 'mixed', diff: 4, count: 2 };

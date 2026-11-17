@@ -10,17 +10,17 @@
   /* v2.2.0 R4: from Year 7 the question kinds follow the lesson of that year (js/lessons-hs-*.js): one list per topic and year,
      each name a kind in that topic's generator. null = no list for that year (Primary, or a year with no High school lesson). */
   const KY = {
-    frac: y => y === 7 ? ['equiv', 'addsub', 'addsub', 'mixed', 'toMixed'] : y === 8 ? ['mul', 'div', 'of', 'of', 'combo'] : null,
+    frac: y => y === 7 ? ['equiv', 'add', 'add', 'mixed', 'toMixed'] : y === 8 ? ['mul', 'div', 'of', 'of', 'combo'] : null,
     pct: y => y === 7 ? ['of', 'whatpct', 'conv'] : y === 8 ? ['change', 'discount', 'profit'] : null,
     ratio: y => y === 7 ? ['simplify', 'share2', 'three'] : y === 8 ? ['speed', 'rate'] : null,
     stats: y => y === 7 ? ['freq', 'column', 'dot'] : y === 8 ? ['mean', 'median', 'mode', 'range'] : y === 9 ? ['stem', 'compare'] : y === 10 ? ['quart', 'box', 'scatter'] : null,
     meas: y => y === 7 ? ['rect', 'tri', 'para', 'areaconv'] : y === 8 ? ['circle', 'semi', 'ring', 'compound', 'prism'] : y === 9 ? ['prism', 'cyl', 'cylsa', 'volconv'] : y === 10 ? ['pyramid', 'cone', 'sphere', 'spheresa', 'conecsa'] : null,
-    angle: y => y === 7 ? ['line', 'point', 'vert', 'parallel', 'corr'] : y === 8 ? ['tri', 'iso', 'ext', 'quad'] : y === 9 ? ['congr', 'similar', 'scalearea'] : y === 10 ? ['centre', 'semicirc', 'cyclic', 'tangent'] : null,
+    angle: y => y === 7 ? ['line', 'point', 'vert', 'parallel', 'corr'] : y === 8 ? ['tri', 'iso', 'ext', 'quad'] : y === 9 ? ['congr', 'similar', 'scalearea'] : y === 10 ? ['centre', 'semicirc', 'cyclic', 'tangent', 'sameseg'] : null,
     prob: y => y === 7 ? ['bag', 'dice', 'pctform'] : y === 8 ? ['not', 'twoway', 'venn'] : y === 9 ? ['count', 'dice', 'count'] : y === 10 ? ['two', 'norepl', 'paths'] : null,
     index: y => y === 7 ? ['pow', 'root', 'order'] : y === 9 ? ['law', 'neg', 'sci'] : y === 10 ? ['surd', 'simpsurd', 'fracidx', 'mulsurd'] : null,
     alg: y => y === 7 ? ['subst', 'like', 'two'] : y === 8 ? ['expand1', 'collect', 'brk', 'ineq', 'ineqneg'] : y === 9 ? ['algfrac', 'sides', 'fracEq'] : y === 10 ? ['sim', 'sim', 'expand'] : null,
     linear: y => y === 8 ? ['eval', 'table', 'onpoint', 'rule'] : y === 9 ? ['grad', 'xint', 'eqmc', 'yint'] : y === 10 ? ['eqpt', 'eqc', 'par', 'perp'] : null,
-    quad: y => y === 10 ? ['big', 'small', 'qf', 'opens'] : y === 11 ? ['disc', 'nroots', 'axis', 'cts', 'vertex'] : null,
+    quad: y => y === 9 ? ['big', 'small'] : y === 10 ? ['big', 'small', 'qf', 'opens'] : y === 11 || y === 12 ? ['disc', 'nroots', 'axis', 'cts', 'vertex'] : null,
     fin: (y, d) => y === 9 ? (d <= 1 ? ['si', 'siAmount', 'wage', 'gst'] : d === 2 ? ['si', 'siRate', 'siTime', 'overtime', 'commission', 'gst'] : ['siPrincipal', 'siTime', 'overtime', 'commission', 'gstBack']) : y === 10 ? (d <= 2 ? ['ci', 'ciInterest', 'dep'] : ['ci', 'ciInterest', 'dep', 'depInterest', 'ciHalf']) : null,
     factor: (y, d) => y === 9 ? (d <= 1 ? ['hcf', 'hcf', 'mcDsq'] : ['hcf2', 'mcDsq', 'dsq2', 'hcf2']) : y === 10 ? (d <= 1 ? ['trin', 'mcTrin'] : ['trin', 'mcTrin', 'hcfTrin', 'hcfTrin']) : null
   };
@@ -357,7 +357,7 @@
       if (t === 0) { const kg = R(2, 8), p = R(2, 12); return mk({ topic: 'ratio', value: p, unit: '$', en: `${kg} kg of apples cost $${kg * p}. What is the cost per kg?`, zh: `${kg} 千克苹果售价 ${kg * p} 元，每千克多少元？`, solEn: `${kg * p} ÷ ${kg} = ${p} dollars per kg`, solZh: `${kg * p} ÷ ${kg} = ${p}（元/千克）` }); }
       if (t === 1) { const m = R(2, 6), v = R(3, 15) * 5, dist = v * m; return mk({ topic: 'ratio', value: v, unit: 'km/h', en: `A cyclist rides ${dist} km in ${m} hours. What is the speed in km/h?`, zh: `骑车人 ${m} 小时骑了 ${dist} 千米，速度是每小时多少千米？`, solEn: `${dist} ÷ ${m} = ${v} km/h`, solZh: `${dist} ÷ ${m} = ${v}（千米/小时）` }); }
       const [mins, step] = pick([[30, 2], [15, 4], [45, 4], [20, 3], [40, 3], [90, 2], [12, 5], [24, 5]]), v = step * R(2, 14), dist = v * mins / 60;
-      return mk({ topic: 'ratio', value: v, unit: 'km/h', en: `A car travels ${dist} km in ${mins} minutes. What is its speed in km/h? (Change the minutes to hours first.)`, zh: `汽车 ${mins} 分钟行驶 ${dist} 千米，速度是每小时多少千米？（先把分钟化成小时）`, solEn: `${mins} min = ${round(mins / 60, 4)} h; ${dist} ÷ ${round(mins / 60, 4)} = ${v} km/h`, solZh: `${mins} 分钟 = ${round(mins / 60, 4)} 小时；${dist} ÷ ${round(mins / 60, 4)} = ${v}（千米/小时）` });
+      return mk({ topic: 'ratio', value: v, unit: 'km/h', en: `A car travels ${dist} km in ${mins} minutes. What is its speed in km/h? (Change the minutes to hours first.)`, zh: `汽车 ${mins} 分钟行驶 ${dist} 千米，速度是每小时多少千米？（先把分钟化成小时）`, solEn: `${mins} min = ${mins}/60 h, so speed = ${dist} ÷ (${mins}/60) = ${dist} × 60 ÷ ${mins} = ${v} km/h`, solZh: `${mins} 分钟 = ${mins}/60 小时，速度 = ${dist} ÷ (${mins}/60) = ${dist} × 60 ÷ ${mins} = ${v}（千米/小时）` });
     }
     let a = R(2, 7), b = R(2, 9); if (a === b) b++;
     const g = gcd(a, b); a /= g; b /= g;
@@ -453,7 +453,8 @@
       return mk({ topic: 'alg', value: p * b * b - a, en: `Find the value of ${p}b² ${MINUS} a when a = ${num(a)} and b = ${b}.`, zh: `当 a = ${num(a)}，b = ${b} 时，求 ${p}b² ${MINUS} a 的值。`, solEn: `${p} × ${b}² ${MINUS} ${paren(a)} = ${num(p * b * b - a)}`, solZh: `${p} × ${b}² ${MINUS} ${paren(a)} = ${num(p * b * b - a)}` });
     }
     if (k === 'like') {   // Year 7: collecting like terms
-      const a = R(2, 9), b = R(2, 9), c = R(1, 8), e = R(1, 8), askX = Math.random() < 0.5;
+      const a = R(2, 9), b = R(2, 9), c = R(1, 8), askX = Math.random() < 0.5;
+      let e = R(1, 8); while (Math.abs(b - e) < 2) e = R(1, 8);   // v2.3.0 R4.1: the y part is never 0y or 1y
       return mk({ topic: 'alg', value: askX ? a + c : b - e, en: `Simplify ${a}x + ${b}y + ${coef(c)} ${MINUS} ${coef(e, 'y')}. What is the coefficient of ${askX ? 'x' : 'y'}?`, zh: `化简 ${a}x + ${b}y + ${coef(c)} ${MINUS} ${coef(e, 'y')}，${askX ? 'x' : 'y'} 的系数是多少？`, solEn: `Collect like terms: ${a + c}x${sg(b - e)}y`, solZh: `合并同类项：${a + c}x${sg(b - e)}y` });
     }
     if (k === 'expand1') {   // Year 8: expanding brackets
@@ -701,7 +702,8 @@
     if (k === 'parallel') { const a = R(35, 145), t = pick(['alt', 'co']), v = t === 'alt' ? a : 180 - a; return mk({ topic: 'angle', value: v, unit: '°', en: `A line crosses two parallel lines. One angle is ${a}°. Find the ${t === 'alt' ? 'alternate' : 'co-interior (same-side interior)'} angle.`, zh: `一条直线截两条平行线，其中一个角是 ${a}°，求它的${t === 'alt' ? '内错角' : '同旁内角'}。`, solEn: t === 'alt' ? `Alternate angles are equal: ${v}°` : `Co-interior angles add to 180°: ${v}°`, solZh: t === 'alt' ? `内错角相等：${v}°` : `同旁内角互补：${v}°` }); }
     if (k === 'clock') { const h = R(1, 11), m = d >= 3 ? pick([0, 30, 20, 40]) : 0, raw = Math.abs(30 * h + 0.5 * m - 6 * m), v = Math.min(raw, 360 - raw); return mk({ topic: 'angle', value: v, unit: '°', en: `What is the smaller angle between the hour and minute hands at ${h}:${String(m).padStart(2, '0')}?`, zh: `${h} 点 ${m} 分时，时针与分针所成的较小角是多少度？`, solEn: `Hour hand ${30 * h + 0.5 * m}°, minute hand ${6 * m}°; difference ${v}°`, solZh: `时针 ${30 * h + 0.5 * m}°，分针 ${6 * m}°，夹角 ${v}°` }); }
     if (k === 'vert') {   // Year 7: vertically opposite angles are equal
-      const x = R(10, 40), p = R(2, 5), r = p + R(1, 3), q = R(5, 30), s2 = p * x + q - r * x;
+      let x, p, r, q, s2;
+      do { x = R(10, 40); p = R(2, 5); r = p + R(1, 3); q = R(5, 30); s2 = p * x + q - r * x; } while (s2 === 0);   // v2.3.0 R4.2: no "+ 0"
       return mk({ topic: 'angle', value: x, en: `Two straight lines cross. Two vertically opposite angles are (${p}x + ${q})° and (${coef(r)}${sg(s2)})°. Find x.`, zh: `两条直线相交，两个对顶角分别是 (${p}x + ${q})° 和 (${coef(r)}${sg(s2)})°。求 x。`, solEn: `Vertically opposite angles are equal: ${p}x + ${q} = ${coef(r)}${sg(s2)}, so x = ${x}`, solZh: `对顶角相等：${p}x + ${q} = ${coef(r)}${sg(s2)}，所以 x = ${x}` });
     }
     if (k === 'corr') {   // Year 7: corresponding angles on parallel lines
@@ -734,6 +736,10 @@
     if (k === 'semicirc') {   // Year 10: the angle in a semicircle is 90°
       const a = R(15, 75);
       return mk({ topic: 'angle', value: 90 - a, unit: '°', en: `AB is a diameter of a circle and C is a point on the circle. Angle CAB = ${a}°. Find angle CBA.`, zh: `AB 是圆的直径，C 是圆上一点。∠CAB = ${a}°，求 ∠CBA。`, solEn: `The angle in a semicircle is 90°, so angle CBA = 180° ${MINUS} 90° ${MINUS} ${a}° = ${90 - a}°`, solZh: `直径所对的圆周角是 90°，所以 ∠CBA = 180° ${MINUS} 90° ${MINUS} ${a}° = ${90 - a}°` });
+    }
+    if (k === 'sameseg') {   // Year 10: angles in the same segment are equal (v2.3.0 R4.7)
+      const a = R(25, 80);
+      return mk({ topic: 'angle', value: a, unit: '°', en: `A, B, C and D are points on a circle, with C and D on the same side of the chord AB. Angle ACB = ${a}°. Find angle ADB.`, zh: `A、B、C、D 是圆上的四个点，C 和 D 在弦 AB 的同一侧。∠ACB = ${a}°，求 ∠ADB。`, solEn: `Angles in the same segment are equal: angle ADB = angle ACB = ${a}°`, solZh: `同弓形内的圆周角相等：∠ADB = ∠ACB = ${a}°` });
     }
     if (k === 'cyclic') {   // Year 10: opposite angles of a cyclic quadrilateral
       const a = R(60, 120);
@@ -811,7 +817,7 @@
       return mk({ topic: 'stats', value: n, en: `${lead}: ${list}. How many values are greater than ${cut}?`, zh: `${leadZh}：${listZh}。有多少个值大于 ${cut}？`, solEn: `Add the frequencies of the values above ${cut}: ${n}`, solZh: `把大于 ${cut} 的各值的频数相加：${n}` });
     }
     if (k === 'column') {   // Year 7: column graphs
-      const names = pick([[['cats', 'dogs', 'fish', 'birds'], ['猫', '狗', '鱼', '鸟']], [['football', 'tennis', 'netball', 'swimming'], ['足球', '网球', '篮球', '游泳']], [['red', 'blue', 'green', 'yellow'], ['红色', '蓝色', '绿色', '黄色']]]);
+      const names = pick([[['cats', 'dogs', 'fish', 'birds'], ['猫', '狗', '鱼', '鸟']], [['football', 'tennis', 'cricket', 'swimming'], ['足球', '网球', '板球', '游泳']], [['red', 'blue', 'green', 'yellow'], ['红色', '蓝色', '绿色', '黄色']]]);
       const hs = G.shuffle(Array.from({ length: 15 }, (_, i) => i + 2)).slice(0, 4), hi = hs.indexOf(Math.max(...hs)), lo = hs.indexOf(Math.min(...hs));
       const list = names[0].map((nm, i) => `${nm} ${hs[i]}`).join(', '), listZh = names[1].map((nm, i) => `${nm} ${hs[i]}`).join('，');
       return mk({ topic: 'stats', value: hs[hi] - hs[lo], en: `A column graph has columns of these heights (number of students): ${list}. How many more are in the tallest column than in the shortest?`, zh: `柱状图各柱的高度（学生人数）：${listZh}。最高的柱比最矮的柱多多少人？`, solEn: `${hs[hi]} ${MINUS} ${hs[lo]} = ${hs[hi] - hs[lo]}`, solZh: `${hs[hi]} ${MINUS} ${hs[lo]} = ${hs[hi] - hs[lo]}` });

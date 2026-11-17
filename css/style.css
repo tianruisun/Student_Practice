@@ -559,7 +559,6 @@ legend.sec-title { padding: 0; }
 @media (prefers-reduced-motion: reduce) { .star.on { animation: none; } }
 .res-badge { display: flex; align-items: center; gap: 0.7rem; text-align: left; margin: 0.9rem auto 0.1rem; max-width: 22rem; background: rgba(255, 255, 255, .16); border: 1.5px solid rgba(255, 255, 255, .35); border-radius: 18px; padding: 0.6rem 0.9rem; font-size: 0.92rem; }
 .res-medal { font-size: 2.3rem; line-height: 1; flex: none; animation: starPop .6s .45s cubic-bezier(.2, 1.6, .5, 1) both; }
-.badge-shelf { display: flex; align-items: center; gap: 0.9rem; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 0.85rem 1rem; margin: 0 0 1.2rem; }
 .medal { width: 58px; height: 58px; border-radius: 18px; background: #fef3c7; display: inline-flex; align-items: center; justify-content: center; font-size: 2rem; flex: none; }
 .medal.empty { filter: grayscale(1); opacity: .5; }
 .shelf-text { display: flex; flex-direction: column; }
@@ -597,25 +596,10 @@ legend.sec-title { padding: 0; }
 /* R4.1 (v1.10.0): a hidden tip takes no room (display: none, not just invisible), so it cannot widen the page and let it pan sideways */
 .info:hover .tip, .info-btn:focus-visible + .tip, .info.open .tip { display: block; }
 
-.badge-head { display: flex; align-items: center; gap: 0.2rem; }
-.badge-head h3 { margin: 0; }
-.badge-grid { width: 100%; border-collapse: separate; border-spacing: 0.35rem; margin-top: 0.4rem; table-layout: fixed; }
-.badge-grid caption { text-align: left; color: var(--muted); font-size: 0.9rem; padding: 0 0.35rem; }
-.badge-grid th.corner { background: none; }
-.badge-grid th { font-weight: 600; font-size: 0.85rem; color: var(--muted); text-align: left; }
-.badge-grid th[scope="col"] { text-align: center; font-size: 1.15rem; }
 /* R4 (v1.10.0): the kind icons open how to earn that badge */
 .info-face { margin: 0; }
 .info-face .info-btn { margin: 0; width: 44px; height: 44px; font-size: 1.2rem; color: inherit; border-radius: 12px; text-decoration: underline dotted var(--muted); text-underline-offset: 6px; }
 .info-face .info-btn:hover, .info-face.open .info-btn { background: var(--pri-soft); }
-.badge-grid th.kind .tip { text-align: left; }
-.badge-grid td { text-align: center; height: 44px; border-radius: 12px; background: var(--surface-2); font-size: 1.15rem; font-weight: 700; }
-.badge-grid td.got { background: #fef3c7; color: #7c4a03; }
-.badge-grid td.empty { filter: grayscale(1); opacity: .35; }
-.badge-shelf { flex-direction: column; align-items: stretch; }
-.badge-shelf h4 { margin: 0.8rem 0 0.2rem; font-size: 0.92rem; color: var(--muted); }
-.badge-others li { padding: 0.15rem 0; font-size: 0.92rem; }
-@media (prefers-color-scheme: dark) { .badge-grid td.got { background: #3b2a06; color: #fde68a; } }
 
 .profile-list li { flex-wrap: wrap; }
 .profile-edit { flex-basis: 100%; display: grid; gap: 0.5rem; padding: 0.6rem 0 0.2rem; }
@@ -1206,3 +1190,36 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .fr-faces { display: flex; }
 .fr-faces .f-av { width: 36px; height: 36px; font-size: 1.2rem; border: 2px solid var(--surface); }
 .fr-faces .f-av + .f-av { margin-left: -8px; }
+
+/* v2.3.0 (W13): the profile page, badges in groups (Terry chose layout B), and the small pop-up for a new badge */
+.pf-top { display: flex; align-items: center; gap: 0.9rem; margin: 0.4rem 0 0.6rem; }
+.avatar.big { width: 56px; height: 56px; font-size: 1.5rem; }
+.pf-name { margin: 0; font-weight: 700; font-size: 1.15rem; }
+.pf-count { margin: 0; }
+.bgroup { background: var(--surface); border-radius: var(--radius-sm); box-shadow: var(--shadow); margin: 0.7rem 0; padding: 0.2rem 0.8rem 0.6rem; }
+.bgroup > summary { display: flex; align-items: center; gap: 0.7rem; min-height: var(--tap); cursor: pointer; list-style: none; }
+.bgroup > summary::-webkit-details-marker { display: none; }
+.bgroup > summary::after { content: '›'; color: var(--muted); font-size: 1.3rem; transition: transform .15s; }
+.bgroup[open] > summary::after { transform: rotate(90deg); }
+.bg-name { font-weight: 700; min-width: 6.5rem; }
+.bg-n { color: var(--muted); font-size: 0.9rem; min-width: 2.6rem; text-align: right; }
+.bar { flex: 1; display: block; height: 8px; border-radius: 4px; background: var(--hair); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
+.bar.small { height: 6px; margin-top: 0.3rem; max-width: 12rem; }
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; margin: 0.3rem 0 0; padding: 0; }
+.btile { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.6rem; border-radius: 14px; background: var(--surface-2); }
+.btile.on { background: #fef3c7; color: #5b3a03; }
+.btile.off { color: var(--muted); }
+.btile.off .b-ic { filter: grayscale(1); opacity: .55; }
+.b-ic { flex: none; width: 2.4rem; height: 2.4rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; background: var(--surface); }
+.b-tx { display: flex; flex-direction: column; min-width: 0; font-size: 0.9rem; }
+.b-tx strong { font-size: 1rem; }
+.b-when, .b-prog { font-size: 0.82rem; margin-top: 0.15rem; }
+@media (prefers-color-scheme: dark) { .btile.on { background: #3b2a06; color: #fde68a; } }
+.badge-pop { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 14px); transform: translateX(-50%); z-index: 60; max-width: 92vw; background: var(--ink); color: #fff; border-radius: 16px; padding: 0.6rem 1rem; box-shadow: var(--shadow-lg); }
+.badge-pop[hidden] { display: none; }
+.bpop-row { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; }
+.bpop-ic { font-size: 1.6rem; }
+@media (prefers-reduced-motion: no-preference) { .badge-pop:not([hidden]) { animation: bpop .35s ease-out; } @keyframes bpop { from { transform: translate(-50%, 14px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } } }
+.badge-head { display: flex; align-items: center; gap: 0.2rem; }
+.badge-head h3 { margin: 0; }

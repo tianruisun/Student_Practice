@@ -179,6 +179,11 @@
       <article id="studyLesson" hidden aria-labelledby="lessonH"></article>
     </section>
 
+    <section id="screen-profile" class="screen" hidden aria-labelledby="profH">
+      <h2 id="profH" tabindex="-1" data-i18n="profile.page">Profile</h2>
+      <div id="profileBody"></div>
+    </section>
+
     <section id="screen-progress" class="screen" hidden aria-labelledby="progH">
       <h2 id="progH" data-i18n="prog.heading">Progress</h2>
       <div id="progBody"></div>
@@ -458,6 +463,7 @@
     <h3 id="profileTitle" data-i18n="profile.title">Students</h3>
     <p class="muted small" data-i18n="profile.max"></p>
     <ul id="profileList" class="profile-list"></ul>
+    <button type="button" id="profileOpen" class="btn secondary" data-i18n="profile.open">My profile and badges</button>
     <form id="profileAdd" class="row profile-add">
       <input type="text" id="profileNew" maxlength="20" autocomplete="off" data-i18n-placeholder="profile.namePh">
       <button type="submit" class="btn primary" id="profileAddBtn" data-i18n="profile.add">Add</button>
@@ -493,6 +499,7 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="./version.js"></script>
+  <div id="badgePop" class="badge-pop" role="status" aria-live="polite" hidden></div>
   <script src="./js/test-badge.js"></script>
   <script src="./js/i18n.js"></script>
   <script src="./js/checker.js"></script>
@@ -518,6 +525,7 @@
   <script src="js/gen-selective.js"></script>
   <script src="./js/gen-comp.js"></script>
   <script src="./js/similar.js"></script>
+  <script src="./js/badges.js"></script>
   <script src="./js/records.js"></script>
   <script src="./js/ai.js"></script>
   <script src="./js/tour.js"></script>

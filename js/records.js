@@ -40,7 +40,7 @@
   };
   const iso = ms => new Date(ms).toISOString();
 
-  function toCSV(student, history) {
+  function toCSV(student, history, achv) {
     const rows = [COLUMNS];
     rows.push(['student', '', student.name || '', student.schoolYear != null ? student.schoolYear : '', student.dob || '', '', '', '', '', '', '', '', '', '',
       JSON.stringify({ name: student.name || '', schoolYear: student.schoolYear != null ? student.schoolYear : null, schoolYearSet: student.schoolYearSet || null, dob: student.dob || '' })]);
@@ -48,6 +48,8 @@
       rows.push(['session', iso(h.date), '', '', '', h.subject || '', h.year != null ? h.year : '', h.topic || '', h.diff || '', h.n, h.correct,
         h.stars !== undefined ? h.stars : '', h.time ? Math.round(h.time / 1000) : '', '', JSON.stringify(h)]);
     }
+    // v2.3.0 R2.3: the badges, one row, so a student with no account can back them up (the data column is the record)
+    if (achv && badges() && badges().count(achv) > 0) rows.push(['achv', '', '', '', '', '', '', '', '', '', '', '', '', '', JSON.stringify(badges().clean(achv))]);
     // the byte-order mark lets Excel open Chinese names correctly
     return '﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';
   }
@@ -183,7 +185,7 @@
     if (String(text).length > MAX_FILE) throw new Error('size');
     const rows = parseCSV(text);
     if (!rows.length || rows[0].join(',') !== COLUMNS.join(',')) throw new Error('format');
-    const out = { student: null, history: [], skipped: 0 };
+    const out = { student: null, history: [], skipped: 0, achv: null };
     for (const r of rows.slice(1)) {
       const row = {}; COLUMNS.forEach((c, i) => { row[c] = (r[i] || '').replace(/^'(?=[=+\-@])/, ''); });
       const o = json(row.data) || {};
@@ -191,6 +193,7 @@
         out.student = { name: str(o.name || row.name, 20), schoolYear: num(o.schoolYear != null ? o.schoolYear : row.school_year, 0, 12),
           schoolYearSet: num(o.schoolYearSet, 2000, 2100), dob: /^\d{4}-\d{2}$/.test(o.dob || row.birth_month) ? (o.dob || row.birth_month) : '' };
       } else if (row.record === 'session') { const s = cleanSession(o, row); s ? out.history.push(s) : out.skipped++; }
+      else if (row.record === 'achv') { if (badges() && isObj(o)) out.achv = badges().merge(out.achv, o); else out.skipped++; }
       else if (row.record === 'badge') { /* v2.3.0: badges are not in the progress file any more; an old file's badge rows are ignored */ }
       else out.skipped++;
     }
@@ -217,6 +220,7 @@
   function baseOf(data) {
     const k = (data && data.keys) || {}, out = {};
     for (const [name, [keyOf]] of Object.entries(LISTS)) out[name] = arr(k[name]).map(keyOf);
+    if (isObj(k.achv) && badges()) out.achv = badges().clean(k.achv).s;   // the counters both copies last agreed on (v2.3.0 R2.2)
     return out;
   }
   function join3(local, server, base, keyOf) {
@@ -262,7 +266,7 @@
       if (name !== 'plan') l.sort((x, y) => (x.date || 0) - (y.date || 0));
       keys[name] = l.slice(-cap);
     }
-    if (lk.achv !== undefined || sk.achv !== undefined) keys.achv = badges() ? badges().merge(lk.achv, sk.achv) : (lk.achv !== undefined ? lk.achv : sk.achv);   // v2.3.0: a badge stays earned
+    if (lk.achv !== undefined || sk.achv !== undefined) keys.achv = badges() ? badges().merge(lk.achv, sk.achv, base && base.achv) : (lk.achv !== undefined ? lk.achv : sk.achv);   // v2.3.0: a badge stays earned
     const settings = lk.settings !== undefined ? lk.settings : sk.settings;   // the choices made on the device in use
     if (settings !== undefined) keys.settings = settings;
     const games = joinGames(lk.games, sk.games);

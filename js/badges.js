@@ -153,10 +153,15 @@
 
   /* two copies of one student's record: a badge stays earned (the earlier time), counters keep the larger value,
      lists are joined. Used when a device and the account's server copy meet. */
-  function merge(a, b) {
+  function merge(a, b, base) {
     const x = clean(a), y = clean(b), out = clean(null);
     for (const id of IDS) { const t = [x.e[id], y.e[id]].filter(Boolean); if (t.length) out.e[id] = Math.min(...t); }
-    for (const k of ['c', 't', 'n', 'ch', 'w', 'lo']) out.s[k] = Math.max(x.s[k], y.s[k]);
+    // a = this device, b = the server copy, base = the counters both last agreed on: the server's value plus what this device
+    // added since (v2.3.0 R2.2). Without a base the larger value is kept.
+    for (const k of ['c', 't', 'n', 'ch', 'w']) {
+      out.s[k] = base && typeof base === 'object' ? y.s[k] + Math.max(0, x.s[k] - (Number(base[k]) || 0)) : Math.max(x.s[k], y.s[k]);
+    }
+    out.s.lo = Math.max(x.s.lo, y.s.lo);
     out.s.top = [...new Set([...x.s.top, ...y.s.top])].slice(-100);
     out.s.d = [...new Set([...x.s.d, ...y.s.d])].sort().slice(-400);
     out.s.l = [...new Set([...x.s.l, ...y.s.l])].slice(0, 2);

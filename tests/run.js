@@ -294,6 +294,22 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
       assert.deepStrictEqual([m.s.d, m.s.top.sort(), m.s.l.sort(), m.s.ids.sort()], [['2026-11-01', '2026-11-02'], ['dec', 'frac'], ['en', 'zh'], ['a', 'b']]);
       assert.deepStrictEqual(Rec.mergeAccount(doc([], {}), doc([], { achv: b }), null).keys.achv.e, b.e, 'the server copy alone is kept');
     });
+    t('v2.3.0 R2.2 merge with a base adds the work of both devices (60 + 40 = 100 correct)', () => {
+      const mk = c => ({ e: {}, s: { c, n: c / 10, t: c * 10, d: [], top: [], l: [], ch: 0, w: 0, lo: 0, ids: [] } });
+      const base = Rec.baseOf(doc([], { achv: mk(0) }));
+      const m = Rec.mergeAccount(doc([], { achv: mk(40) }), doc([], { achv: mk(60) }), base).keys.achv;
+      assert.deepStrictEqual([m.s.c, m.s.n, m.s.t], [100, 10, 1000]);
+      const again = Rec.mergeAccount(doc([], { achv: mk(40) }), doc([], { achv: mk(40) }), Rec.baseOf(doc([], { achv: mk(40) }))).keys.achv;
+      assert.strictEqual(again.s.c, 40, 'nothing new on this device: the server value stays');
+    });
+    t('v2.3.0 R2.3 the progress file carries the badges and an import joins them', () => {
+      const a = { e: { firstSet: 5 }, s: { c: 12, n: 1, t: 30, d: [], top: [], l: [], ch: 0, w: 0, lo: 0, ids: [] } };
+      const csv = Rec.toCSV({ name: 'A' }, [], a);
+      assert.ok(/^achv,/m.test(csv));
+      const back = Rec.fromCSV(csv);
+      assert.deepStrictEqual(back.achv.e, { firstSet: 5 }); assert.strictEqual(back.achv.s.c, 12);
+      assert.strictEqual(Rec.fromCSV(Rec.toCSV({ name: 'A' }, [], null)).achv, null);
+    });
     t('R1.1 merge: plan items by id; a removed one stays removed; ticked days are joined', () => {
       const it = (id, done) => ({ id, day: '2026-11-12', kind: 'study', topic: 'k6frac', every: 7, done });
       const b = Rec.baseOf(doc([], { plan: [it('a'), it('b')] }));

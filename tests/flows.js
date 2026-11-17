@@ -248,7 +248,9 @@ async function run(site) {
       check('W13 4 earned and 28 locked tiles', (await page.locator('.btile.on').count()) === 4 && (await page.locator('.btile.off').count()) === 28, (await page.locator('.btile.on').count()) + '/' + (await page.locator('.btile.off').count()));
       const totals = await page.locator('details[data-group="totals"] .btile').first().textContent();
       check('W13 a total shows its progress (correct answers so far out of 100)', /\d+ \/ 100/.test(totals), totals);
-      check('W13 a locked badge says so', /Not earned yet/.test(await page.locator('details[data-group="social"] .btile').first().textContent() + await page.locator('details[data-group="start"] .btile.off').first().textContent()));
+      check('W13 a locked badge says so', (await page.locator('details[data-group="social"] .btile.off').count()) > 0 && (await page.locator('details[data-group="start"] .btile.off .b-when').count()) === 0 && (await page.locator('.btile.off .b-ic').first().textContent()) === '🔒');
+      // R1.1 (v2.3.0 R2): the bar inside a tile has a height
+      check('W13 a progress bar in a tile is visible', (await page.evaluate(() => { const b = document.querySelector('.btile.off .bar.small'); return b ? b.getBoundingClientRect().height : -1; })) >= 4);
       // the same set again: nothing is earned twice
       await page.click('.tab[data-go="home"]'); await startSet(page);
       const again = await page.evaluate(() => window.__testAnswers());
@@ -325,7 +327,7 @@ async function run(site) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       await dl.saveAs(file);
       const lines = fs.readFileSync(file, 'utf8').replace(/^﻿/, '').trim().split(/\r\n/);
-      check('v1.7 export: header, student, 2 sessions (no badges since v2.3.0)', lines.length === 4 && !lines.some(l => l.startsWith('badge,')) && lines[0].startsWith('record,date,name') && lines.filter(l => l.startsWith('session,')).length === 2, lines.length);
+      check('v1.7 export: header, student, 2 sessions (badges in one achv row since v2.3.0)', lines.length === 5 && lines.filter(l => l.startsWith('achv,')).length === 1 && !lines.some(l => l.startsWith('badge,')) && lines[0].startsWith('record,date,name') && lines.filter(l => l.startsWith('session,')).length === 2, lines.length);
       check('v1.7 export file name names the student', /^student-practice_Ann_\d{4}-\d{2}-\d{2}\.csv$/.test(dl.suggestedFilename()), dl.suggestedFilename());
       // a second student, then import Ann's file into it
       await page.click('#profileBtn');

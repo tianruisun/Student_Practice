@@ -1715,7 +1715,6 @@
     av.setAttribute('aria-hidden', 'true');
     const who2 = el('div'); who2.append(el('p', 'pf-name', who), el('p', 'muted pf-count', t('badge.count', { n: v.earned, total: v.total })));
     top.append(av, who2); box.append(top);
-    box.append(el('p', 'muted small', t('badge.intro')));
     v.groups.forEach(g => {
       const d = el('details', 'bgroup'); d.dataset.group = g.id; d.open = openGroups.has(g.id);
       d.addEventListener('toggle', () => { if (d.open) openGroups.add(g.id); else openGroups.delete(g.id); });
@@ -1733,9 +1732,8 @@
         else if (b.progress) {
           const pb = el('span', 'bar small'), pf = el('i'); pf.style.width = Math.round(100 * b.progress.now / b.progress.goal) + '%'; pb.append(pf);
           tx.append(pb, el('span', 'b-prog', fmtN(b.progress.now) + ' / ' + b.progress.goal));
-        } else tx.append(el('span', 'b-prog', t('badge.locked')));
+        }
         li.append(ic, tx);
-        li.setAttribute('aria-label', t('b.' + b.id) + ': ' + (b.earned ? t('badge.earned') : t('badge.locked')));
         ul.append(li);
       });
       d.append(ul); box.append(d);
@@ -2223,7 +2221,7 @@
   $('#csvExport').addEventListener('click', () => {
     const pr = Profiles.active, name = Profiles.name(pr);
     const text = Records.toCSV({ name: pr.name || name, schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet, dob: pr.dob },
-      store.get(histKey(), []));
+      store.get(histKey(), []), achvOf(pr.id));
     const a = el('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
     a.download = 'student-practice_' + name.replace(/[^\p{L}\p{N}_-]+/gu, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
     document.body.append(a); a.click(); a.remove();
@@ -2251,6 +2249,7 @@
         schoolYearSet: pr.schoolYear != null ? pr.schoolYearSet : st.schoolYearSet, dob: pr.dob || st.dob });
       applySuggestedYear();
     }
+    if (data.achv) store.set(K.achv + '.' + pr.id, Badges.merge(achvOf(pr.id), data.achv));   // v2.3.0 R2.3: the file's badges join the device's
     render();
     toast(t('csv.imported', { s: h.added }) + skipped, 7000);
   });

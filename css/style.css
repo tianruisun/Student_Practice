@@ -1205,7 +1205,7 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .bg-n { color: var(--muted); font-size: 0.9rem; min-width: 2.6rem; text-align: right; }
 .bar { flex: 1; display: block; height: 8px; border-radius: 4px; background: var(--hair); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
-.bar.small { height: 6px; margin-top: 0.3rem; max-width: 12rem; }
+.bar.small { flex: none; height: 6px; margin-top: 0.3rem; max-width: 12rem; }
 .bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; margin: 0.3rem 0 0; padding: 0; }
 .btile { display: flex; gap: 0.7rem; align-items: flex-start; padding: 0.6rem; border-radius: 14px; background: var(--surface-2); }
 .btile.on { background: #fef3c7; color: #5b3a03; }
@@ -1216,7 +1216,7 @@ body.in-game main { padding-bottom: 0.6rem; }   /* no bottom bar during a game, 
 .b-tx strong { font-size: 1rem; }
 .b-when, .b-prog { font-size: 0.82rem; margin-top: 0.15rem; }
 @media (prefers-color-scheme: dark) { .btile.on { background: #3b2a06; color: #fde68a; } }
-.badge-pop { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 14px); transform: translateX(-50%); z-index: 60; max-width: 92vw; background: var(--ink); color: #fff; border-radius: 16px; padding: 0.6rem 1rem; box-shadow: var(--shadow-lg); }
+.badge-pop { pointer-events: none; position: fixed; left: 50%; bottom: calc(var(--nav-h) + 14px); transform: translateX(-50%); z-index: 60; max-width: 92vw; background: var(--ink); color: #fff; border-radius: 16px; padding: 0.6rem 1rem; box-shadow: var(--shadow-lg); }
 .badge-pop[hidden] { display: none; }
 .bpop-row { display: flex; align-items: center; gap: 0.6rem; font-weight: 600; }
 .bpop-ic { font-size: 1.6rem; }

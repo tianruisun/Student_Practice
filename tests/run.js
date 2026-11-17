@@ -285,10 +285,30 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
       const m = Rec.mergeAccount(doc(Array.from({ length: 80 }, (_, i) => set(i * 2))), doc(Array.from({ length: 80 }, (_, i) => set(i * 2 + 1))), null);
       assert.strictEqual(m.keys.history.length, 100); assert.strictEqual(m.keys.history[99].date, 159);
     });
-    t('R1.1 merge: badges by date, kind and level', () => {
-      const bd = (date, kind) => ({ date, kind, subject: 'maths', year: 4, diff: 2 });
-      const m = Rec.mergeAccount(doc([], { badges: [bd(1, 'perfect'), bd(3, 'speed')] }), doc([], { badges: [bd(1, 'perfect'), bd(2, 'firstTry')] }), null);
-      assert.deepStrictEqual(m.keys.badges.map(b => b.kind), ['perfect', 'firstTry', 'speed']);
+    t('v2.3.0 merge: a badge stays earned (the earlier time) and the counters keep the larger value', () => {
+      const a = { e: { firstSet: 5, perfectSet: 9 }, s: { c: 40, n: 3, t: 100, d: ['2026-11-01'], top: ['frac'], l: ['en'], ch: 1, w: 0, lo: 0, ids: ['a'] } };
+      const b = { e: { firstSet: 3, firstPlan: 7 }, s: { c: 25, n: 6, t: 50, d: ['2026-11-02'], top: ['dec'], l: ['zh'], ch: 2, w: 1, lo: 0, ids: ['b'] } };
+      const m = Rec.mergeAccount(doc([], { achv: a }), doc([], { achv: b }), null).keys.achv;
+      assert.deepStrictEqual(m.e, { firstSet: 3, perfectSet: 9, firstPlan: 7 });
+      assert.deepStrictEqual([m.s.c, m.s.n, m.s.t, m.s.ch, m.s.w], [40, 6, 100, 2, 1]);
+      assert.deepStrictEqual([m.s.d, m.s.top.sort(), m.s.l.sort(), m.s.ids.sort()], [['2026-11-01', '2026-11-02'], ['dec', 'frac'], ['en', 'zh'], ['a', 'b']]);
+      assert.deepStrictEqual(Rec.mergeAccount(doc([], {}), doc([], { achv: b }), null).keys.achv.e, b.e, 'the server copy alone is kept');
+    });
+    t('v2.3.0 R2.2 merge with a base adds the work of both devices (60 + 40 = 100 correct)', () => {
+      const mk = c => ({ e: {}, s: { c, n: c / 10, t: c * 10, d: [], top: [], l: [], ch: 0, w: 0, lo: 0, ids: [] } });
+      const base = Rec.baseOf(doc([], { achv: mk(0) }));
+      const m = Rec.mergeAccount(doc([], { achv: mk(40) }), doc([], { achv: mk(60) }), base).keys.achv;
+      assert.deepStrictEqual([m.s.c, m.s.n, m.s.t], [100, 10, 1000]);
+      const again = Rec.mergeAccount(doc([], { achv: mk(40) }), doc([], { achv: mk(40) }), Rec.baseOf(doc([], { achv: mk(40) }))).keys.achv;
+      assert.strictEqual(again.s.c, 40, 'nothing new on this device: the server value stays');
+    });
+    t('v2.3.0 R2.3 the progress file carries the badges and an import joins them', () => {
+      const a = { e: { firstSet: 5 }, s: { c: 12, n: 1, t: 30, d: [], top: [], l: [], ch: 0, w: 0, lo: 0, ids: [] } };
+      const csv = Rec.toCSV({ name: 'A' }, [], a);
+      assert.ok(/^achv,/m.test(csv));
+      const back = Rec.fromCSV(csv);
+      assert.deepStrictEqual(back.achv.e, { firstSet: 5 }); assert.strictEqual(back.achv.s.c, 12);
+      assert.strictEqual(Rec.fromCSV(Rec.toCSV({ name: 'A' }, [], null)).achv, null);
     });
     t('R1.1 merge: plan items by id; a removed one stays removed; ticked days are joined', () => {
       const it = (id, done) => ({ id, day: '2026-11-12', kind: 'study', topic: 'k6frac', every: 7, done });
@@ -315,24 +335,118 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
       assert.deepStrictEqual(Rec.mergeAccount({ keys: {} }, { keys: { settings: { year: 8 } } }, null).keys.settings, { year: 8 });
     });
   }
-  const base = { subject: 'maths', year: 4, diff: 2, n: 10, correct: 10, firstTry: 10, seconds: 100 };
-  t('badges: all three for a fast, first-try, perfect set', () => assert.deepStrictEqual(Rec.awardsFor(base), ['perfect', 'firstTry', 'speed']));
-  t('badges: none below 100%', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, correct: 9 }), []));
-  t('badges: a second try loses First try only', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, firstTry: 9 }), ['perfect', 'speed']));
-  t('badges: speed limit per difficulty (Elevated 30 s a question)', () => {
-    assert.ok(Rec.awardsFor({ ...base, seconds: 300 }).includes('speed'));
-    assert.ok(!Rec.awardsFor({ ...base, seconds: 301 }).includes('speed'));
-    assert.ok(Rec.awardsFor({ ...base, diff: 4, seconds: 900 }).includes('speed'));
+  /* v2.3.0 (W13): the badges (js/badges.js) */
+  const B = require('../js/badges.js');
+  const DAYMS = 86400000, T0 = new Date(2026, 5, 1, 12).getTime();
+  const base = { n: 10, correct: 10, firstTry: 10, seconds: 100, diff: 2, year: 4, topic: 'frac', lang: 'en', date: T0 };
+  const ids = r => r.newly.slice().sort();
+  t('badges: 32 in five groups, each with a name and a how-to in both languages', () => {
+    assert.strictEqual(B.DEFS.length, 32); assert.strictEqual(new Set(B.IDS).size, 32);
+    assert.deepStrictEqual(B.GROUPS, ['start', 'social', 'totals', 'streak', 'breadth']);
+    global.window = global; require('../js/i18n.js');
+    const S = global.I18N.STRINGS;
+    for (const d of B.DEFS) for (const l of ['en', 'zh']) for (const p of ['b.', 'bh.']) assert.ok(S[l][p + d.id], l + ' ' + p + d.id);
+    for (const g of B.GROUPS) for (const l of ['en', 'zh']) assert.ok(S[l]['bg.' + g]);
+    assert.ok(B.DEFS.every(d => B.GROUPS.includes(d.group)));
   });
-  t('badges: fewer than 5 questions earn Perfect only', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, n: 4, correct: 4, firstTry: 4, seconds: 4 }), ['perfect']));
-  t('badges: timed papers earn Perfect only', () => assert.deepStrictEqual(Rec.awardsFor({ ...base, paper: 'sel:full' }), ['perfect']));
-  t('badges: each year and difficulty is its own level', () => {
-    const col = Rec.collection([
-      { kind: 'perfect', subject: 'maths', year: 4, diff: 2 }, { kind: 'perfect', subject: 'maths', year: 4, diff: 2 },
-      { kind: 'perfect', subject: 'maths', year: 5, diff: 2 }, { kind: 'speed', subject: 'maths', year: 4, diff: 3 },
-      { subject: 'maths', topic: 'mixed', n: 5 }   // a v1.6 badge: no level recorded
-    ]);
-    assert.deepStrictEqual(col, { 'maths:4:2': { perfect: 2 }, 'maths:5:2': { perfect: 1 }, 'maths:4:3': { speed: 1 }, earlier: { perfect: 1 } });
+  t('badges: the first set earns First steps, and a perfect one Full marks, First try and Quick thinker too', () => {
+    assert.deepStrictEqual(ids(B.onSet(null, { ...base, correct: 6 })), ['firstSet']);
+    assert.deepStrictEqual(ids(B.onSet(null, base)), ['firstSet', 'firstTryAll', 'perfectSet', 'speed']);
+  });
+  t('badges: a second try loses First try, a slow set loses Quick thinker, fewer than 5 questions earn no set badge', () => {
+    assert.ok(!B.onSet(null, { ...base, firstTry: 9 }).newly.includes('firstTryAll'));
+    assert.ok(B.onSet(null, { ...base, seconds: 300 }).newly.includes('speed') && !B.onSet(null, { ...base, seconds: 301 }).newly.includes('speed'));
+    assert.ok(B.onSet(null, { ...base, diff: 4, seconds: 900 }).newly.includes('speed'));
+    assert.deepStrictEqual(ids(B.onSet(null, { ...base, n: 4, correct: 4, firstTry: 4, seconds: 4 })), ['firstSet']);
+    assert.deepStrictEqual(ids(B.onSet(null, { ...base, paper: 'sel:full' })), ['firstSet', 'perfectSet']);
+  });
+  t('badges: Challenger and Competitor need over half right at that level; Reaching up needs a year above the school year', () => {
+    assert.ok(B.onSet(null, { ...base, diff: 3, correct: 6, firstTry: 0 }).newly.includes('challenging'));
+    assert.ok(!B.onSet(null, { ...base, diff: 3, correct: 5, firstTry: 0 }).newly.includes('challenging'));
+    assert.ok(B.onSet(null, { ...base, diff: 4, correct: 6, firstTry: 0 }).newly.includes('competitive'));
+    assert.ok(!B.onSet(null, { ...base, diff: 3, correct: 6 }).newly.includes('competitive'));
+    assert.ok(B.onSet(null, { ...base, year: 6, schoolYear: 5, correct: 6 }).newly.includes('higherYear'));
+    assert.ok(!B.onSet(null, { ...base, year: 5, schoolYear: 5, correct: 6 }).newly.includes('higherYear'));
+    assert.ok(!B.onSet(null, { ...base, year: 6, correct: 6 }).newly.includes('higherYear'), 'no school year known');
+  });
+  t('badges: each badge is earned once; a second perfect set earns nothing new', () => {
+    const a = B.onSet(null, base), b = B.onSet(a.rec, { ...base, date: T0 + 1000 });
+    assert.deepStrictEqual(b.newly, []);
+    assert.strictEqual(b.rec.e.firstSet, a.rec.e.firstSet);
+    assert.strictEqual(b.rec.s.n, 2);
+  });
+  t('badges: total correct answers 100 / 500 / 1,000 / 5,000 (a tier is earned the moment it is passed)', () => {
+    let r = { rec: null };
+    const sets = n => { for (let i = 0; i < n; i++) r = B.onSet(r.rec, { ...base, n: 10, correct: 5, firstTry: 0, seconds: 999, topic: 'x' + (i % 3), date: T0 + i * 60000 }); };
+    sets(19); assert.ok(!r.rec.e.correct100);
+    sets(1); assert.ok(r.rec.e.correct100 && !r.rec.e.correct500);   // 20 sets x 5 = 100
+    sets(80); assert.ok(r.rec.e.correct500 && !r.rec.e.correct1000);
+    sets(100); assert.ok(r.rec.e.correct1000 && !r.rec.e.correct5000);
+    sets(800); assert.ok(r.rec.e.correct5000);
+    assert.ok(r.rec.e.sets10 && r.rec.e.sets50 && r.rec.e.sets200);
+  });
+  t('badges: study time 10 / 50 / 100 hours, counted from the sets', () => {
+    let r = B.onSet(null, { ...base, seconds: 9 * 3600 }); assert.ok(!r.rec.e.hours10);
+    r = B.onSet(r.rec, { ...base, seconds: 3600 }); assert.ok(r.rec.e.hours10 && !r.rec.e.hours50);
+    r = B.onSet(r.rec, { ...base, seconds: 40 * 3600 }); assert.ok(r.rec.e.hours50 && !r.rec.e.hours100);
+    r = B.onSet(r.rec, { ...base, seconds: 50 * 3600 }); assert.ok(r.rec.e.hours100);
+  });
+  t('badges: days in a row 3 / 7 / 30; a gap breaks the run; 7 days away then back is Welcome back', () => {
+    let r = { rec: null };
+    for (let i = 0; i < 2; i++) r = B.onSet(r.rec, { ...base, date: T0 + i * DAYMS });
+    assert.ok(!r.rec.e.streak3);
+    r = B.onSet(r.rec, { ...base, date: T0 + 2 * DAYMS }); assert.ok(r.rec.e.streak3 && !r.rec.e.streak7 && !r.rec.e.comeback);
+    for (let i = 3; i < 7; i++) r = B.onSet(r.rec, { ...base, date: T0 + i * DAYMS });
+    assert.ok(r.rec.e.streak7 && !r.rec.e.streak30);
+    r = B.onSet(r.rec, { ...base, date: T0 + 14 * DAYMS }); assert.ok(r.newly.includes('comeback'), 'a gap of 8 days');
+    let g = B.onSet(null, { ...base, date: T0 }); g = B.onSet(g.rec, { ...base, date: T0 + 2 * DAYMS }); g = B.onSet(g.rec, { ...base, date: T0 + 4 * DAYMS });
+    assert.ok(!g.rec.e.streak3 && !g.rec.e.comeback);
+    let m = { rec: null }; for (let i = 0; i < 30; i++) m = B.onSet(m.rec, { ...base, date: T0 + i * DAYMS });
+    assert.ok(m.rec.e.streak30);
+  });
+  t('badges: 10 different topics; mixed and timed papers do not count; Two languages needs both', () => {
+    let r = { rec: null };
+    for (let i = 0; i < 9; i++) r = B.onSet(r.rec, { ...base, topic: 't' + i });
+    r = B.onSet(r.rec, { ...base, topic: 'mixed' }); r = B.onSet(r.rec, { ...base, topic: 'sel', paper: 'sel:full' });
+    assert.ok(!r.rec.e.topics10); assert.ok(!r.rec.e.bilingual);
+    r = B.onSet(r.rec, { ...base, topic: 't9', lang: 'zh' }); assert.ok(r.rec.e.topics10 && r.rec.e.bilingual);
+  });
+  t('badges: events (first plan, a lesson read, a planned day done, a first friend) and a set from a lesson', () => {
+    assert.deepStrictEqual(B.onEvent(null, 'plan').newly, ['firstPlan']);
+    assert.deepStrictEqual(B.onEvent(null, 'lesson').newly, ['firstLesson']);
+    assert.deepStrictEqual(B.onEvent(null, 'planDay').newly, ['planDay']);
+    assert.deepStrictEqual(B.onEvent(null, 'friend', 0).newly, []);
+    assert.deepStrictEqual(B.onEvent(null, 'friend', 2).newly, ['firstFriend']);
+    assert.deepStrictEqual(B.onEvent(B.onEvent(null, 'plan').rec, 'plan').newly, [], 'once');
+    assert.ok(B.onSet(null, { ...base, correct: 3, fromLesson: true }).newly.includes('lessonPractise'));
+    assert.ok(!B.onSet(null, { ...base, correct: 3 }).newly.includes('lessonPractise'));
+  });
+  t('badges: challenges count once each; first win; 10 challenges; a win within 24 hours of a loss is Back for more', () => {
+    const c = (id, winner, date) => ({ id, over: true, winner, date });
+    let r = B.onChallenges(null, [c(1, 'them', T0), c(2, 'none', T0), { id: 3, over: false, winner: null, date: T0 }]);
+    assert.deepStrictEqual(ids(r), ['firstChallenge']); assert.strictEqual(r.rec.s.ch, 1);
+    r = B.onChallenges(r.rec, [c(1, 'them', T0)]); assert.deepStrictEqual(r.newly, [], 'the same challenge twice');
+    r = B.onChallenges(r.rec, [c(4, 'me', T0 + 25 * 3600000)]); assert.deepStrictEqual(ids(r), ['firstWin'], 'a win after more than 24 h');
+    r = B.onChallenges(null, [c(1, 'them', T0), c(2, 'me', T0 + 3600000)]); assert.ok(r.rec.e.rematch && r.rec.e.firstWin);
+    r = B.onChallenges(null, [c(1, 'me', T0), c(2, 'them', T0 + 1000)]); assert.ok(!r.rec.e.rematch, 'a loss after a win is not a rematch');
+    r = B.onChallenges(null, Array.from({ length: 10 }, (_, i) => c(i + 1, 'draw', T0 + i))); assert.ok(r.rec.e.challenges10 && !r.rec.e.firstWin);
+  });
+  t('badges: the profile view has the five groups with earned counts, and progress for the badges that count something', () => {
+    const r = B.onSet(null, { ...base, correct: 7, firstTry: 0, seconds: 7200 });
+    const v = B.view(r.rec);
+    assert.strictEqual(v.total, 32); assert.strictEqual(v.earned, 1);
+    assert.deepStrictEqual(v.groups.map(g => g.id), B.GROUPS);
+    assert.strictEqual(v.groups.reduce((n, g) => n + g.total, 0), 32);
+    const c100 = v.groups[2].items.find(i => i.id === 'correct100'), h10 = v.groups[2].items.find(i => i.id === 'hours10');
+    assert.deepStrictEqual([c100.earned, c100.progress], [null, { now: 7, goal: 100 }]);
+    assert.deepStrictEqual(h10.progress, { now: 2, goal: 10 });
+    assert.strictEqual(v.groups[0].items.find(i => i.id === 'firstSet').earned !== null, true);
+    assert.strictEqual(B.view(null).earned, 0);
+  });
+  t('badges: a stored record that is not a record (the old list of sets) is an empty one; bad values are dropped', () => {
+    assert.strictEqual(B.count([{ kind: 'perfect' }]), 0);
+    const c = B.clean({ e: { firstSet: 'x', nope: 5, perfectSet: 7 }, s: { c: -4, t: 'a', top: ['ok', '<b>'], d: ['2026-01-01', 'zz'] } });
+    assert.deepStrictEqual(c.e, { perfectSet: 7 }); assert.deepStrictEqual([c.s.c, c.s.t, c.s.top, c.s.d], [0, 0, ['ok'], ['2026-01-01']]);
   });
 
   const nov = new Date(2026, 10, 6);
@@ -359,18 +473,17 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
       wrong: [{ topic: 'frac', type: 'input', q: { en: 'What is 1/2 + 1/4?\nSay "why", too.', zh: '1/2 + 1/4 等于多少？' }, answer: '3/4', given: ['=1+1'] }] },
     { date: 1762500000000, subject: 'sel', year: 6, topic: 'sel', diff: 2, n: 35, correct: 35, stars: 3, time: 1800000, byTopic: {}, wrong: [] }
   ];
-  const badges = [{ date: 1762500000000, kind: 'perfect', subject: 'sel', paper: 'sel:full', n: 35 }, { date: 1762400000000, kind: 'speed', subject: 'maths', year: 4, diff: 2, n: 5 }];
-  const csv = Rec.toCSV(student, history, badges);
-  t('progress file: one header, one student, every session and badge', () => {
+  const csv = Rec.toCSV(student, history);
+  t('progress file: one header, one student, every session (no badges since v2.3.0)', () => {
     const rows = Rec.parseCSV(csv);
     assert.strictEqual(rows[0].join(','), Rec.COLUMNS.join(','));
-    assert.deepStrictEqual(rows.slice(1).map(r => r[0]), ['student', 'session', 'session', 'badge', 'badge']);
+    assert.deepStrictEqual(rows.slice(1).map(r => r[0]), ['student', 'session', 'session']);
   });
   t('progress file: round trip restores everything exactly', () => {
     const back = Rec.fromCSV(csv);
     assert.deepStrictEqual(back.student, student);
     assert.deepStrictEqual(back.history, history);
-    assert.deepStrictEqual(back.badges, badges);
+    assert.strictEqual(back.badges, undefined);
     assert.strictEqual(back.skipped, 0);
   });
   t('progress file: readable columns for a spreadsheet', () => {
@@ -397,7 +510,7 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
     const typed = Rec.COLUMNS.join(',') + '\r\nsession,2026-03-01T09:00:00Z,,,,maths,5,dec,3,10,8,2,,,\r\nbadge,2026-03-01T09:00:00Z,,,,maths,5,dec,3,10,,,,firstTry,\r\n';
     const r = Rec.fromCSV(typed);
     assert.strictEqual(r.history.length, 1); assert.strictEqual(r.history[0].correct, 8); assert.strictEqual(r.history[0].diff, 3);
-    assert.strictEqual(r.badges[0].kind, 'firstTry'); assert.strictEqual(Rec.levelOf(r.badges[0]), 'maths:5:3');
+    assert.strictEqual(r.badges, undefined); assert.strictEqual(r.skipped, 0, 'an old badge row is read and ignored, not refused');
   });
   /* R1.1: a file the app accepts must not break a screen. Each field a screen reads is checked on import. */
   const withData = o => Rec.COLUMNS.join(',') + '\r\nsession,,,,,,,,,,,,,,' + '"' + JSON.stringify(o).replace(/"/g, '""') + '"\r\n';
@@ -457,12 +570,10 @@ t('F.4 Year 1-3 fraction multiple choice has 4 options, all different values', (
     const s = Rec.fromCSV(withData({ ...ok, topic: 'zzz', byTopic: { frac: [4, 5], zzz: [1, 1] }, wrong: [{ topic: 'zzz', type: 'input', q: { en: 'q' }, answer: 1 }] }), known).history[0];
     assert.strictEqual(s.topic, 'mixed'); assert.deepStrictEqual(s.byTopic, { frac: [4, 5] }); assert.strictEqual(s.wrong[0].topic, 'mixed');
   });
-  t('import vocabulary: a badge for a paper the app does not have is skipped', () => {
+  t('import vocabulary: badge rows of an old progress file are read and ignored (v2.3.0), never refused', () => {
     const badge = o => 'badge,,,,,,,,,,,,,,"' + JSON.stringify(o).replace(/"/g, '""') + '"\r\n';
-    const r = Rec.fromCSV(Rec.COLUMNS.join(',') + '\r\n' + badge({ date: 1, kind: 'perfect', subject: 'sel', paper: 'x' }) +
-      badge({ date: 2, kind: 'perfect', subject: 'comp', paper: 'comp' }) + badge({ date: 3, kind: 'perfect', subject: 'sel', paper: 'sel:full' }) +
-      badge({ date: 4, kind: 'perfect', subject: 'comp', paper: 'comp:amc_j:short' }) + badge({ date: 5, kind: 'perfect', subject: 'zzz', year: 4, diff: 2 }), known);
-    assert.deepStrictEqual(r.badges.map(b => b.paper), ['sel:full', 'comp:amc_j:short']); assert.strictEqual(r.skipped, 3);
+    const r = Rec.fromCSV(Rec.COLUMNS.join(',') + '\r\n' + badge({ date: 1, kind: 'perfect', subject: 'sel', paper: 'x' }) + badge({ date: 3, kind: 'perfect', subject: 'sel', paper: 'sel:full' }), known);
+    assert.strictEqual(r.badges, undefined); assert.strictEqual(r.skipped, 0); assert.strictEqual(r.history.length, 0);
   });
   t('import vocabulary: a figure is kept only if it draws', () => {
     const good = { type: 'clock', h: 3, m: 15 };
@@ -810,10 +921,9 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(!N.checkRound([['4', '+', '5', '=', '9'], []], 0).ok, 'an empty row fails');
   });
   t('R4: the new words exist in English and Chinese', () => {
-    const keys = Object.keys(I18N.STRINGS.en).filter(k => /^(numbers\.|badge\.how\.|rev\.(remove|removeLabel|removed|undo)$|pz\.roundShort$)/.test(k));
-    assert.ok(keys.length >= 40, String(keys.length));
+    const keys = Object.keys(I18N.STRINGS.en).filter(k => /^(numbers\.|rev\.(remove|removeLabel|removed|undo)$|pz\.roundShort$)/.test(k));
+    assert.ok(keys.length >= 35, String(keys.length));
     for (const k of keys) assert.ok(I18N.STRINGS.zh[k], 'zh ' + k);
-    for (const k of ['badge.how.perfect', 'badge.how.firstTry', 'badge.how.speed']) assert.ok(I18N.STRINGS.en[k] && I18N.STRINGS.zh[k], k);
   });
   t('R4: See results marks typed but unchecked answers (first try, or the second after one wrong Check)', () => {
     assert.ok(/function markUnchecked\(q, st\)/.test(app));
@@ -926,13 +1036,10 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     assert.ok(/if \(subject === 'maths' && year <= 6 && window\.ScopeK6\) return ScopeK6\.topicsFor\(year\)/.test(app));
     assert.ok(/Gen\.PRIMARY\.filter\(y => y > 0 \|\| st\.subject === 'maths'\)/.test(app), 'Kindergarten is offered for maths only');
   });
-  t('K–6: a Kindergarten session and badge keep year 0 through the progress file', () => {
+  t('K–6: a Kindergarten session keeps year 0 through the progress file', () => {
     const h = [{ date: 1762400000000, subject: 'maths', year: 0, topic: 'k6add', diff: 1, n: 5, correct: 5, stars: 3, time: null, byTopic: { k6add: [5, 5] }, wrong: [] }];
-    const b = [{ date: 1762400000000, kind: 'perfect', subject: 'maths', year: 0, diff: 1, n: 5 }];
-    const back = Rec.fromCSV(Rec.toCSV({ name: 'K' }, h, b));
+    const back = Rec.fromCSV(Rec.toCSV({ name: 'K' }, h));
     assert.strictEqual(back.history[0].year, 0);
-    assert.strictEqual(back.badges[0].year, 0);
-    assert.strictEqual(Rec.levelOf(b[0]), 'maths:0:1');
     // a timed paper with no year stays without one
     const t2 = Rec.fromCSV(Rec.toCSV({ name: 'S' }, [{ date: 1762500000000, subject: 'sel', topic: 'sel', diff: 2, n: 35, correct: 30, stars: 2, time: 1800000, byTopic: {}, wrong: [] }], []));
     assert.ok(t2.history[0].year == null, "a timed paper must not become Kindergarten: " + t2.history[0].year);
@@ -1539,9 +1646,25 @@ t('R2.1 (v1.10.0): every easy Sudoku has an empty square next to a given number,
     /* Year 11 functions: the second key idea, shifts and reflections (R3.2) */
     some(11, 'func', /f\(x\) \+ \d+ passes|f\(x − \d+\) passes|−f\(x\) passes/, 'a shift or a reflection');
   });
-  t('W12: What\'s new for v2.2.0 is the newest entry, with words in both languages', () => {
-    const rel = box.RELEASES[0]; assert.strictEqual(rel.v, '2.2.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'study');
+  t('v2.3.0 R4.1 to R4.8: the small faults carried from v2.2.0 are gone', () => {
+    const texts = (y, id, n) => { const out = []; for (let d = 1; d <= 4; d++) for (let i = 0; i < n; i++) { const q = G.generateExact('maths', y, id, d); out.push(q.q.en + ' | ' + q.sol.en + ' | ' + q.q.zh + ' | ' + q.sol.zh); } return out; };
+    texts(7, 'alg', 200).forEach(x => assert.ok(!/(^|[^0-9])[01]y/.test(x), 'R4.1 a 0y or 1y: ' + x));
+    texts(7, 'angle', 200).forEach(x => assert.ok(!/[+−] 0\)/.test(x), 'R4.2 a constant of 0: ' + x));
+    const rate = texts(8, 'ratio', 200); rate.forEach(x => assert.ok(!/0\.3333|0\.6667|0\.1667|0\.0833/.test(x), 'R4.3 a rounded hour: ' + x));
+    assert.ok(rate.some(x => /\/60 h/.test(x)), 'R4.3 minutes to hours is still asked, worked as a fraction');
+    texts(9, 'quad', 100).forEach(x => assert.ok(!/sum of the roots|turning point/.test(x), 'R4.5 Year 9 quad: ' + x));
+    const q12 = texts(12, 'quad', 100); q12.forEach(x => assert.ok(!/sum of the roots/.test(x), 'R4.5 Year 12 quad: ' + x)); assert.ok(q12.some(x => /discriminant|real roots|axis of symmetry/.test(x)));
+    assert.ok(!/budget/i.test(HS.what('fin', 9).en + HS.what('fin', 9).zh), 'R4.6 the Year 9 description names no budget');
+    assert.ok(texts(10, 'angle', 300).some(x => /same side of the chord/.test(x)), 'R4.7 the same segment is asked');
+    texts(7, 'stats', 300).forEach(x => assert.ok(!/netball|篮球/.test(x), 'R4.8 ' + x));
+  });
+  t('W12: What\'s new for v2.2.0 has its entry, with words in both languages', () => {
+    const rel = box.RELEASES.find(r => r.v === '2.2.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'study');
     ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.2.0.study' + sfx] && S.zh['rel.2.2.0.study' + sfx]));
+  });
+  t('W13: What\'s new for v2.3.0 is the newest entry, with words in both languages', () => {
+    const rel = box.RELEASES[0]; assert.strictEqual(rel.v, '2.3.0'); assert.strictEqual(rel.items.map(i => i.id).join(), 'badges');
+    ['', 'T'].forEach(sfx => assert.ok(S.en['rel.2.3.0.badges' + sfx] && S.zh['rel.2.3.0.badges' + sfx]));
   });
 }
 

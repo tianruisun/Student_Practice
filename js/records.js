@@ -1,37 +1,7 @@
-/* Student records without the screen: which badges a session earns, the year to suggest for a student, and the
-   progress file (CSV) used to export and import a student's progress. Loaded by the page and by the Node tests. */
+/* Student records without the screen: the year to suggest for a student, and the progress file (CSV) used to export and
+   import a student's progress. Badges are in js/badges.js (v2.3.0). Loaded by the page and by the Node tests. */
 (function (root) {
   'use strict';
-
-  /* ---------- badges ----------
-     Each badge belongs to a level: subject + year + difficulty (timed papers: the paper). The same kind of badge at
-     another level is a different badge to collect. */
-  const KINDS = ['perfect', 'firstTry', 'speed'];
-  const MIN_QUESTIONS = 5;                                  // first-try and speed need a real set, not 1 question
-  const SPEED_SECONDS = { 1: 20, 2: 30, 3: 60, 4: 90 };     // per question, by difficulty (Core … Competitive)
-
-  /* s: { subject, year, diff, paper?, n, correct, firstTry, seconds } → kinds earned, in KINDS order */
-  function awardsFor(s) {
-    if (!s.n || s.correct !== s.n) return [];
-    const out = ['perfect'];
-    const big = s.n >= MIN_QUESTIONS, timed = !!s.paper;
-    if (!timed && big && s.firstTry === s.n) out.push('firstTry');
-    if (!timed && big && s.seconds > 0 && s.seconds / s.n <= (SPEED_SECONDS[s.diff] || 30)) out.push('speed');
-    return out;
-  }
-  /* The level a badge counts for. Badges from before v1.7.0 have no level: "earlier". */
-  const levelOf = b => (b.paper ? 'paper:' + b.paper : b.year != null && b.diff ? [b.subject || 'maths', b.year, b.diff].join(':') : 'earlier');
-
-  /* badges list → { level: { kind: count } } */
-  function collection(badges) {
-    const out = {};
-    for (const b of badges || []) {
-      const lv = levelOf(b), kind = b.kind || 'perfect';
-      out[lv] = out[lv] || {};
-      out[lv][kind] = (out[lv][kind] || 0) + 1;
-    }
-    return out;
-  }
 
   /* ---------- suggested year ----------
      School year entered by the parent moves up by itself each new calendar year (NSW school years follow the calendar).
@@ -55,7 +25,7 @@
   }
 
   /* ---------- progress file (CSV) ----------
-     One row per record. "student" holds the details, "session" a finished set, "badge" an earned badge.
+     One row per record. "student" holds the details, "session" a finished set. (A "badge" row from before v2.3.0 is read and ignored.)
      The readable columns are for a spreadsheet; the last column, data, is the whole record as JSON so an import
      restores it exactly (including the questions to review). */
   const COLUMNS = ['record', 'date', 'name', 'school_year', 'birth_month', 'subject', 'year', 'topic', 'difficulty',
@@ -70,7 +40,7 @@
   };
   const iso = ms => new Date(ms).toISOString();
 
-  function toCSV(student, history, badges) {
+  function toCSV(student, history, achv) {
     const rows = [COLUMNS];
     rows.push(['student', '', student.name || '', student.schoolYear != null ? student.schoolYear : '', student.dob || '', '', '', '', '', '', '', '', '', '',
       JSON.stringify({ name: student.name || '', schoolYear: student.schoolYear != null ? student.schoolYear : null, schoolYearSet: student.schoolYearSet || null, dob: student.dob || '' })]);
@@ -78,10 +48,8 @@
       rows.push(['session', iso(h.date), '', '', '', h.subject || '', h.year != null ? h.year : '', h.topic || '', h.diff || '', h.n, h.correct,
         h.stars !== undefined ? h.stars : '', h.time ? Math.round(h.time / 1000) : '', '', JSON.stringify(h)]);
     }
-    for (const b of badges || []) {
-      rows.push(['badge', iso(b.date), '', '', '', b.subject || '', b.year != null ? b.year : '', b.topic || '', b.diff || '', b.n || '', '', '', '',
-        b.kind || 'perfect', JSON.stringify(b)]);
-    }
+    // v2.3.0 R2.3: the badges, one row, so a student with no account can back them up (the data column is the record)
+    if (achv && badges() && badges().count(achv) > 0) rows.push(['achv', '', '', '', '', '', '', '', '', '', '', '', '', '', JSON.stringify(badges().clean(achv))]);
     // the byte-order mark lets Excel open Chinese names correctly
     return '﻿' + rows.map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';
   }
@@ -124,7 +92,7 @@
   const topicOf = v => { const k = str(v, 40); return topicOk(k) ? k : 'mixed'; };
   const figOk = f => !known || typeof known.fig !== 'function' || known.fig(f) === true;
   const TIMED = ['sel', 'comp'];
-  /* A timed paper's name as levelOf writes it: sel:<length> or comp:<paper>:<length>. */
+  /* A timed paper's name as the progress file writes it: sel:<length> or comp:<paper>:<length>. */
   function paperOk(p) {
     const x = String(p).split(':');
     if (x[0] === 'sel') return x.length === 2 && WORD.test(x[1]) && knows('sel.len.' + x[1]);
@@ -208,25 +176,7 @@
     s.byTopic = isObj(o.byTopic) ? by : { [s.topic]: [correct, n] };   // timed papers record none
     return s;
   }
-  function cleanBadge(o, row) {
-    const date = num(o.date, 0, 4102444800000) || Date.parse(row.date);
-    if (!date) return null;
-    const kind = KINDS.includes(o.kind || row.badge) ? (o.kind || row.badge) : 'perfect';
-    const subject = str(o.subject || row.subject, 20) || 'maths';
-    if (!QUESTION_SUBJECTS.includes(subject)) return null;
-    const b = Object.assign({}, o, { date, kind, subject });
-    // a timed-paper badge has no year or difficulty: only keep the ones that are there
-    const year = int(o.year !== undefined ? o.year : row.year, 0, 14), diff = int(o.diff !== undefined ? o.diff : row.difficulty, 1, 4);
-    if (year !== null) b.year = year; else delete b.year;
-    if (diff !== null) b.diff = diff; else delete b.diff;
-    // a paper the app does not know would label its level with raw keys (R2.3): the badge is skipped
-    if (b.paper !== undefined && b.paper !== null) { if (!paperOk(b.paper)) return null; } else delete b.paper;
-    if (b.topic !== undefined) b.topic = topicOf(b.topic);
-    if (b.n !== undefined) { const n = int(b.n, 1, 200); if (n !== null) b.n = n; else delete b.n; }
-    return b;
-  }
-
-  /* text → { student, history, badges, skipped } or throws Error('format'). app: { key(k), fig(f) }, see `known`. */
+  /* text → { student, history, skipped } or throws Error('format'). app: { key(k), fig(f) }, see `known`. */
   function fromCSV(text, app) {
     known = app || null;
     try { return readCSV(text); } finally { known = null; }
@@ -235,7 +185,7 @@
     if (String(text).length > MAX_FILE) throw new Error('size');
     const rows = parseCSV(text);
     if (!rows.length || rows[0].join(',') !== COLUMNS.join(',')) throw new Error('format');
-    const out = { student: null, history: [], badges: [], skipped: 0 };
+    const out = { student: null, history: [], skipped: 0, achv: null };
     for (const r of rows.slice(1)) {
       const row = {}; COLUMNS.forEach((c, i) => { row[c] = (r[i] || '').replace(/^'(?=[=+\-@])/, ''); });
       const o = json(row.data) || {};
@@ -243,7 +193,8 @@
         out.student = { name: str(o.name || row.name, 20), schoolYear: num(o.schoolYear != null ? o.schoolYear : row.school_year, 0, 12),
           schoolYearSet: num(o.schoolYearSet, 2000, 2100), dob: /^\d{4}-\d{2}$/.test(o.dob || row.birth_month) ? (o.dob || row.birth_month) : '' };
       } else if (row.record === 'session') { const s = cleanSession(o, row); s ? out.history.push(s) : out.skipped++; }
-      else if (row.record === 'badge') { const b = cleanBadge(o, row); b ? out.badges.push(b) : out.skipped++; }
+      else if (row.record === 'achv') { if (badges() && isObj(o)) out.achv = badges().merge(out.achv, o); else out.skipped++; }
+      else if (row.record === 'badge') { /* v2.3.0: badges are not in the progress file any more; an old file's badge rows are ignored */ }
       else out.skipped++;
     }
     return out;
@@ -258,18 +209,18 @@
     return { list: cap ? out.slice(-cap) : out, added };
   }
   const sessionKey = h => [h.date, h.subject, h.n, h.correct].join('|');
-  const badgeKey = b => [b.date, b.kind || 'perfect', levelOf(b)].join('|');
 
   /* ---------- an account's records on two devices (v2.0.0 R1.1) ----------
-     data: { v, keys: { history, settings, badges, games, plan }, profile } as js/friends.js sends it.
+     data: { v, keys: { history, settings, achv, games, plan }, profile } as js/friends.js sends it.
      A three-way merge: `base` lists the record keys both copies last agreed on (baseOf), so a record that is in one copy
      and not in the other was either added there (kept) or removed on the other side (dropped, when base has it).
      Without a base (null) nothing counts as removed: the two copies are simply joined. */
-  const LISTS = { history: [sessionKey, 100], badges: [badgeKey, 500], plan: [p => String(p && p.id), 300] };
+  const LISTS = { history: [sessionKey, 100], plan: [p => String(p && p.id), 300] };
   const arr = v => (Array.isArray(v) ? v.filter(x => x && typeof x === 'object') : []);
   function baseOf(data) {
     const k = (data && data.keys) || {}, out = {};
     for (const [name, [keyOf]] of Object.entries(LISTS)) out[name] = arr(k[name]).map(keyOf);
+    if (isObj(k.achv) && badges()) out.achv = badges().clean(k.achv).s;   // the counters both copies last agreed on (v2.3.0 R2.2)
     return out;
   }
   function join3(local, server, base, keyOf) {
@@ -306,6 +257,7 @@
     }
     return out;
   }
+  const badges = () => root.Badges || (typeof require !== 'undefined' ? require('./badges.js') : null);
   function mergeAccount(local, server, base) {
     const lk = (local && local.keys) || {}, sk = (server && server.keys) || {}, keys = {};
     for (const [name, [keyOf, cap]] of Object.entries(LISTS)) {
@@ -314,6 +266,7 @@
       if (name !== 'plan') l.sort((x, y) => (x.date || 0) - (y.date || 0));
       keys[name] = l.slice(-cap);
     }
+    if (lk.achv !== undefined || sk.achv !== undefined) keys.achv = badges() ? badges().merge(lk.achv, sk.achv, base && base.achv) : (lk.achv !== undefined ? lk.achv : sk.achv);   // v2.3.0: a badge stays earned
     const settings = lk.settings !== undefined ? lk.settings : sk.settings;   // the choices made on the device in use
     if (settings !== undefined) keys.settings = settings;
     const games = joinGames(lk.games, sk.games);
@@ -321,7 +274,7 @@
     return { v: 1, keys, profile: Object.assign({}, (server && server.profile) || {}, (local && local.profile) || {}) };
   }
 
-  const api = { KINDS, MIN_QUESTIONS, SPEED_SECONDS, awardsFor, levelOf, collection, suggestYear, yearByAge, COLUMNS, toCSV, parseCSV, fromCSV, merge, sessionKey, badgeKey, baseOf, mergeAccount };
+  const api = { suggestYear, yearByAge, COLUMNS, toCSV, parseCSV, fromCSV, merge, sessionKey, baseOf, mergeAccount };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.Records = api;
 })(typeof window !== 'undefined' ? window : globalThis);

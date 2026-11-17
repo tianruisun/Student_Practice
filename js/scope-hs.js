@@ -51,7 +51,7 @@
       9: E('formula', 'Changing the subject of a formula', '变换公式的主项'),
       10: E('formula', 'Harder formulas: roots, squares and fractions', '较难的公式：根号、平方和分数') } },
     fin: { strand: 'num', years: {
-      9: E('fin', 'Earning and spending: wages, overtime, commission, GST, budgets and simple interest', '赚钱和花钱：工资、加班费、佣金、商品及服务税、预算和单利'),
+      9: E('fin', 'Earning and spending: wages, overtime, commission, GST and simple interest', '赚钱和花钱：工资、加班费、佣金、商品及服务税和单利'),
       10: E('fin', 'Compound interest and depreciation', '复利和折旧') } },
     quad: { strand: 'num', years: {
       10: E('quad', 'Quadratic equations and the parabola', '二次方程和抛物线'),

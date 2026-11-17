@@ -43,7 +43,7 @@
     },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
   };
-  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', tour: 'sp.tour', games: 'sp.games', news: 'sp.news', plan: 'sp.plan' };
+  const K = { settings: 'sp.settings', history: 'sp.history', pin: 'sp.pin', ai: 'sp.ai', profiles: 'sp.profiles', badges: 'sp.badges', achv: 'sp.achv', tour: 'sp.tour', games: 'sp.games', news: 'sp.news', plan: 'sp.plan' };
   /* This app's keys that are not a student's data: the language, the "moved" flag, the tour flag and (v1.11.0) the last
      version whose What's new this browser has seen. They do not make a
      browser look used (below), and a Forgot-PIN erase keeps them (eraseAll). One list, so the two cannot drift apart. */
@@ -80,7 +80,7 @@
       name(pr) { return pr.name || t('profile.default', { n: P.list.indexOf(pr) + 1 }); },
       histKey() { return K.history + '.' + P.active; },
       setKey() { return K.settings + '.' + P.active; },
-      badgeKey() { return K.badges + '.' + P.active; },
+      achvKey() { return K.achv + '.' + P.active; },
       gameKey() { return K.games + '.' + P.active; },
       planKey() { return K.plan + '.' + P.active; },
       select(id) { P.active = id; store.set(K.profiles, P); },
@@ -92,7 +92,7 @@
       addLocal() { return this.addAny({ name: '' }); },
       // fields: name, schoolYear (0 = Kindergarten to 12), schoolYearSet (calendar year it was entered), dob ('YYYY-MM')
       update(id, fields) { const pr = P.list.find(x => x.id === id); if (pr) { Object.assign(pr, fields); store.set(K.profiles, P); } },
-      remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.games + '.' + id); store.del(K.plan + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
+      remove(id) { if (P.list.length <= 1) return false; P.list = P.list.filter(x => x.id !== id); store.del(K.history + '.' + id); store.del(K.settings + '.' + id); store.del(K.badges + '.' + id); store.del(K.achv + '.' + id); store.del(K.games + '.' + id); store.del(K.plan + '.' + id); if (P.active === id) P.active = P.list[0].id; store.set(K.profiles, P); return true; }
     };
   })();
   const histKey = () => Profiles.histKey();
@@ -122,7 +122,7 @@
     S.screen = screen;
     document.querySelectorAll('.screen').forEach(s => { s.hidden = s.id !== 'screen-' + screen; });
     document.querySelectorAll('.tab').forEach(b => {
-      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading', 'study', 'plan'].includes(screen)) ||
+      const cur = b.dataset.go === screen || (b.dataset.go === 'home' && ['quiz', 'results', 'loading', 'study', 'plan', 'profile'].includes(screen)) ||
         (b.dataset.go === 'games' && (screen === 'game' || screen === 'puzzle'));
       if (cur) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
@@ -141,12 +141,11 @@
     hello.textContent = t('home.hello', { name: who });
     hello.append(wave);
     $('#profileAvatar').textContent = (who.trim()[0] || 'S').toUpperCase();
-    const nb = badgeCount(), ab = $('#avatarBadge');
-    ab.hidden = !nb; ab.textContent = '🏅' + nb;
+    showBadgeCount();
     const inGame = S.screen === 'game' || S.screen === 'puzzle';
     document.body.classList.toggle('no-nav', S.screen === 'quiz' || S.screen === 'loading' || inGame);
     document.body.classList.toggle('in-game', inGame);   // the header too: a round needs the whole screen on a small phone
-    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, plan: renderPlan, friends: () => window.Friends && window.Friends.render(), parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
+    ({ home: renderHome, study: renderStudy, loading: renderLoading, quiz: renderQuiz, results: renderResults, progress: renderProgress, profile: renderProfile, plan: renderPlan, friends: () => window.Friends && window.Friends.render(), parent: renderParent, games: renderGames, game: renderGame, puzzle: renderPuzzle })[S.screen]();
   }
 
   /* ---------- HOME ---------- */
@@ -325,6 +324,7 @@
     let changed = false;
     l.forEach(it => { if (it.kind === 'study' && it.topic === topic && occurs(it, today) && !planDone(it, today)) { it.done = (Array.isArray(it.done) ? it.done : []).concat(isoDay(today)).slice(-60); changed = true; } });
     if (changed) store.set(planKey(), l);
+    checkPlanDay();
   }
   function openPlan() {
     const today = dOnly(new Date());
@@ -408,6 +408,7 @@
     if (f.what === 'study') { it.year = studyYearOf(st); it.topic = f.topic; }
     else if (!isTimed(f.what)) { it.year = planYear(f.what); it.topic = f.topic || 'mixed'; it.count = f.count; }
     store.set(planKey(), planList().concat(it).slice(-300));
+    badgeEvent('plan');
     toast(t('plan.added'));
     renderPlan();
     $('#planAdd').focus();
@@ -631,8 +632,9 @@
     S.quiz = {
       exam: false, questions, i: 0, page: 0, results: [], started: Date.now(),
       st: questions.map(() => ({ status: 'answering', tries: 0, given: [], sel: null, fbKey: '', draft: '' })),
-      settings: Object.assign({ subject }, settings), challenge: settings.challenge || null
+      settings: Object.assign({ subject }, settings), challenge: settings.challenge || null, fromLesson: !!S.fromLesson
     };
+    S.fromLesson = false;
     delete S.quiz.settings.challenge;
     go('quiz');
     focusCardInput(0);
@@ -1202,13 +1204,14 @@
       act.append(b);
     }
     art.append(act);
-    if (!studied()[y + ':' + id]) { st.studied = Object.assign({}, studied(), { [y + ':' + id]: Date.now() }); saveSettings(); }
+    if (!studied()[y + ':' + id]) { st.studied = Object.assign({}, studied(), { [y + ':' + id]: Date.now() }); saveSettings(); badgeEvent('lesson'); }
   }
 
   /* practise the lesson's topic at the student's own level and number of questions (set on Home) */
   function practiseTopic(y, id) {
     const st = S.settings;
     st.subject = 'maths'; st.mode = 'practice'; st.year = y; st.topic = y >= 7 ? ScopeHS.gen(id, y) : id; st.yearPicked = true; saveSettings();
+    S.fromLesson = true;   // v2.3.0: the set that starts now came from a lesson (a badge)
     startQuiz(st);
   }
 
@@ -1237,7 +1240,42 @@
   /* ---------- stars and badges ----------
      100% → 3 stars + a "Good job" badge on the profile; 80–99% → 2; 60–79% → 1; under 60% → none */
   const starsFor = (c, n) => { const p = n ? c / n : 0; return p >= 1 ? 3 : p >= 0.8 ? 2 : p >= 0.6 ? 1 : 0; };
-  const badgeCount = () => (store.get(Profiles.badgeKey(), []) || []).length;
+  /* ---------- badges (v2.3.0, W13): js/badges.js holds the rules; each one is earned once per student ---------- */
+  // the badges from before v2.3.0 (a list of sets) are gone: the new ones start from zero (Terry, 2026-11-17)
+  Profiles.list.forEach(p => store.del(K.badges + '.' + p.id));
+  const achvOf = id => Badges.clean(store.get(K.achv + '.' + id, null));
+  const badgeCount = () => Badges.count(achvOf(Profiles.active.id));
+  let badgePopTimer = null;
+  /* a small celebration for each new badge; it goes by itself, and a screen reader hears it (role=status) */
+  function celebrate(ids) {
+    if (!ids || !ids.length) return;
+    const box = $('#badgePop'); if (!box) return;
+    box.innerHTML = '';
+    ids.slice(0, 3).forEach(id => {
+      const d = Badges.DEFS.find(x => x.id === id), row = el('div', 'bpop-row');
+      row.append(el('span', 'bpop-ic', d.icon), el('span', '', t('badge.pop', { name: t('b.' + id) })));
+      row.firstChild.setAttribute('aria-hidden', 'true');
+      box.append(row);
+    });
+    if (ids.length > 3) box.append(el('div', 'bpop-row', t('badge.popMore', { n: ids.length - 3 })));
+    box.hidden = false;
+    clearTimeout(badgePopTimer);
+    badgePopTimer = setTimeout(() => { box.hidden = true; }, 6000);
+    showBadgeCount();
+  }
+  function showBadgeCount() { const nb = badgeCount(), ab = $('#avatarBadge'); ab.hidden = !nb; ab.textContent = '🏅' + nb; }
+  /* a student's record after an event; the new badges are celebrated (a profile other than the active one: kept, not shown) */
+  function giveBadges(id, res) {
+    store.set(K.achv + '.' + id, res.rec);
+    if (id === Profiles.active.id) celebrate(res.newly);
+    return res.newly;
+  }
+  const badgeEvent = (name, data, id) => { id = id || Profiles.active.id; return giveBadges(id, Badges.onEvent(achvOf(id), name, data)); };
+  /* every task of today's plan is done (and there is at least one) */
+  function checkPlanDay() {
+    const today = dOnly(new Date()), items = planList().filter(it => occurs(it, today));
+    if (items.length && items.every(it => planDone(it, today))) badgeEvent('planDay');
+  }
   function starRow(k, big) {
     const row = el('div', 'stars' + (big ? ' big' : ''));
     row.setAttribute('role', 'img'); row.setAttribute('aria-label', t('stars.label', { k }));
@@ -1260,29 +1298,18 @@
       seconds: Q.exam ? (Q.timeUsed || 0) / 1000 : (Date.now() - (Q.started || Date.now())) / 1000
     };
   }
-  const KIND_ICON = { perfect: '🏅', firstTry: '🎯', speed: '⚡' };
-  const kindLabel = k => KIND_ICON[k] + ' ' + t('badge.kind.' + k);
-  function levelLabel(lv) {
-    if (lv === 'earlier') return t('badge.earlier');
-    const p = lv.split(':');
-    if (p[0] === 'paper') return p[1] === 'comp' ? t('topic.' + p[2]) + ' · ' + t('comp.len.' + p[3]) : t('subject.sel') + ' · ' + t('sel.len.' + p[2]);
-    return [t('subject.' + p[0]), yearLabel(+p[1]), t('diff.short.' + p[2])].join(' · ');
-  }
-
   /* ---------- history ---------- */
   function saveSession() {
     const Q = S.quiz;
     Q.stars = starsFor(Q.results.filter(r => r && r.ok).length, Q.questions.length);
     if (!Q.badgeGiven) {
-      const f = sessionFacts(Q), date = Date.now();
-      Q.awards = Records.awardsFor(f);
-      Q.awardLevel = Records.levelOf(f);
-      if (Q.awards.length) {
-        const b = store.get(Profiles.badgeKey(), []) || [];
-        Q.awards.forEach(kind => b.push({ date, kind, subject: f.subject, year: f.year, diff: f.diff, paper: f.paper, topic: Q.settings.topic, n: f.n }));
-        store.set(Profiles.badgeKey(), b.slice(-500));
-      }
+      const f = sessionFacts(Q), id = Profiles.active.id, pr = Profiles.active;
+      const sy = pr.schoolYear != null ? Records.suggestYear(pr, new Date()) : null;
       Q.badgeGiven = true;
+      const res = Badges.onSet(achvOf(id), Object.assign({}, f, { date: Date.now(), lang: lang(), topic: Q.settings.topic, schoolYear: sy, fromLesson: !!Q.fromLesson }));
+      Q.newBadges = res.newly;
+      store.set(K.achv + '.' + id, res.rec);
+      celebrate(res.newly);
     }
     const byTopic = {};
     Q.questions.forEach((q, i) => {
@@ -1300,6 +1327,7 @@
       ...(Q.maxMarks ? { marks: Q.marks, maxMarks: Q.maxMarks } : {})
     });
     store.set(histKey(), h.slice(-100));
+    checkPlanDay();
   }
 
   /* ---------- RESULTS ---------- */
@@ -1311,11 +1339,11 @@
     const k = starsFor(c, n), sb = $('#resStars');
     sb.innerHTML = ''; sb.append(starRow(k, true));
     $('#resMsg').textContent = (Q.maxMarks ? t('comp.marksScore', { m: Q.marks, total: Q.maxMarks }) + ' ' : '') + t('stars.msg' + k);
-    const awards = Q.awards || [], badge = $('#resBadge');
+    const awards = Q.newBadges || [], badge = $('#resBadge');
     badge.hidden = !awards.length;
     if (awards.length) {
-      $('#resBadgeIcons').textContent = awards.map(k => KIND_ICON[k]).join('');
-      $('#resBadgeText').textContent = t('badge.added', { name: Profiles.name(Profiles.active), list: awards.map(k => t('badge.kind.' + k)).join(' · '), level: levelLabel(Q.awardLevel) });
+      $('#resBadgeIcons').textContent = awards.map(id => Badges.DEFS.find(d => d.id === id).icon).join('');
+      $('#resBadgeText').textContent = t('badge.added', { name: Profiles.name(Profiles.active), list: awards.map(id => t('b.' + id)).join(' · ') });
     }
     renderExamSummary(Q);
     $('#resLocked').hidden = S.parent;
@@ -1586,15 +1614,13 @@
     try { progressSections(box); } catch (e) { console.error('progress', e); }
     // shown only when there is something to clear (R2.4, v1.7.0)
     const has = k => { const v = store.get(k, []); return Array.isArray(v) && v.length > 0; };
-    if (has(histKey()) || has(Profiles.badgeKey())) appendClearButton(box);
+    if (has(histKey())) appendClearButton(box);
   }
   function progressSections(box) {
     const part = fn => { try { fn(); } catch (e) { console.error('progress section', e); } };
     const h = (store.get(histKey(), []) || []).filter(x => x && typeof x === 'object');
-    // badges can exist with no sessions (an import whose session rows were all refused): show them anyway (R3.3, v1.7.0)
-    if (!h.length) { box.append(el('p', 'muted', t('prog.none'))); part(() => renderBadges(box)); return; }
+    if (!h.length) { box.append(el('p', 'muted', t('prog.none'))); return; }
     part(() => progressTop(box, h));
-    part(() => renderBadges(box));
     part(() => progressTopics(box, h));
     part(() => progressRecent(box, h));
     part(() => progressReview(box, h));
@@ -1671,51 +1697,47 @@
     const btn = el('button', 'btn secondary danger', '🗑 ' + t('prog.clear')); btn.type = 'button'; btn.id = 'clearProgress';
     btn.addEventListener('click', async () => {
       if (!S.parent && !(await unlockParent())) return;
-      if (confirm(t('prog.resetConfirm'))) { store.del(histKey()); store.del(Profiles.badgeKey()); toast(t('prog.clear') + ' ✓'); renderProgress(); }
+      if (confirm(t('prog.resetConfirm'))) { store.del(histKey()); toast(t('prog.clear') + ' ✓'); renderProgress(); }
     });
     wrap.append(btn);
     if (!S.parent) wrap.append(el('p', 'muted small center', t('prog.clearNote')));
     box.append(wrap);
   }
 
-  const badgeHow = k => t('badge.how.' + k, { n: Records.MIN_QUESTIONS, s1: Records.SPEED_SECONDS[1], s2: Records.SPEED_SECONDS[2], s3: Records.SPEED_SECONDS[3], s4: Records.SPEED_SECONDS[4] });
-  /* Badges: a grid for the year being practised (difficulty × kind), then every other level collected. */
-  function renderBadges(box) {
-    const list = store.get(Profiles.badgeKey(), []) || [], col = Records.collection(list);
-    const shelf = el('section', 'badge-shelf');
-    const head = el('div', 'badge-head');
-    head.append(el('h3', '', t('badge.title', { n: list.length })),
-      infoTip(t('badge.how', { s1: Records.SPEED_SECONDS[1], s2: Records.SPEED_SECONDS[2], s3: Records.SPEED_SECONDS[3], s4: Records.SPEED_SECONDS[4], n: Records.MIN_QUESTIONS }), t('badge.howLabel')));
-    shelf.append(head);
-    const subject = S.settings.subject === 'ga' ? 'ga' : 'maths', year = S.settings.year;
-    const table = el('table', 'badge-grid');
-    table.append(el('caption', '', t('subject.' + subject) + ' · ' + yearLabel(year)));
-    const hr = el('tr'); hr.append(el('th', 'corner'));
-    // R4 (v1.10.0): each kind's icon tells how to earn it, on hover, keyboard focus or a tap
-    Records.KINDS.forEach(k => { const th = el('th', 'kind'); th.scope = 'col'; th.append(infoTip(badgeHow(k), t('badge.kind.' + k) + ' – ' + t('badge.howLabel'), KIND_ICON[k])); hr.append(th); });
-    table.append(hr);
-    const shown = new Set();
-    [1, 2, 3, 4].forEach(d => {
-      const lv = [subject, year, d].join(':'), got = col[lv] || {}, tr = el('tr');
-      shown.add(lv);
-      const th = el('th', '', t('diff.short.' + d)); th.scope = 'row'; tr.append(th);
-      Records.KINDS.forEach(k => {
-        const n = got[k] || 0, td = el('td', n ? 'got' : 'empty', n ? KIND_ICON[k] + (n > 1 ? '×' + n : '') : KIND_ICON[k]);
-        td.setAttribute('aria-label', t('badge.kind.' + k) + ': ' + n);
-        td.title = badgeHow(k);
-        tr.append(td);
+  /* ---------- the student's profile: badges in groups, each with a progress bar (v2.3.0, Terry chose layout B) ---------- */
+  const fmtN = n => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  const openGroups = new Set(['start']);
+  function renderProfile() {
+    const box = $('#profileBody'); box.innerHTML = '';
+    const pr = Profiles.active, who = Profiles.name(pr), v = Badges.view(achvOf(pr.id));
+    $('#profH').textContent = t('profile.pageFor', { name: who });
+    const top = el('div', 'pf-top'), av = el('span', 'avatar big', (who.trim()[0] || 'S').toUpperCase());
+    av.setAttribute('aria-hidden', 'true');
+    const who2 = el('div'); who2.append(el('p', 'pf-name', who), el('p', 'muted pf-count', t('badge.count', { n: v.earned, total: v.total })));
+    top.append(av, who2); box.append(top);
+    v.groups.forEach(g => {
+      const d = el('details', 'bgroup'); d.dataset.group = g.id; d.open = openGroups.has(g.id);
+      d.addEventListener('toggle', () => { if (d.open) openGroups.add(g.id); else openGroups.delete(g.id); });
+      const sm = el('summary'), bar = el('span', 'bar'), fill = el('i');
+      fill.style.width = Math.round(100 * g.earned / g.total) + '%'; bar.append(fill);
+      sm.append(el('span', 'bg-name', t('bg.' + g.id)), bar, el('span', 'bg-n', g.earned + '/' + g.total));
+      d.append(sm);
+      const ul = el('ul', 'plain bgrid');
+      g.items.forEach(b => {
+        const li = el('li', 'btile ' + (b.earned ? 'on' : 'off')), ic = el('span', 'b-ic', b.earned ? b.icon : '🔒');
+        ic.setAttribute('aria-hidden', 'true');
+        const tx = el('div', 'b-tx');
+        tx.append(el('strong', '', t('b.' + b.id)), el('span', 'b-how', t('bh.' + b.id)));
+        if (b.earned) tx.append(el('span', 'b-when', t('badge.earnedOn', { date: new Date(b.earned).toLocaleDateString(lang() === 'zh' ? 'zh-CN' : 'en-AU') })));
+        else if (b.progress) {
+          const pb = el('span', 'bar small'), pf = el('i'); pf.style.width = Math.round(100 * b.progress.now / b.progress.goal) + '%'; pb.append(pf);
+          tx.append(pb, el('span', 'b-prog', fmtN(b.progress.now) + ' / ' + b.progress.goal));
+        }
+        li.append(ic, tx);
+        ul.append(li);
       });
-      table.append(tr);
+      d.append(ul); box.append(d);
     });
-    shelf.append(table);
-    const others = Object.keys(col).filter(lv => !shown.has(lv)).sort();
-    if (others.length) {
-      shelf.append(el('h4', '', t('badge.other')));
-      const ul = el('ul', 'plain badge-others');
-      others.forEach(lv => ul.append(el('li', '', levelLabel(lv) + '  ' + Records.KINDS.filter(k => col[lv][k]).map(k => KIND_ICON[k] + '×' + col[lv][k]).join(' '))));
-      shelf.append(ul);
-    }
-    box.append(shelf);
   }
 
   /* An info icon whose text shows on hover, on keyboard focus, or when tapped (phones have no hover). */
@@ -2199,7 +2221,7 @@
   $('#csvExport').addEventListener('click', () => {
     const pr = Profiles.active, name = Profiles.name(pr);
     const text = Records.toCSV({ name: pr.name || name, schoolYear: pr.schoolYear, schoolYearSet: pr.schoolYearSet, dob: pr.dob },
-      store.get(histKey(), []), store.get(Profiles.badgeKey(), []));
+      store.get(histKey(), []), achvOf(pr.id));
     const a = el('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
     a.download = 'student-practice_' + name.replace(/[^\p{L}\p{N}_-]+/gu, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
     document.body.append(a); a.click(); a.remove();
@@ -2218,18 +2240,18 @@
     const pr = Profiles.active, name = Profiles.name(pr);
     // rows the import refused are said, so a typo is not mistaken for "already imported" (R2.5, v1.7.0)
     const skipped = data.skipped ? ' ' + t('csv.skipped', { n: data.skipped }) : '';
-    if (!confirm(t('csv.importConfirm', { name, s: data.history.length, b: data.badges.length }) + skipped)) return;
+    if (!confirm(t('csv.importConfirm', { name, s: data.history.length }) + skipped)) return;
     const h = Records.merge(store.get(histKey(), []), data.history, Records.sessionKey, 100);
-    const b = Records.merge(store.get(Profiles.badgeKey(), []), data.badges, Records.badgeKey, 500);
-    store.set(histKey(), h.list); store.set(Profiles.badgeKey(), b.list);
+    store.set(histKey(), h.list);
     const st = data.student;
     if (st) {   // details fill gaps only: what was entered on this device wins
       Profiles.update(pr.id, { name: pr.name || st.name, schoolYear: pr.schoolYear != null ? pr.schoolYear : st.schoolYear,
         schoolYearSet: pr.schoolYear != null ? pr.schoolYearSet : st.schoolYearSet, dob: pr.dob || st.dob });
       applySuggestedYear();
     }
+    if (data.achv) store.set(K.achv + '.' + pr.id, Badges.merge(achvOf(pr.id), data.achv));   // v2.3.0 R2.3: the file's badges join the device's
     render();
-    toast(t('csv.imported', { s: h.added, b: b.added }) + skipped, 7000);
+    toast(t('csv.imported', { s: h.added }) + skipped, 7000);
   });
   $('#changePin').addEventListener('click', async () => { if (await pinDialog('change')) toast(t('parent.saved')); });
   $('#aiKey').addEventListener('input', () => { $('#aiKey').dataset.touched = '1'; });
@@ -2241,6 +2263,7 @@
   });
   $('#promptSave').addEventListener('click', () => { savePrompt($('#promptText').value); toast(t('parent.saved')); });
   $('#promptReset').addEventListener('click', () => { savePrompt(''); toast(t('parent.promptDefault')); });
+  $('#profileOpen').addEventListener('click', () => { $('#profileDlg').close(); go('profile'); });
   $('#profileBtn').addEventListener('click', () => { renderProfiles(); window.I18N.applyStatic($('#profileDlg')); $('#profileDlg').showModal(); });
   $('#profileClose').addEventListener('click', () => $('#profileDlg').close());
   $('#gameGo').addEventListener('click', playGame);
@@ -2295,7 +2318,7 @@
 
   /* v2.0.0: accounts, friends and practising together (js/friends.js) */
   if (window.Friends) window.Friends.init({
-    t, el, $, store, K, Profiles, S, lang, go, toast, render, startQuiz, startChallenge, openChallenge, topicOptions, yearLabel,
+    t, el, $, store, K, Profiles, S, lang, go, toast, render, startQuiz, badgeFriends: (id, n) => badgeEvent('friend', n, id), badgeChallenges: (id, list) => giveBadges(id, Badges.onChallenges(achvOf(id), list)), startChallenge, openChallenge, topicOptions, yearLabel,
     reload() { loadProfileSettings(); applySuggestedYear(); if ($('#profileDlg').open) renderProfiles(); render(); }
   });
 

@@ -70,7 +70,7 @@
   };
 
   /* ---------- the account's records ---------- */
-  const keysOf = id => ({ history: A.K.history + '.' + id, settings: A.K.settings + '.' + id, badges: A.K.badges + '.' + id, games: A.K.games + '.' + id, plan: A.K.plan + '.' + id });
+  const keysOf = id => ({ history: A.K.history + '.' + id, settings: A.K.settings + '.' + id, achv: A.K.achv + '.' + id, games: A.K.games + '.' + id, plan: A.K.plan + '.' + id });
   const PROFILE_FIELDS = ['schoolYear', 'schoolYearSet', 'dob'];
   /* this device's records of a profile, as they are */
   function read(id) {
@@ -98,7 +98,7 @@
     PROFILE_FIELDS.forEach(f => { if (data && data.profile && data.profile[f] !== undefined) fields[f] = data.profile[f]; });
     A.Profiles.update(id, fields);
   }
-  // records worth moving: sets, badges, games and the plan (settings alone are only choices, so they do not count)
+  // records worth moving: sets, badges (v2.3.0: the record in sp.achv), games and the plan (settings alone are only choices, so they do not count)
   const hasRecords = id => Object.entries(keysOf(id)).filter(([name]) => name !== 'settings').map(([, k]) => k).some(k => { const v = A.store.get(k, null); return v !== null && !(Array.isArray(v) && !v.length); });
 
   /* R1.1 (v2.0.0): one account on two devices. Each save names the server copy it was made from (F.auth.synced, the
@@ -259,9 +259,16 @@
     try {
       const [fr, ch] = await Promise.all([api('GET', 'friends'), api('GET', 'challenges')]);
       F.friends = fr; F.challenges = ch.challenges;
+      badgeSync();
     } catch (e) { if (e.code !== 'signed_out') F.netErr = errText(e); }
     updateDot();
     if (A.S.screen === 'friends' || A.S.screen === 'home') A.render();
+  }
+  /* v2.3.0 (W13): the friends and challenges the server lists can earn badges; they go to the account's student */
+  function badgeSync() {
+    const id = F.auth && F.auth.profile; if (!id || !F.friends || !F.challenges) return;
+    A.badgeFriends(id, F.friends.friends.length);
+    A.badgeChallenges(id, F.challenges.map(c => ({ id: c.id, over: !!c.over, winner: c.winner, date: c.created || 0 })));
   }
   // what the student still has to do: a friend's challenge not declined, not over and not handed in yet
   const waitingForMe = () => (F.challenges || []).filter(c => !c.mine && !c.over && !c.me && c.status !== 'declined');

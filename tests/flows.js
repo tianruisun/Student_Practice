@@ -219,9 +219,10 @@ async function run(site) {
       await context.close();
     });
 
-    // v1.7.0: a fast, all-correct, first-try set earns Perfect, First try and Speed at its own level
-    await flow('v1.7 badges earned', async () => {
-      const { context, page } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 4, diff: 1 }) });
+    // v2.3.0 (W13): the first set earns First steps, and a fast, all-correct, first-try set Full marks, First try and Quick thinker;
+    // a pop-up says so, the results card lists them, and the profile (not Progress) shows them in groups
+    await flow('W13 badges earned and shown on the profile', async () => {
+      const { context, page, errors } = await freshPage(browser, site, { [SETTINGS]: settings({ year: 4, diff: 1 }) });
       await startSet(page);
       const answers = await page.evaluate(() => (window.__testAnswers ? window.__testAnswers() : null));
       if (!answers) { console.log('  (flows: badge flow skipped: no test hook on a Production host)'); await context.close(); return; }
@@ -232,13 +233,56 @@ async function run(site) {
       }
       await page.click('#finishBtn');
       const text = await page.textContent('#resBadgeText');
-      check('v1.7 results show all three new badges', /Perfect/.test(text) && /First try/.test(text) && /Speed/.test(text), text);
-      check('v1.7 results name the level', /Year 4/.test(text) && /Core/.test(text), text);
+      check('W13 results list the four new badges', /First steps/.test(text) && /Full marks/.test(text) && /First try/.test(text) && /Quick thinker/.test(text), text);
+      check('W13 a pop-up says a new badge was earned', (await page.isVisible('#badgePop')) && /New badge/.test(await page.textContent('#badgePop')), await page.textContent('#badgePop'));
+      check('W13 the avatar shows 4 badges', (await page.textContent('#avatarBadge')).includes('4'), await page.textContent('#avatarBadge'));
+      const rec = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.achv.p1')));
+      check('W13 the record is stored once per badge', Object.keys(rec.e).sort().join() === 'firstSet,firstTryAll,perfectSet,speed' && rec.s.n === 1, JSON.stringify(rec));
       await page.click('.tab[data-go="progress"]');
-      const row = await page.locator('.badge-grid tr').nth(1).locator('td').evaluateAll(tds => tds.map(td => td.className));
-      check('v1.7 Year 4 Core row has all three badges', row.join() === 'got,got,got', row.join());
-      const other = await page.locator('.badge-grid tr').nth(2).locator('td.got').count();
-      check('v1.7 other difficulties stay empty', other === 0, other);
+      check('W13 Progress no longer shows badges', (await page.locator('#progBody .badge-shelf, #progBody .badge-grid').count()) === 0);
+      await page.click('#profileBtn'); await page.click('#profileOpen');
+      check('W13 the profile page opens', (await page.isVisible('#screen-profile')) && /profile/.test(await page.textContent('#profH')), await page.textContent('#profH'));
+      check('W13 the profile says 4 of 32', /4 of 32 badges/.test(await page.textContent('#profileBody')), await page.textContent('#profileBody'));
+      check('W13 five groups; the first is open and the rest are closed', (await page.locator('#profileBody details.bgroup').count()) === 5 && (await page.locator('#profileBody details.bgroup[open]').count()) === 1);
+      await page.locator('#profileBody details.bgroup').nth(2).locator('summary').click();
+      check('W13 4 earned and 28 locked tiles', (await page.locator('.btile.on').count()) === 4 && (await page.locator('.btile.off').count()) === 28, (await page.locator('.btile.on').count()) + '/' + (await page.locator('.btile.off').count()));
+      const totals = await page.locator('details[data-group="totals"] .btile').first().textContent();
+      check('W13 a total shows its progress (correct answers so far out of 100)', /\d+ \/ 100/.test(totals), totals);
+      check('W13 a locked badge says so', (await page.locator('details[data-group="social"] .btile.off').count()) > 0 && (await page.locator('details[data-group="start"] .btile.off .b-when').count()) === 0 && (await page.locator('.btile.off .b-ic').first().textContent()) === '🔒');
+      // R1.1 (v2.3.0 R2): the bar inside a tile has a height
+      check('W13 a progress bar in a tile is visible', (await page.evaluate(() => { const b = document.querySelector('.btile.off .bar.small'); return b ? b.getBoundingClientRect().height : -1; })) >= 4);
+      // the same set again: nothing is earned twice
+      await page.click('.tab[data-go="home"]'); await startSet(page);
+      const again = await page.evaluate(() => window.__testAnswers());
+      for (let i = 0; i < again.length; i++) {
+        const a = again[i], card = page.locator('#qc' + i);
+        if (a.type === 'mc') { await card.locator('.choice').nth(a.correct).click(); await page.locator('#qc' + i + ' button.btn.primary').click(); }
+        else { await page.fill('#ans' + i, String(a.answer)); await page.press('#ans' + i, 'Enter'); }
+      }
+      await page.click('#finishBtn');
+      check('W13 a second perfect set earns nothing again', !(await page.isVisible('#resBadge')) && (await page.evaluate(() => JSON.parse(localStorage.getItem('sp.achv.p1')).s.n)) === 2);
+      check('W13 no page errors', errors.length === 0, errors.join(' | '));
+      await context.close();
+    });
+
+    // v2.3.0 (W13): a first plan and a first lesson earn badges; the old badge list is gone; the profile is in Chinese too
+    await flow('W13 plan, lesson, old badges removed, Chinese', async () => {
+      const t0 = Date.now();
+      const { context, page, errors } = await freshPage(browser, site, {
+        [SETTINGS]: settings({ year: 4 }),
+        'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }])
+      });
+      check('W13 the old list of badges is removed on load', (await page.evaluate(() => localStorage.getItem('sp.badges.p1'))) === null);
+      check('W13 a new student starts with no badges', (await page.evaluate(() => localStorage.getItem('sp.achv.p1'))) === null && (await page.isHidden('#avatarBadge')));
+      await page.click('#planBtn');
+      await page.click('#planForm button[type="submit"]');
+      check('W13 the first plan earns Planner', /Planner/.test(await page.textContent('#badgePop')), await page.textContent('#badgePop'));
+      await page.click('#langBtn');
+      await page.click('#profileBtn'); await page.click('#profileOpen');
+      const body = await page.textContent('#profileBody');
+      check('W13 the profile is in Chinese', /已获得 1 \/ 32 枚徽章/.test(body) && /起步/.test(body) && /有计划的人/.test(body), body.slice(0, 200));
+      check('W13 no raw text keys on the profile', !/\bb\.|bh\.|bg\.|badge\./.test(body), body.slice(0, 200));
+      check('W13 no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
 
@@ -274,7 +318,7 @@ async function run(site) {
         'sp.history.p1': JSON.stringify([
           { date: t0, subject: 'maths', year: 4, topic: 'frac', diff: 2, n: 5, correct: 5, stars: 3, byTopic: { frac: [5, 5] }, wrong: [] },
           { date: t0 + 864e5, subject: 'maths', year: 4, topic: 'dec', diff: 2, n: 5, correct: 3, stars: 1, byTopic: { dec: [3, 5] }, wrong: [] }]),
-        'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }, { date: t0, kind: 'firstTry', subject: 'maths', year: 4, diff: 2, n: 5 }])
+        'sp.achv.p1': JSON.stringify({ e: { firstSet: t0 }, s: { n: 2 } })
       });
       await openParent(page);
       await typePin(page);
@@ -283,7 +327,7 @@ async function run(site) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       await dl.saveAs(file);
       const lines = fs.readFileSync(file, 'utf8').replace(/^﻿/, '').trim().split(/\r\n/);
-      check('v1.7 export: header, student, 2 sessions, 2 badges', lines.length === 6 && lines[0].startsWith('record,date,name') && lines.filter(l => l.startsWith('session,')).length === 2, lines.length);
+      check('v1.7 export: header, student, 2 sessions (badges in one achv row since v2.3.0)', lines.length === 5 && lines.filter(l => l.startsWith('achv,')).length === 1 && !lines.some(l => l.startsWith('badge,')) && lines[0].startsWith('record,date,name') && lines.filter(l => l.startsWith('session,')).length === 2, lines.length);
       check('v1.7 export file name names the student', /^student-practice_Ann_\d{4}-\d{2}-\d{2}\.csv$/.test(dl.suggestedFilename()), dl.suggestedFilename());
       // a second student, then import Ann's file into it
       await page.click('#profileBtn');
@@ -294,8 +338,8 @@ async function run(site) {
       await openParent(page);
       await page.setInputFiles('#csvImport', file);
       await page.waitForTimeout(300);
-      const p2 = await page.evaluate(() => ({ h: JSON.parse(localStorage.getItem('sp.history.p2') || '[]').length, b: JSON.parse(localStorage.getItem('sp.badges.p2') || '[]').length, pr: JSON.parse(localStorage.getItem('sp.profiles')).list.find(x => x.id === 'p2') }));
-      check('v1.7 import adds the sessions and badges', p2.h === 2 && p2.b === 2, JSON.stringify(p2));
+      const p2 = await page.evaluate(() => ({ h: JSON.parse(localStorage.getItem('sp.history.p2') || '[]').length, pr: JSON.parse(localStorage.getItem('sp.profiles')).list.find(x => x.id === 'p2') }));
+      check('v1.7 import adds the sessions', p2.h === 2, JSON.stringify(p2));
       check('v1.7 import fills missing details, keeps the name', p2.pr.name === 'Copy' && p2.pr.schoolYear === 4 && p2.pr.dob === '2016-03', JSON.stringify(p2.pr));
       await page.setInputFiles('#csvImport', file);   // the same file again adds nothing
       await page.waitForTimeout(300);
@@ -335,7 +379,7 @@ async function run(site) {
       await page.click('.tab[data-go="home"]');
       await page.click('.tab[data-go="progress"]');
       check('R1.1 stored bad record: Clear progress is there', (await page.locator('#clearProgress').count()) === 1);
-      check('R1.1 stored bad record: the other parts still show', (await page.locator('#progBody .stats').count()) === 1 && (await page.locator('#progBody .badge-shelf').count()) === 1);
+      check('R1.1 stored bad record: the other parts still show', (await page.locator('#progBody .stats').count()) === 1);
       check('R1.1 stored bad record: no uncaught page errors', errors.length === 0, errors.join(' | '));
       await page.click('#clearProgress');
       check('R1.1 Clear progress recovers', (await page.evaluate(() => localStorage.getItem('sp.history.p1'))) === null);
@@ -533,8 +577,8 @@ async function run(site) {
       page.once('dialog', d => { page.confirmText = d.message(); });   // freshPage's own handler accepts it
       await page.setInputFiles('#csvImport', file);
       await page.waitForTimeout(300);
-      check('R2.5 the confirm says how many rows were left out', /3 row\(s\) could not be read/.test(page.confirmText || ''), page.confirmText);
-      check('R2.5 the toast says it too', /Added 2 session\(s\).*3 row\(s\) could not be read/.test(await page.textContent('#toast')), await page.textContent('#toast'));
+      check('R2.5 the confirm says how many rows were left out', /2 row\(s\) could not be read/.test(page.confirmText || ''), page.confirmText);
+      check('R2.5 the toast says it too', /Added 2 session\(s\).*2 row\(s\) could not be read/.test(await page.textContent('#toast')), await page.textContent('#toast'));
       const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('sp.history.p1') || '[]'));
       check('R2.2 blank stars not stored as 0', stored.length === 2 && !('stars' in stored[0]), JSON.stringify(stored));
       check('R2.3 unknown topic stored as mixed', stored[1] && stored[1].topic === 'mixed', JSON.stringify(stored[1]));
@@ -648,8 +692,8 @@ async function run(site) {
       // v1.12.0 W7: the steps follow Home: 11 with nothing done yet, 12 with Carry on; every step highlights its part
       const t0 = Date.now();
       const done = { 'sp.history.p1': JSON.stringify([{ date: t0, subject: 'maths', year: 5, topic: 'frac', diff: 1, n: 5, correct: 5, stars: 3, byTopic: { frac: [5, 5] }, wrong: [] }]),
-        'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 5, diff: 1, n: 5 }]) };
-      for (const [name, seed, total] of [['nothing done', {}, 11], ['a set and a badge', done, 12]]) {
+        };
+      for (const [name, seed, total] of [['nothing done', {}, 11], ['a set', done, 12]]) {
         const { context, page, errors } = await freshPage(browser, site, Object.assign({ [SETTINGS]: settings({ subject: 'sel' }) }, seed));
         const steps = await walk(page);
         check(`R1.1 ${name}: ${total} steps`, steps.length === total && steps[0].step === `Step 1 of ${total}`, steps.length + ' / ' + (steps[0] || {}).step);
@@ -1229,7 +1273,7 @@ async function run(site) {
       check('R4: with every question answered there is no reminder', asked === '', asked);
       check('R4: every unchecked answer is marked right', (await page.locator('#resList > li.ok').count()) === 5, await page.textContent('#resScore'));
       const text = await page.textContent('#resBadgeText');
-      check('R4: unchecked answers count as first tries (Perfect and First try)', /Perfect/.test(text) && /First try/.test(text), text);
+      check('R4: unchecked answers count as first tries (Full marks and First try)', /Full marks/.test(text) && /First try/.test(text), text);
       // one wrong Check, then the right answer marked at See results: Perfect, but no First try
       await page.click('#againBtn');
       const again = await page.evaluate(() => window.__testAnswers());
@@ -1242,7 +1286,7 @@ async function run(site) {
         await page.fill('#ans' + k, String(again[k].answer));
         await page.click('#finishBtn');
         const text2 = (await page.isVisible('#resBadge')) ? await page.textContent('#resBadgeText') : '';
-        check('R4: after one wrong Check the set is still Perfect but not First try', (await page.locator('#resList > li.ok').count()) === 5 && /Perfect/.test(text2) && !/First try/.test(text2), text2);
+        check('R4: after one wrong Check the set is still all right, and no badge is earned twice', (await page.locator('#resList > li.ok').count()) === 5 && text2 === '', text2);
         // R4.4: a wrong Check left unchanged, then See results: the answer is shown once, not "777 → 777"
         await page.click('#againBtn');
         const third = await page.evaluate(() => window.__testAnswers());
@@ -1257,28 +1301,6 @@ async function run(site) {
         }
       } else console.log('  (flows: wrong-Check part skipped: the set had no typed-answer question)');
       check('R4 submit all: no page errors', errors.length === 0, errors.join(' | '));
-      await context.close();
-    });
-
-    // v1.10.0 R4: each badge kind tells how to earn it, on hover, keyboard focus or a tap
-    await flow('v1.10.0 R4 badge tips', async () => {
-      const { context, page, errors } = await freshPage(browser, site, {
-        [SETTINGS]: settings({ year: 4 }),
-        'sp.badges.p1': JSON.stringify([{ date: Date.now(), kind: 'firstTry', subject: 'maths', year: 4, diff: 2, n: 5 }])
-      });
-      await page.click('[data-go="progress"]');
-      const heads = page.locator('.badge-grid th.kind .info-btn');
-      check('R4: the three kind icons are buttons', (await heads.count()) === 3 && (await heads.allTextContents()).join('') === '🏅🎯⚡', (await heads.allTextContents()).join(''));
-      await heads.nth(1).hover();
-      const tip = page.locator('.badge-grid th.kind').nth(1).locator('.tip');
-      check('R4: hovering 🎯 shows how to earn First try', (await tip.isVisible()) && /First try: get every question right/.test(await tip.textContent()) && /press Check and an answer is wrong/.test(await tip.textContent()), await tip.textContent());
-      await page.mouse.move(1, 1);
-      await heads.nth(2).click();
-      const tip2 = page.locator('.badge-grid th.kind').nth(2).locator('.tip');
-      check('R4: tapping ⚡ shows the Speed rule with the seconds', (await tip2.isVisible()) && /20 \/ 30 \/ 60 \/ 90 seconds/.test(await tip2.textContent()), await tip2.textContent());
-      check('R4: the tip stays inside the screen', await tip2.evaluate(e => { const r = e.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }));
-      check('R4: each badge square also has the rule as its hover text', /Perfect: get every question/.test(await page.locator('.badge-grid td').first().getAttribute('title')));
-      check('R4 badge tips: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
 
@@ -1312,8 +1334,7 @@ async function run(site) {
     // screen is measured as visualViewport.width (what the phone shows), not innerWidth (which grows with the tip)
     for (const [W, H, phone] of [[320, 568, false], [375, 812, false], [320, 568, true], [375, 812, true]]) await flow(`R4.1 Progress does not pan sideways ${W}×${H}${phone ? ' phone' : ''}`, async () => {
       const { context, page, errors } = await freshPage(browser, site, {
-        [SETTINGS]: settings({ year: 4 }),
-        'sp.badges.p1': JSON.stringify([{ date: Date.now(), kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }])
+        [SETTINGS]: settings({ year: 4 })
       }, null, { context: { viewport: { width: W, height: H }, ...(phone ? { isMobile: true, hasTouch: true } : {}) } });
       const tag = `${W}×${H}${phone ? ' phone' : ''}`;
       await page.click('[data-go="progress"]');
@@ -1322,17 +1343,6 @@ async function run(site) {
       const inside = loc => loc.evaluate(e => { const r = e.getBoundingClientRect(), vw = window.visualViewport ? visualViewport.width : innerWidth; return { l: Math.round(r.left), r: Math.round(r.right), vw: Math.round(vw), ok: r.width > 0 && r.left >= 0 && r.right <= vw + 0.5 }; });
       check(`R4.1 ${tag}: the screen is ${W} px wide`, Math.round(await screenW()) === W, String(await screenW()));
       check(`R4.1 ${tag}: Progress is no wider than the screen`, (await wide()) <= 0, String(await wide()));
-      for (let k = 0; k < 3; k++) {
-        await page.locator('.badge-grid th.kind .info-btn').nth(k).click();
-        const tip = page.locator('.badge-grid th.kind').nth(k).locator('.tip');
-        const box = await inside(tip);
-        check(`R4.1 ${tag}: tip ${k + 1} opens inside the screen`, (await tip.isVisible()) && box.ok, JSON.stringify(box));
-        check(`R4.1 ${tag}: still no sideways pan with tip ${k + 1} open`, (await wide()) <= 0, String(await wide()));
-      }
-      if (phone) await page.locator('.badge-head .info-btn').click(); else await page.locator('.badge-head .info-btn').hover();
-      const sec = await inside(page.locator('.badge-head .tip'));
-      check(`R4.1 ${tag}: the badge-section tip opens inside the screen`, sec.ok, JSON.stringify(sec));
-      check(`R4.1 ${tag}: no sideways pan with the badge-section tip open`, (await wide()) <= 0, String(await wide()));
       if (!phone) await page.mouse.move(1, 1);
       await page.click('#progH');
       check(`R4.1 ${tag}: no sideways pan after the tips close`, (await wide()) <= 0, String(await wide()));
@@ -1445,19 +1455,6 @@ async function run(site) {
       await page.click('.un-acts [data-k="ok"]');
       check('R4.5: Rounds passed: 0, and "No round passed yet" instead of "Best: round 0"', (await page.textContent('#pzFinal')) === 'Rounds passed: 0' && (await page.textContent('#pzBest')) === 'No round passed yet', await page.textContent('#pzBest'));
       check('R4.5: no page errors', errors.length === 0, errors.join(' | '));
-      await context.close();
-    });
-    // R3.3 (v1.7.0): a student with badges but no saved sessions (e.g. history cleared) still sees the badges on Progress
-    await flow('R3.3 badges with no sessions', async () => {
-      const t0 = Date.now();
-      const { context, page, errors } = await freshPage(browser, site, {
-        [SETTINGS]: settings({ year: 4 }),
-        'sp.badges.p1': JSON.stringify([{ date: t0, kind: 'perfect', subject: 'maths', year: 4, diff: 2, n: 5 }])
-      });
-      await page.click('[data-go="progress"]');
-      check('R3.3: Progress says there are no sessions', /No|no/.test(await page.textContent('#progBody')));
-      check('R3.3: the badge shelf is shown anyway', (await page.locator('#progBody .badge-shelf').count()) === 1 && /1/.test(await page.textContent('#progBody .badge-shelf h3')), await page.textContent('#progBody'));
-      check('R3.3: no page errors', errors.length === 0, errors.join(' | '));
       await context.close();
     });
     // v1.10.0 R9: K–6 study mode (Terry 2026-11-09): pick a year (Kindergarten too) and a topic, read the lesson, then practise it
@@ -1587,7 +1584,7 @@ async function run(site) {
       // a browser that last saw v1.10.0 gets everything after it, each under its own version heading
       ({ context, page } = await freshPage(browser, site, { [SETTINGS]: settings(), 'sp.news': '"1.10.0"' }, null, { news: true }));
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 6 && heads[0].includes(await appVersion(page)) && heads[1].includes('2.1.0') && heads[2].includes('2.0.0') && heads[3].includes('1.12.0') && heads[4].includes('1.11.0') && heads[5].includes('1.10.1'), JSON.stringify(heads));
+      check('v1.11 skipped versions: every version since the one last seen, newest first', (await isOpen(page)) && heads.length === 7 && heads[0].includes(await appVersion(page)) && heads[1].includes('2.2.0') && heads[2].includes('2.1.0') && heads[3].includes('2.0.0') && heads[4].includes('1.12.0') && heads[5].includes('1.11.0') && heads[6].includes('1.10.1'), JSON.stringify(heads));
       // R1.2: one Show me only (the one at the bottom), never one per version as well
       check('v1.11 skipped versions: a single Show me', (await page.locator('#newsBody .news-show-v').count()) === 0 && (await page.locator('#newsShow').isVisible()), String(await page.locator('#newsBody .news-show-v').count()));
       // R1.6: Escape closes it and remembers this version, like Got it
@@ -1620,9 +1617,9 @@ async function run(site) {
       check(`v1.11 ${W}: the Release history button is at least 44 px tall`, nb && nb.height >= 44, JSON.stringify(nb));
       await page.click('#newsBtn');
       const heads = await page.locator('#newsBody h4').allTextContents();
-      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 7 && heads[0].includes(await appVersion(page)) && heads[6].includes('1.10.0'), JSON.stringify(heads));
+      check(`v1.11 ${W}: Release history opens with every version from 1.10.0, newest first`, (await isOpen(page)) && (await page.textContent('#newsTitle')) === 'Release history' && heads.length === 8 && heads[0].includes(await appVersion(page)) && heads[7].includes('1.10.0'), JSON.stringify(heads));
       check(`v1.11 ${W}: the newest version is marked as this version`, (await page.locator('#newsBody .news-ver').first().locator('.news-cur').count()) === 1);
-      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 6);
+      check(`v1.11 ${W}: history has no single Show me, but one per version that has something to show`, (await page.locator('#newsShow').isHidden()) && (await page.locator('#newsBody .news-show-v').count()) === 7);
       const box = await page.evaluate(() => { const r = document.querySelector('#newsDlg').getBoundingClientRect(); return [r.top, r.bottom, innerHeight]; });
       check(`v1.11 ${W}: the dialog fits the screen (its list scrolls)`, box[0] >= 0 && box[1] <= box[2], JSON.stringify(box));
       check(`v1.11 ${W}: Close is reachable`, await page.locator('#newsClose').isVisible());
